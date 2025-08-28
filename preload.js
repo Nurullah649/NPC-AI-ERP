@@ -8,10 +8,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Bu fonksiyon, ana işleme 'perform-search' mesajı gönderir
   performSearch: (searchTerm) => ipcRenderer.send('perform-search', searchTerm),
 
-  // Ana işlemden gelen sonuçları dinlemek için bir fonksiyon
-  // Arayüzdeki JavaScript, bu fonksiyonu kullanarak sonuçları alacak bir dinleyici (listener) kurabilir
+  // Ana işlemden gelen arama sonuçlarını dinlemek için bir fonksiyon
   onResults: (callback) => ipcRenderer.on('search-results', (_event, value) => callback(value)),
 
   // Ana işlemden gelen hataları dinlemek için bir fonksiyon
   onSearchError: (callback) => ipcRenderer.on('search-error', (_event, value) => callback(value)),
+
+  // YENİ: Arayüzden Excel'e aktarma işlemini tetiklemek için fonksiyon
+  exportToExcel: (data) => ipcRenderer.send('export-to-excel', data),
+
+  // YENİ: Ana işlemden gelen Excel aktarma sonucunu dinlemek için fonksiyon
+  onExportResult: (callback) => ipcRenderer.on('export-result', (_event, value) => callback(value)),
 });

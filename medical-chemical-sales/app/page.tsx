@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, createContext, useContext, useEffect } from "react";
-import { Home, Search, Users, Package2, DollarSign, Activity, PlusCircle, User, SearchIcon, UserPlus, FileText, ChevronDown, Moon, Sun, LoaderCircle, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils"; // Bu fonksiyonun projenizde tanımlı olduğunu varsayıyoruz.
+// GÜNCELLEME: Euro ikonu eklendi.
+import { Home, Search, Users, Package2, DollarSign, Activity, PlusCircle, User, UserPlus, FileText, ChevronDown, Moon, Sun, LoaderCircle, AlertCircle, FileDown, Euro } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -51,7 +52,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 // Electron API ve Veri Tipleri
 // --------------------------------------------------------------------------------
 
-// Python'dan gelen veriler için TypeScript tipleri
 interface ComparisonItem {
   source: string;
   product_name: string;
@@ -76,20 +76,21 @@ interface ScriptResult {
     execution_time: number;
 }
 
-// preload.js dosyasındaki API'nin tipini tanımlıyoruz
 declare global {
   interface Window {
     electronAPI: {
       performSearch: (searchTerm: string) => void;
       onResults: (callback: (data: ScriptResult) => void) => void;
       onSearchError: (callback: (error: string) => void) => void;
+      exportToExcel: (data: { customerName: string; products: ComparisonItem[] }) => void;
+      onExportResult: (callback: (result: { status: string; path?: string; message?: string }) => void) => void;
     };
   }
 }
 
 
 // --------------------------------------------------------------------------------
-// Tema Sağlayıcısı (ThemeProvider)
+// Tema Sağlayıcısı (ThemeProvider) - Değişiklik yok
 // --------------------------------------------------------------------------------
 const ThemeProviderContext = createContext({
   theme: "system",
@@ -149,7 +150,7 @@ const useTheme = () => {
 };
 
 // --------------------------------------------------------------------------------
-// Tema Değiştirme Düğmesi
+// Tema Değiştirme Düğmesi - Değişiklik yok
 // --------------------------------------------------------------------------------
 const ModeToggle = () => {
     const { theme, setTheme } = useTheme();
@@ -165,7 +166,7 @@ const ModeToggle = () => {
 
 
 // --------------------------------------------------------------------------------
-// Sidebar Bileşeni
+// Sidebar Bileşeni - Değişiklik yok
 // --------------------------------------------------------------------------------
 const Sidebar = ({ setPage, currentPage }) => {
   const navItems = [
@@ -221,22 +222,27 @@ const Sidebar = ({ setPage, currentPage }) => {
 // --------------------------------------------------------------------------------
 // Ana Sayfa (Dashboard)
 // --------------------------------------------------------------------------------
-const HomePage = ({ customerCount }) => {
+const HomePage = ({ stats }) => {
+  const formatCurrency = (value) => {
+      return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+  }
+
   return (
     <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold tracking-tight">Hoş Geldiniz!</h1>
         <p className="text-muted-foreground">
-            Depo Yönetim Sisteminize genel bir bakış.
+            Yönetim sisteminize genel bir bakış.
         </p>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Toplam Ciro</CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    {/* GÜNCELLEME: Dolar ikonu Euro ikonu ile değiştirildi. */}
+                    <Euro className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">₺45,231.89</div>
-                    <p className="text-xs text-muted-foreground">Geçen aydan +%20.1</p>
+                    <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
+                    <p className="text-xs text-muted-foreground">Müşterilere atanan tüm ürünler</p>
                 </CardContent>
             </Card>
             <Card>
@@ -245,18 +251,18 @@ const HomePage = ({ customerCount }) => {
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{customerCount}</div>
+                    <div className="text-2xl font-bold">{stats.customerCount}</div>
                     <p className="text-xs text-muted-foreground">Toplam kayıtlı müşteri</p>
                 </CardContent>
             </Card>
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Toplam Ürün</CardTitle>
+                    <CardTitle className="text-sm font-medium">Atanan Toplam Ürün</CardTitle>
                     <Package2 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">+12,234</div>
-                    <p className="text-xs text-muted-foreground">Stoktaki ürün çeşidi</p>
+                    <div className="text-2xl font-bold">{stats.totalUniqueProducts}</div>
+                    <p className="text-xs text-muted-foreground">Müşterilerdeki toplam ürün çeşidi</p>
                 </CardContent>
             </Card>
             <Card>
@@ -265,8 +271,8 @@ const HomePage = ({ customerCount }) => {
                     <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">+573</div>
-                    <p className="text-xs text-muted-foreground">Hazırlanmakta olan siparişler</p>
+                    <div className="text-2xl font-bold">{stats.activeOrders}</div>
+                    <p className="text-xs text-muted-foreground">Toplam ürün atama sayısı</p>
                 </CardContent>
             </Card>
         </div>
@@ -277,28 +283,33 @@ const HomePage = ({ customerCount }) => {
 // --------------------------------------------------------------------------------
 // Müşteriler Sayfası
 // --------------------------------------------------------------------------------
-const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts }) => {
-  const [newCustomer, setNewCustomer] = useState({ name: "", email: "", phone: "" });
+const CustomersPage = ({ customers, setCustomers, assignments }) => {
+  const [newCustomer, setNewCustomer] = useState({ name: "" });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   const handleAddCustomer = () => {
-    if (newCustomer.name && newCustomer.email) {
+    if (newCustomer.name.trim()) {
       setCustomers([...customers, { id: customers.length > 0 ? Math.max(...customers.map(c => c.id)) + 1 : 1, ...newCustomer }]);
-      setNewCustomer({ name: "", email: "", phone: "" });
+      setNewCustomer({ name: "" });
       setIsAddDialogOpen(false);
       toast.success("Yeni müşteri başarıyla eklendi!");
     } else {
-      toast.error("Lütfen müşteri adı ve e-posta alanlarını doldurun.");
+      toast.error("Lütfen müşteri adını girin.");
     }
   };
 
-  const getProductDetails = (productId) => {
-    return allFoundProducts.find(p => p.product_number === productId) || null;
+  const handleExport = () => {
+      if (!selectedCustomer || !window.electronAPI) return;
+      const assignedProducts = assignments[selectedCustomer.id] || [];
+      toast.info("Excel dosyası oluşturuluyor, lütfen bekleyin...");
+      window.electronAPI.exportToExcel({
+          customerName: selectedCustomer.name,
+          products: assignedProducts
+      });
   };
 
-  const assignedProducts = selectedCustomer ?
-    (assignments[selectedCustomer.id] || []).map(getProductDetails).filter(Boolean) : [];
+  const assignedProducts = selectedCustomer ? (assignments[selectedCustomer.id] || []) : [];
 
   return (
     <div className="container mx-auto p-4">
@@ -309,20 +320,12 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Yeni Müşteri Ekle</DialogTitle>
-              <DialogDescription>Yeni müşteri bilgilerini girin.</DialogDescription>
+              <DialogDescription>Yeni müşterinin adını ve soyadını girin.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">İsim</Label>
-                <Input id="name" value={newCustomer.name} onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})} className="col-span-3" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">E-posta</Label>
-                <Input id="email" type="email" value={newCustomer.email} onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})} className="col-span-3" />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="phone" className="text-right">Telefon</Label>
-                <Input id="phone" value={newCustomer.phone} onChange={(e) => setNewCustomer({...newCustomer, phone: e.target.value})} className="col-span-3" />
+                <Label htmlFor="name" className="text-right">Ad Soyad</Label>
+                <Input id="name" value={newCustomer.name} onChange={(e) => setNewCustomer({ name: e.target.value })} className="col-span-3" />
               </div>
             </div>
             <DialogFooter><Button type="submit" onClick={handleAddCustomer}>Kaydet</Button></DialogFooter>
@@ -333,10 +336,11 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
         {customers.map((customer) => (
           <Card key={customer.id} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setSelectedCustomer(customer)}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" />{customer.name}</CardTitle>
-              <CardDescription>{customer.email}</CardDescription>
+              <CardTitle className="flex items-center gap-2 py-4">
+                <User className="h-5 w-5" />
+                {customer.name}
+              </CardTitle>
             </CardHeader>
-            <CardContent><p>{customer.phone}</p></CardContent>
           </Card>
         ))}
       </div>
@@ -344,7 +348,7 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
       <Dialog open={!!selectedCustomer} onOpenChange={() => setSelectedCustomer(null)}>
         <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-                <DialogTitle>{selectedCustomer?.name} - Sipariş Dosyaları</DialogTitle>
+                <DialogTitle>{selectedCustomer?.name} - Atanmış Ürünler</DialogTitle>
                 <DialogDescription>Bu müşteriye atanmış olan ürünlerin listesi.</DialogDescription>
             </DialogHeader>
             {assignedProducts.length > 0 ? (
@@ -353,15 +357,15 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
                         <TableRow>
                             <TableHead>Ürün Adı</TableHead>
                             <TableHead>Kodu</TableHead>
-                            <TableHead>En Ucuz Netflex Fiyatı</TableHead>
+                            <TableHead>Fiyat</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {assignedProducts.map(product => (
-                            <TableRow key={product.product_number}>
+                            <TableRow key={product.product_code}>
                                 <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
-                                <TableCell>{product.product_number}</TableCell>
-                                <TableCell>{product.cheapest_netflex_price_str}</TableCell>
+                                <TableCell>{product.product_code}</TableCell>
+                                <TableCell>{product.price_str}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -372,6 +376,11 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
                     <p className="mt-4 text-muted-foreground">Bu müşteriye henüz atanmış bir ürün bulunmuyor.</p>
                 </div>
             )}
+            <DialogFooter>
+                <Button variant="outline" onClick={handleExport} disabled={assignedProducts.length === 0}>
+                    <FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar
+                </Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -379,13 +388,13 @@ const CustomersPage = ({ customers, setCustomers, assignments, allFoundProducts 
 };
 
 // --------------------------------------------------------------------------------
-// Ürün Arama Sayfası
+// Ürün Arama Sayfası - Değişiklik yok
 // --------------------------------------------------------------------------------
-const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResults, allFoundProducts, setAllFoundProducts }) => {
+const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResults }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [selectedProducts, setSelectedProducts] = useState<ComparisonItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
 
@@ -393,10 +402,6 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
     const removeResultsListener = window.electronAPI.onResults((data) => {
       console.log("Sonuçlar arayüze ulaştı:", data);
       setSearchResults(data);
-      setAllFoundProducts(prevProducts => {
-          const newProducts = data.results.filter(p => !prevProducts.some(fp => fp.product_number === p.product_number));
-          return [...prevProducts, ...newProducts];
-      });
       setIsLoading(false);
     });
 
@@ -406,25 +411,29 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
       setIsLoading(false);
     });
 
-  }, [setSearchResults, setAllFoundProducts]);
+  }, [setSearchResults]);
 
   const handleSearch = () => {
     if (!searchTerm.trim() || isLoading) return;
     setIsLoading(true);
     setSearchResults(null);
     setError(null);
+    setSelectedProducts([]);
     console.log(`Arama sinyali gönderiliyor: ${searchTerm}`);
     window.electronAPI.performSearch(searchTerm);
   };
 
-  const handleSelectProduct = (productId) => {
-    const newSelection = new Set(selectedProducts);
-    if (newSelection.has(productId)) {
-      newSelection.delete(productId);
-    } else {
-      newSelection.add(productId);
-    }
-    setSelectedProducts(newSelection);
+  const handleSelectVariant = (variant: ComparisonItem, isSelected: boolean) => {
+    setSelectedProducts(prev => {
+        if (isSelected) {
+            if (!prev.some(p => p.product_code === variant.product_code)) {
+                return [...prev, variant];
+            }
+            return prev;
+        } else {
+            return prev.filter(p => p.product_code !== variant.product_code);
+        }
+    });
   };
 
   const handleAssignToCustomer = () => {
@@ -432,10 +441,10 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
         toast.error("Lütfen bir müşteri seçin.");
         return;
     }
-    onAssignProducts(selectedCustomer, Array.from(selectedProducts));
+    onAssignProducts(selectedCustomer, selectedProducts);
     const customerName = customers.find(c => c.id.toString() === selectedCustomer)?.name;
-    toast.success(`${selectedProducts.size} ürün, ${customerName} adlı müşteriye başarıyla atandı!`);
-    setSelectedProducts(new Set());
+    toast.success(`${selectedProducts.length} ürün, ${customerName} adlı müşteriye başarıyla atandı!`);
+    setSelectedProducts([]);
     setSelectedCustomer(null);
     setIsAssignDialogOpen(false);
   };
@@ -479,20 +488,18 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
                       <Table>
                           <TableHeader>
                               <TableRow>
-                                <TableHead className="w-[50px]">Seç</TableHead>
                                 <TableHead>Sigma Ürün Adı</TableHead>
                                 <TableHead>Ürün Kodu</TableHead>
                                 <TableHead>CAS Numarası</TableHead>
                                 <TableHead>Sigma Fiyatı</TableHead>
                                 <TableHead>En Ucuz Netflex Fiyatı</TableHead>
-                                <TableHead className="text-right">Detaylar</TableHead>
+                                <TableHead className="text-right">Varyasyonları Gör</TableHead>
                               </TableRow>
                           </TableHeader>
                           {searchResults.results.map((product, index) => (
                           <Collapsible asChild key={index}>
                               <TableBody>
                               <TableRow>
-                                  <TableCell><Checkbox checked={selectedProducts.has(product.product_number)} onCheckedChange={() => handleSelectProduct(product.product_number)}/></TableCell>
                                   <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
                                   <TableCell>{product.product_number}</TableCell>
                                   <TableCell>{product.cas_number}</TableCell>
@@ -508,11 +515,12 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
                               </TableRow>
                               <CollapsibleContent asChild>
                                   <tr>
-                                  <td colSpan={7} className="p-4 bg-muted/50 dark:bg-muted/20">
-                                      <h4 className="font-semibold mb-2 ml-2">Karşılaştırma Detayları</h4>
+                                  <td colSpan={6} className="p-4 bg-muted/50 dark:bg-muted/20">
+                                      <h4 className="font-semibold mb-2 ml-2">Karşılaştırma ve Atama Detayları</h4>
                                       <Table>
                                       <TableHeader>
                                           <TableRow>
+                                          <TableHead className="w-[50px]">Seç</TableHead>
                                           <TableHead>Kaynak</TableHead>
                                           <TableHead>Ürün Adı</TableHead>
                                           <TableHead>Ürün Kodu</TableHead>
@@ -522,6 +530,12 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
                                       <TableBody>
                                           {product.comparison.map((variant, vIndex) => (
                                               <TableRow key={vIndex}>
+                                              <TableCell>
+                                                  <Checkbox
+                                                    checked={selectedProducts.some(p => p.product_code === variant.product_code)}
+                                                    onCheckedChange={(checked) => handleSelectVariant(variant, !!checked)}
+                                                  />
+                                              </TableCell>
                                               <TableCell>{variant.source}</TableCell>
                                               <TableCell dangerouslySetInnerHTML={{ __html: variant.product_name }} />
                                               <TableCell>{variant.product_code}</TableCell>
@@ -545,10 +559,14 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
           </>
       )}
 
-      {selectedProducts.size > 0 && (
-         <div className="mt-4">
+      {selectedProducts.length > 0 && (
+         <div className="fixed bottom-4 right-4 z-20">
             <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-                <DialogTrigger asChild><Button><UserPlus className="mr-2 h-4 w-4" />{selectedProducts.size} Ürünü Müşteriye Ata</Button></DialogTrigger>
+                <DialogTrigger asChild>
+                    <Button size="lg" className="shadow-lg">
+                        <UserPlus className="mr-2 h-4 w-4" />{selectedProducts.length} Ürünü Müşteriye Ata
+                    </Button>
+                </DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Müşteriye Ata</DialogTitle>
@@ -578,24 +596,66 @@ const SearchPage = ({ customers, onAssignProducts, searchResults, setSearchResul
 // Ana Uygulama Bileşeni (Router ve Layout)
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [page, setPage] = useState("home"); // 'home', 'search', 'customers'
-
-  // DÜZENLEME: Başlangıçta müşteri listesi boş.
+  const [page, setPage] = useState("home");
   const [customers, setCustomers] = useState([]);
+  const [assignments, setAssignments] = useState<{[key: string]: ComparisonItem[]}>({});
+  const [searchResults, setSearchResults] = useState<ScriptResult | null>(null);
+  const [dashboardStats, setDashboardStats] = useState({
+      totalRevenue: 0,
+      customerCount: 0,
+      totalUniqueProducts: 0,
+      activeOrders: 0,
+  });
 
-  // DÜZENLEME: Başlangıçta atama listesi boş.
-  const [assignments, setAssignments] = useState({});
+  useEffect(() => {
+    if (window.electronAPI?.onExportResult) {
+        const removeListener = window.electronAPI.onExportResult((result) => {
+            if (result.status === 'success') {
+                toast.success(`Excel dosyası başarıyla kaydedildi: ${result.path}`);
+            } else {
+                toast.error(`Excel oluşturma hatası: ${result.message}`);
+            }
+        });
+        return () => removeListener();
+    }
+  }, []);
 
-  const [searchResults, setSearchResults] = useState(null);
-  const [allFoundProducts, setAllFoundProducts] = useState([]);
+  useEffect(() => {
+    let revenue = 0;
+    let productCount = 0;
+    const uniqueProducts = new Set<string>();
 
-  const handleAssignProducts = (customerId, productIds) => {
-    setAssignments(prevAssignments => {
-        const currentAssigned = prevAssignments[customerId] || [];
-        const newAssigned = [...new Set([...currentAssigned, ...productIds])]; // Tekrarları önle
+    Object.values(assignments).forEach(productList => {
+        productCount += productList.length;
+        productList.forEach(product => {
+            uniqueProducts.add(product.product_code);
+            if (product.price_numeric) {
+                revenue += product.price_numeric;
+            } else if (product.price_str) {
+                const priceMatch = product.price_str.match(/[\d.,]+/);
+                if (priceMatch) {
+                    const cleanedPrice = priceMatch[0].replace(/\./g, '').replace(',', '.');
+                    revenue += parseFloat(cleanedPrice) || 0;
+                }
+            }
+        });
+    });
+
+    setDashboardStats({
+        totalRevenue: revenue,
+        customerCount: customers.length,
+        totalUniqueProducts: uniqueProducts.size,
+        activeOrders: productCount,
+    });
+  }, [assignments, customers]);
+
+  const handleAssignProducts = (customerId, products: ComparisonItem[]) => {
+    setAssignments(prev => {
+        const currentAssigned = prev[customerId] || [];
+        const newProducts = products.filter(p => !currentAssigned.some(ap => ap.product_code === p.product_code));
         return {
-            ...prevAssignments,
-            [customerId]: newAssigned
+            ...prev,
+            [customerId]: [...currentAssigned, ...newProducts]
         };
     });
   };
@@ -608,19 +668,16 @@ export default function App() {
                     onAssignProducts={handleAssignProducts}
                     searchResults={searchResults}
                     setSearchResults={setSearchResults}
-                    allFoundProducts={allFoundProducts}
-                    setAllFoundProducts={setAllFoundProducts}
                 />;
       case "customers":
         return <CustomersPage
                     customers={customers}
                     setCustomers={setCustomers}
                     assignments={assignments}
-                    allFoundProducts={allFoundProducts}
                 />;
       case "home":
       default:
-        return <HomePage customerCount={customers.length} />;
+        return <HomePage stats={dashboardStats} />;
     }
   };
 
@@ -633,7 +690,7 @@ export default function App() {
               {renderPage()}
             </main>
           </div>
-          <Toaster />
+          <Toaster position="bottom-right" />
         </div>
     </ThemeProvider>
   );

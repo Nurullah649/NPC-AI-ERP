@@ -1,4 +1,4 @@
-# Gerekli Kütüphaneler: selenium, requests, mysql-connector-python
+# Gerekli Kütüphaneler: selenium, requests, mysql-connector-python, openpyxl
 import sys
 import time
 import json
@@ -6,21 +6,21 @@ import atexit
 import logging
 import re
 import threading
-import math
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List
-from urllib.parse import urljoin, quote
+from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, JavascriptException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import mysql.connector
 from mysql.connector import Error
+import openpyxl  # YENİ: Excel işlemleri için eklendi
 
 # --- Loglama Ayarları ---
 logging.basicConfig(
@@ -42,7 +42,67 @@ db_config = {
 
 
 # ==============================================================================
-# VERİTABANI ARAMA VE KAYDETME FONKSİYONLARI
+# YENİ: EXCEL OLUŞTURMA FONKSİYONU
+# ==============================================================================
+def export_to_excel(data: Dict[str, Any]):
+    """
+    Gelen müşteri ve ürün verileriyle bir Excel dosyası oluşturur ve masaüstüne kaydeder.
+    """
+    customer_name = data.get("customerName", "Bilinmeyen_Musteri")
+    products = data.get("products", [])
+    # Dosya adındaki geçersiz karakterleri temizle
+    safe_customer_name = re.sub(r'[\\/*?:"<>|]', "", customer_name)
+
+    # Dosyayı kullanıcının masaüstüne kaydet
+    desktop_path = Path.home() / "Desktop"
+    desktop_path.mkdir(exist_ok=True)  # Masaüstü yoksa oluştur
+    filename = f"{safe_customer_name}_urun_listesi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filepath = desktop_path / filename
+
+    try:
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Ürün Listesi"
+
+        # Başlıklar
+        headers = ["Ürün Adı", "Ürün Kodu", "Fiyat"]
+        sheet.append(headers)
+        # Başlıkları kalın yap
+        for cell in sheet["1:1"]:
+            cell.font = openpyxl.styles.Font(bold=True)
+
+        # Veriler
+        for product in products:
+            row = [
+                product.get("product_name", "N/A"),
+                product.get("product_code", "N/A"),
+                product.get("price_str", "N/A")
+            ]
+            sheet.append(row)
+
+        # Sütun genişliklerini ayarla
+        for col in sheet.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            sheet.column_dimensions[column].width = adjusted_width
+
+        workbook.save(filepath)
+        logging.info(f"Excel dosyası başarıyla oluşturuldu: {filepath}")
+        return {"status": "success", "path": str(filepath)}
+    except Exception as e:
+        logging.error(f"Excel dosyası oluşturulurken hata: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+
+# ==============================================================================
+# VERİTABANI VE API SINIFLARI (Değişiklik yok, olduğu gibi bırakıldı)
 # ==============================================================================
 
 def search_in_database(search_term: str) -> Dict[str, Any]:
@@ -144,10 +204,6 @@ def save_to_database(results_data: List[Dict[str, Any]]):
             cursor.close()
             connection.close()
 
-
-# ==============================================================================
-# VERİ KAYNAĞI VE KARŞILAŞTIRMA SINIFLARI
-# ==============================================================================
 
 class NetflexAPI:
     def __init__(self, max_workers=10):
@@ -289,7 +345,6 @@ class SigmaAldrichAPI:
 
             variables_json = json.dumps(variables)
 
-            # --- HATA DÜZELTİLDİ: Eksik header'lar eklendi ---
             js_script = f"""
             const callback = arguments[arguments.length - 1];
             const variables = {variables_json};
@@ -361,7 +416,6 @@ class SigmaAldrichAPI:
 
         query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $materialIds: [String!], $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, materialIds: $materialIds, productKey: $productKey}) { materialPricing { listPrice currency materialNumber } } }"
 
-        # --- HATA DÜZELTİLDİ: Eksik header'lar eklendi ---
         js_script = f"""
         const callback = arguments[arguments.length - 1];
         const variables = {variables_json};
@@ -520,39 +574,63 @@ netflex_api = NetflexAPI()
 comparison_engine = ComparisonEngine(sigma_api, netflex_api)
 
 
+# GÜNCELLEME: main fonksiyonu artık arayüzden gelen JSON komutlarını işliyor.
+# 'action': 'search' -> Ürün arar
+# 'action': 'export' -> Excel dosyası oluşturur
 def main():
     logging.info("========================================")
     logging.info("      Python Arka Plan Servisi Başlatıldı")
     logging.info("========================================")
     atexit.register(sigma_api.stop_driver)
-    logging.info("Servis hazır. Arama terimleri bekleniyor...")
+    logging.info("Servis hazır. Komutlar bekleniyor...")
+
     for line in sys.stdin:
-        search_term = line.strip()
-        if not search_term: continue
-        results = search_in_database(search_term)
-        if results and results.get("results"):
-            logging.info(f"'{search_term}' için sonuçlar veritabanından anında bulundu.")
-            try:
-                json_output = json.dumps(results)
-                print(json_output)
-                sys.stdout.flush()
-                continue
-            except TypeError as e:
-                logging.critical(f"Veritabanı sonucu JSON'a çevrilemedi: {e}", exc_info=True)
-        logging.info(f"'{search_term}' veritabanında bulunamadı. İnternetten yeni arama başlatılıyor...")
+        line = line.strip()
+        if not line:
+            continue
 
-        web_results_data = comparison_engine.search_and_compare(search_term)
-
-        if web_results_data and web_results_data.get("results"):
-            save_to_database(web_results_data["results"])
         try:
-            json_output = json.dumps(web_results_data)
-            print(json_output)
-            sys.stdout.flush()
-            logging.info(f"'{search_term}' için web sonuçları başarıyla gönderildi.")
-        except TypeError as e:
-            logging.critical(f"Web sonuçları JSON'a çevrilemedi: {e}", exc_info=True)
-            error_json = json.dumps({"error": "Sonuçlar serileştirilemedi."})
+            request = json.loads(line)
+            action = request.get("action")
+            data = request.get("data")
+
+            if action == "search":
+                search_term = data
+                if not search_term: continue
+
+                # Önce veritabanında ara
+                results = search_in_database(search_term)
+                if results and results.get("results"):
+                    logging.info(f"'{search_term}' için sonuçlar veritabanından anında bulundu.")
+                    print(json.dumps(results))
+                    sys.stdout.flush()
+                    continue
+
+                # Veritabanında yoksa web'de ara
+                logging.info(f"'{search_term}' veritabanında bulunamadı. İnternetten yeni arama başlatılıyor...")
+                web_results_data = comparison_engine.search_and_compare(search_term)
+
+                if web_results_data and web_results_data.get("results"):
+                    save_to_database(web_results_data["results"])
+
+                print(json.dumps(web_results_data))
+                sys.stdout.flush()
+                logging.info(f"'{search_term}' için web sonuçları başarıyla gönderildi.")
+
+            elif action == "export":
+                logging.info("Excel dışa aktarma talebi alındı.")
+                result = export_to_excel(data)
+                print(json.dumps(result))
+                sys.stdout.flush()
+
+            else:
+                logging.warning(f"Bilinmeyen eylem alındı: {action}")
+
+        except json.JSONDecodeError:
+            logging.error(f"Geçersiz JSON formatı alındı: {line}")
+        except Exception as e:
+            logging.critical(f"Ana döngüde beklenmedik hata: {e}", exc_info=True)
+            error_json = json.dumps({"error": f"Beklenmedik bir sunucu hatası oluştu: {e}"})
             print(error_json)
             sys.stdout.flush()
 
