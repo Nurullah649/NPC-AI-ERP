@@ -6,9 +6,11 @@ import atexit
 import logging
 import re
 import threading
+import math
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List
+from urllib.parse import urljoin, quote
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -218,118 +220,185 @@ class SigmaAldrichAPI:
         self.driver_lock = threading.Lock()
 
     def start_driver(self):
-        if self.driver: return self.driver
-        logging.info("Selenium WebDriver başlatılıyor...")
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        try:
-            self.driver = webdriver.Chrome(options=options)
-            self.driver.set_script_timeout(60)
-            self.driver.get("https://www.sigmaaldrich.com/TR/en")
-            time.sleep(2)
-            logging.info("Selenium WebDriver başarıyla başlatıldı.")
-            return self.driver
-        except Exception as e:
-            logging.critical(f"WebDriver başlatılamadı: {e}", exc_info=True)
-            self.driver = None
-            return None
+        with self.driver_lock:
+            if self.driver:
+                return self.driver
+
+            logging.info("Selenium WebDriver başlatılıyor...")
+            options = webdriver.ChromeOptions()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument(
+                "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            try:
+                self.driver = webdriver.Chrome(options=options)
+                self.driver.set_script_timeout(120)
+                logging.info("Selenium WebDriver başarıyla başlatıldı.")
+
+                logging.info("Oturum ve çerezleri başlatmak için Sigma-Aldrich ziyaret ediliyor...")
+                self.driver.get("https://www.sigmaaldrich.com/TR/en")
+                try:
+                    cookie_wait = WebDriverWait(self.driver, 10)
+                    accept_button = cookie_wait.until(
+                        EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler")))
+                    self.driver.execute_script("arguments[0].click();", accept_button)
+                    logging.info("Çerez onayı tıklandı (JS ile).")
+                except TimeoutException:
+                    logging.debug("Çerez onayı butonu bulunamadı, devam ediliyor.")
+
+                return self.driver
+            except Exception as e:
+                logging.critical(f"WebDriver başlatılamadı: {e}", exc_info=True)
+                self.driver = None
+                return None
 
     def stop_driver(self):
-        if self.driver:
-            logging.info("Selenium WebDriver kapatılıyor.")
-            self.driver.quit()
-            self.driver = None
+        with self.driver_lock:
+            if self.driver:
+                logging.info("Selenium WebDriver kapatılıyor.")
+                self.driver.quit()
+                self.driver = None
 
     def search_products(self, search_term: str) -> List[Dict[str, Any]]:
-        if not self.driver: return []
-        logging.info(f"Sigma (JS Arama API): '{search_term}' için tüm sayfalar taranıyor...")
-        js_script = f"""
-        const callback = arguments[arguments.length - 1]; const allProducts = []; let page = 1; const searchTerm = "{search_term}";
-        async function fetchAllPages() {{ while (true) {{ try {{ const response = await fetch("https://www.sigmaaldrich.com/api/graphql", {{"headers": {{"accept": "*/*", "content-type": "application/json", "x-gql-country": "TR", "x-gql-language": "en"}}, "body": JSON.stringify({{"operationName": "ProductSearch", "variables": {{"searchTerm": searchTerm, "page": page, "group": "substance", "selectedFacets": [], "sort": "relevance", "type": "PRODUCT"}}, "query": `query ProductSearch($searchTerm: String, $page: Int!, $sort: Sort, $group: ProductSearchGroup, $selectedFacets: [FacetInput!], $type: ProductSearchType) {{ getProductSearchResults(input: {{searchTerm: $searchTerm, pagination: {{page: $page}}, sort: $sort, group: $group, facets: $selectedFacets, type: $type}}) {{ items {{ ... on Substance {{ products {{ name productNumber productKey brand {{ key }} }} }} }} }} }}`}}), "method": "POST"}}); const data = await response.json(); if (data.error || data.errors || !data.data) {{ console.error("GraphQL Error on page " + page + ":", data); break; }} const items = data.data.getProductSearchResults?.items || []; if (items.length === 0) {{ break; }} for (const item of items) {{ if (item.products) {{ allProducts.push(...item.products); }} }} page++; }} catch (error) {{ console.error("Network Error on page " + page + ":", error); callback({{ error: error.toString(), products: allProducts }}); return; }} }} callback({{ products: allProducts }}); }} fetchAllPages();
-        """
-        try:
-            result = self.driver.execute_async_script(js_script)
-            if "error" in result: logging.error(f"Sigma Arama (JS API) HATA (sayfa taranırken): {result['error']}")
-            products_from_js = result.get('products', [])
-            if not products_from_js:
-                logging.info(f"Sigma'da '{search_term}' için ürün bulunamadı.")
-                return []
-            all_products = []
-            for product in products_from_js:
-                all_products.append({
-                    "product_name_sigma": product.get('name'),
-                    "product_number": product.get('productNumber'),
-                    "product_key": product.get('productKey'),
-                    "brand": product.get('brand', {}).get('key', 'N-A')
-                })
-            logging.info(f"Sigma'da tüm sayfalardan toplam {len(all_products)} ürün bulundu.")
-            return all_products
-        except (TimeoutException, JavascriptException) as e:
-            logging.error(f"Sigma (JS Arama API) sırasında sorun oluştu: {e}")
+        if not self.driver:
+            logging.error("Arama için Selenium Driver başlatılmamış.")
             return []
 
+        logging.info(f"Sigma (Tarayıcı Konsolu): '{search_term}' için arama yapılıyor...")
+
+        query = """
+        query ProductSearch($searchTerm: String, $page: Int!, $sort: Sort, $group: ProductSearchGroup, $selectedFacets: [FacetInput!], $type: ProductSearchType) {
+          getProductSearchResults(input: { searchTerm: $searchTerm, pagination: { page: $page }, sort: $sort, group: $group, facets: $selectedFacets, type: $type }) {
+            items { ... on Substance { casNumber products { name productNumber productKey brand { key } } } }
+          }
+        }"""
+
+        all_products = []
+        current_page = 1
+
+        while True:
+            logging.info(f"Sigma (Tarayıcı Konsolu): Sayfa {current_page} işleniyor...")
+            variables = {
+                "searchTerm": search_term, "page": current_page, "group": "substance",
+                "selectedFacets": [], "sort": "relevance", "type": "PRODUCT"
+            }
+
+            variables_json = json.dumps(variables)
+
+            # --- HATA DÜZELTİLDİ: Eksik header'lar eklendi ---
+            js_script = f"""
+            const callback = arguments[arguments.length - 1];
+            const variables = {variables_json};
+            const query = `{query}`;
+
+            fetch("https://www.sigmaaldrich.com/api/graphql", {{
+                "headers": {{ 
+                    "accept": "*/*", 
+                    "content-type": "application/json",
+                    "x-gql-country": "TR",
+                    "x-gql-language": "en"
+                }},
+                "body": JSON.stringify({{ "operationName": "ProductSearch", "variables": variables, "query": query }}),
+                "method": "POST"
+            }})
+            .then(response => response.json())
+            .then(data => callback(data))
+            .catch(error => callback({{ "error": error.toString() }}));
+            """
+
+            try:
+                result = self.driver.execute_async_script(js_script)
+
+                if "error" in result or "errors" in result or not result.get('data'):
+                    logging.error(f"Sigma GraphQL API hatası (Tarayıcı): {result}")
+                    break
+
+                search_results = result['data'].get('getProductSearchResults', {})
+                items = search_results.get('items', [])
+
+                if not items:
+                    if current_page == 1:
+                        logging.info("Tarayıcı sorgusunda hiç ürün bulunamadı.")
+                    else:
+                        logging.info(f"Daha fazla ürün bulunamadı. Sayfa {current_page - 1}'de arama tamamlandı.")
+                    break
+
+                for item in items:
+                    cas_number = item.get('casNumber', 'N/A')
+                    for product in item.get('products', []):
+                        if not product.get('productNumber'): continue
+                        all_products.append({
+                            "product_name_sigma": product.get('name'), "product_number": product.get('productNumber'),
+                            "product_key": product.get('productKey'),
+                            "brand": product.get('brand', {}).get('key', 'N-A'),
+                            "cas_number": cas_number
+                        })
+                current_page += 1
+
+            except Exception as e:
+                logging.error(f"Tarayıcı konsolu (JS) çalıştırma hatası: {e}")
+                break
+
+        logging.info(f"Sigma'da (Tarayıcı Konsolu) toplam {len(all_products)} ürün bulundu.")
+        return all_products
+
     def get_product_price(self, product_number: str, brand: str, product_key: str) -> Dict[str, Any]:
-        if not self.driver: return {"price": None, "currency": None}
-        logging.info(f"Sigma Fiyat (Detay API): '{product_number}' ({brand}) için fiyat alınıyor...")
+        if not self.driver:
+            logging.warning(f"Fiyat alınamıyor, driver mevcut değil: {product_number}")
+            return {"price": None, "currency": None}
+
+        logging.info(f"Sigma Fiyat (Tarayıcı Konsolu): '{product_number}' ({brand}) için fiyat alınıyor...")
+
+        variables = {
+            "productNumber": product_key, "materialIds": [product_number], "brand": brand.upper(),
+            "productKey": product_key, "quantity": 1
+        }
+        variables_json = json.dumps(variables)
+
+        query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $materialIds: [String!], $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, materialIds: $materialIds, productKey: $productKey}) { materialPricing { listPrice currency materialNumber } } }"
+
+        # --- HATA DÜZELTİLDİ: Eksik header'lar eklendi ---
         js_script = f"""
-        const callback = arguments[arguments.length - 1]; const variables = {{"productNumber": "{product_key}", "materialIds": ["{product_number}"], "brand": "{brand.upper()}", "productKey": "{product_key}", "quantity": 1}};
-        const query = `query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $materialIds: [String!], $productKey: String) {{ getPricingForProduct(input: {{productNumber: $productNumber, brand: $brand, quantity: $quantity, materialIds: $materialIds, productKey: $productKey}}) {{ materialPricing {{ listPrice currency materialNumber }} }} }}`;
-        fetch("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability", {{"headers": {{"accept": "*/*", "content-type": "application/json", "x-gql-country": "TR", "x-gql-language": "en"}}, "body": JSON.stringify({{"operationName": "PricingAndAvailability", "variables": variables, "query": query}}), "method": "POST"}}).then(response => response.json()).then(data => callback(data)).catch(error => callback({{ "error": error.toString() }}));
+        const callback = arguments[arguments.length - 1];
+        const variables = {variables_json};
+        const query = `{query}`;
+        fetch("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability", {{
+            "headers": {{ 
+                "accept": "*/*", 
+                "content-type": "application/json",
+                "x-gql-country": "TR",
+                "x-gql-language": "en"
+            }},
+            "body": JSON.stringify({{ "operationName": "PricingAndAvailability", "variables": variables, "query": query }}),
+            "method": "POST"
+        }})
+        .then(response => response.json())
+        .then(data => callback(data))
+        .catch(error => callback({{ "error": error.toString() }}));
         """
         try:
             result = self.driver.execute_async_script(js_script)
+
             if "error" in result or "errors" in result or not result.get('data'):
-                logging.warning(f"Sigma Fiyat (Detay API) '{product_number}' için sonuç alınamadı: {result}")
+                logging.warning(f"Sigma Fiyat (Tarayıcı) '{product_number}' için sonuç alınamadı: {result}")
                 return {"price": None, "currency": None}
+
             material_pricing = result.get('data', {}).get('getPricingForProduct', {}).get('materialPricing', [])
             if material_pricing:
                 for price_info in material_pricing:
                     if price_info.get('materialNumber') == product_number:
                         return {"price": price_info.get('listPrice'), "currency": price_info.get('currency')}
-            if material_pricing:
-                price_info = material_pricing[0]
-                return {"price": price_info.get('listPrice'), "currency": price_info.get('currency')}
-        except Exception as e:
-            logging.error(f"Sigma Fiyat (Detay API) BEKLENMEDİK HATA ({product_number}): {e}")
-        return {"price": None, "currency": None}
+                first_price = material_pricing[0]
+                return {"price": first_price.get('listPrice'), "currency": first_price.get('currency')}
 
-    def get_cas_number(self, brand: str, product_key: str) -> str:
-        if not self.driver or not brand or not product_key: return "N/A"
-        url = f"https://www.sigmaaldrich.com/TR/en/product/{brand.lower()}/{product_key}"
-        logging.info(f"Sigma CAS No: '{product_key}' için sayfa (driver ile) yükleniyor...")
-        with self.driver_lock:
-            try:
-                self.driver.get(url)
-                try:
-                    wait = WebDriverWait(self.driver, 3)
-                    accept_button = wait.until(EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler")))
-                    accept_button.click()
-                    logging.info(f"Sigma CAS No: '{product_key}' için çerez onayı tıklandı.")
-                    time.sleep(1)
-                except TimeoutException:
-                    logging.debug(f"Sigma CAS No: '{product_key}' için çerez onayı butonu bulunamadı, devam ediliyor.")
-                except Exception as e:
-                    logging.warning(f"Sigma CAS No: '{product_key}' için çerez onayı tıklanırken bir hata oluştu: {e}")
-                time.sleep(5)
-                page_source = self.driver.page_source
-                match = re.search(r'CAS Number:\s*([\d-]+)', page_source)
-                if match:
-                    cas_number = match.group(1)
-                    logging.info(f"Sigma CAS No: '{product_key}' için CAS numarası bulundu: {cas_number}")
-                    return cas_number
-                else:
-                    logging.warning(f"Sigma CAS No: '{product_key}' için CAS numarası bulunamadı (5 saniye beklendi).")
-                    return "N/A"
-            except Exception as e:
-                logging.error(f"Sigma CAS No ({product_key}) sayfası işlenirken HATA: {e}")
-                return "N/A"
+        except Exception as e:
+            logging.error(f"Sigma Fiyat (Tarayıcı) BEKLENMEDİK HATA ({product_number}): {e}")
+
+        return {"price": None, "currency": None}
 
 
 class ComparisonEngine:
@@ -345,20 +414,17 @@ class ComparisonEngine:
         return cleantext
 
     def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
-        # ******** YENİ DÜZENLEME BAŞLANGICI ********
         sigma_p_name = sigma_product.get('product_name_sigma')
         sigma_p_num = sigma_product.get('product_number')
         sigma_brand = sigma_product.get('brand')
         sigma_p_key = sigma_product.get('product_key')
+        cas_number = sigma_product.get('cas_number', 'N/A')
 
-        # KONTROL: Ürün adı geçerli bir string değilse veya diğer bilgiler eksikse, bu ürünü atla.
         if not all([sigma_p_name, sigma_p_num, sigma_brand, sigma_p_key]) or not isinstance(sigma_p_name, str):
             logging.warning(
                 f"Sigma ürünü ({sigma_p_num or 'Bilinmeyen Kod'}) için eksik bilgi (özellikle isim), atlanıyor.")
             return None
-        # ******** YENİ DÜZENLEME SONU ********
 
-        cas_number = self.sigma_api.get_cas_number(sigma_brand, sigma_p_key)
         sigma_price_info = self.sigma_api.get_product_price(sigma_p_num, sigma_brand, sigma_p_key)
         sigma_price = sigma_price_info.get('price')
         sigma_price_numeric = None
@@ -415,11 +481,19 @@ class ComparisonEngine:
     def search_and_compare(self, search_term: str) -> Dict[str, Any]:
         start_time = time.monotonic()
         logging.info(f"===== YENİ WEB ARAMASI BAŞLATILDI: '{search_term}' =====")
+
+        if not self.sigma_api.start_driver():
+            logging.critical("Kritik Hata: Selenium Driver başlatılamadı.")
+            return {"results": [], "execution_time": 0}
+
         sigma_products = self.sigma_api.search_products(search_term)
+
         if not sigma_products:
             logging.info("Sigma'da hiç ürün bulunamadı. Web araması sonlandırıldı.")
             return {"results": [], "execution_time": round(time.monotonic() - start_time, 2)}
-        logging.info(f"Sigma'da {len(sigma_products)} ürün bulundu. Şimdi Netflex karşılaştırmaları yapılacak.")
+
+        logging.info(
+            f"Sigma'da {len(sigma_products)} ürün bulundu. Şimdi fiyatlar ve Netflex karşılaştırmaları yapılacak.")
         comparison_results = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_product = {executor.submit(self._process_sigma_product, p): p for p in sigma_products}
@@ -466,13 +540,9 @@ def main():
             except TypeError as e:
                 logging.critical(f"Veritabanı sonucu JSON'a çevrilemedi: {e}", exc_info=True)
         logging.info(f"'{search_term}' veritabanında bulunamadı. İnternetten yeni arama başlatılıyor...")
-        if not sigma_api.start_driver():
-            logging.critical("Kritik Hata: Selenium Driver başlatılamadı. Web araması yapılamıyor.")
-            error_json = json.dumps({"error": "Selenium başlatılamadığı için web araması yapılamadı."})
-            print(error_json)
-            sys.stdout.flush()
-            continue
+
         web_results_data = comparison_engine.search_and_compare(search_term)
+
         if web_results_data and web_results_data.get("results"):
             save_to_database(web_results_data["results"])
         try:
