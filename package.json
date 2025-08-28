@@ -1,0 +1,22 @@
+{
+  "name": "interlab-stock-and-price-comparison-tool",
+  "version": "1.0.0",
+  "description": "Interlab Stok ve Fiyat Karşılaştırma Aracı",
+  "main": "main.js",
+  "scripts": {
+    "postinstall": "cd medical-chemical-sales && npm install --legacy-peer-deps --verbose",
+    "start": "electron .",
+    "dev": "concurrently \"npm:start-next\" \"npm:start-electron\"",
+    "start-electron": "wait-on http://localhost:3000 && electron .",
+    "start-next": "cd medical-chemical-sales && npm run dev"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.2",
+    "wait-on": "^7.2.0"
+  }
+}
+
