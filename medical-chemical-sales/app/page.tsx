@@ -30,12 +30,14 @@ interface ComparisonItem {
   price_str: string;
 }
 
+// GÜNCELLENDİ: US fiyatını içerecek şekilde ProductResult arayüzü güncellendi.
 interface ProductResult {
   product_name: string;
   product_number: string;
   cas_number: string;
   brand: string;
   sigma_price_str: string;
+  sigma_price_str_us: string; // YENİ: ABD Fiyatı için alan eklendi.
   cheapest_netflex_name: string;
   cheapest_netflex_price_str: string;
   comparison: ComparisonItem[];
@@ -60,12 +62,12 @@ declare global {
 // --------------------------------------------------------------------------------
 // Tema Sağlayıcısı (ThemeProvider)
 // --------------------------------------------------------------------------------
-const ThemeProviderContext = createContext({ theme: "system", setTheme: (theme) => {}, });
+const ThemeProviderContext = createContext({ theme: "system", setTheme: (theme: string) => {}, });
 const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-ui-theme" }) => {
   const [theme, setTheme] = useState(defaultTheme);
   useEffect(() => { const storedTheme = localStorage.getItem(storageKey) || defaultTheme; setTheme(storedTheme); }, []);
   useEffect(() => { const root = window.document.documentElement; root.classList.remove("light", "dark"); if (theme === "system") { const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; root.classList.add(systemTheme); return; } root.classList.add(theme); }, [theme]);
-  const value = { theme, setTheme: (newTheme) => { localStorage.setItem(storageKey, newTheme); setTheme(newTheme); }, };
+  const value = { theme, setTheme: (newTheme: string) => { localStorage.setItem(storageKey, newTheme); setTheme(newTheme); }, };
   return (<ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>);
 };
 const useTheme = () => useContext(ThemeProviderContext);
@@ -137,7 +139,6 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-// GÜNCELLEME: Bu bileşen artık state'leri prop olarak alıyor.
 const SearchPage = ({
   customers,
   onAssignProducts,
@@ -199,7 +200,8 @@ const SearchPage = ({
               <CardHeader><CardTitle>Arama Sonuçları ({searchResults.length})</CardTitle></CardHeader>
               <CardContent>
                   <Table>
-                      <TableHeader><TableRow><TableHead>Sigma Ürün Adı</TableHead><TableHead>Ürün Kodu</TableHead><TableHead>CAS</TableHead><TableHead>Sigma Fiyatı</TableHead><TableHead>En Ucuz Netflex</TableHead><TableHead className="text-right">Detaylar</TableHead></TableRow></TableHeader>
+                      {/* GÜNCELLENDİ: Tablo başlığına US Fiyatı kolonu eklendi */}
+                      <TableHeader><TableRow><TableHead>Sigma Ürün Adı</TableHead><TableHead>Ürün Kodu</TableHead><TableHead>CAS</TableHead><TableHead>Sigma Fiyatı (TR)</TableHead><TableHead>Sigma Fiyatı (US)</TableHead><TableHead>En Ucuz Netflex</TableHead><TableHead className="text-right">Detaylar</TableHead></TableRow></TableHeader>
                       {searchResults.map((product, index) => (
                       <Collapsible asChild key={product.product_number + index}>
                           <TableBody>
@@ -208,12 +210,15 @@ const SearchPage = ({
                               <TableCell>{product.product_number}</TableCell>
                               <TableCell>{product.cas_number}</TableCell>
                               <TableCell>{product.sigma_price_str}</TableCell>
+                              {/* YENİ: US Fiyatı için yeni hücre eklendi */}
+                              <TableCell>{product.sigma_price_str_us}</TableCell>
                               <TableCell>{product.cheapest_netflex_price_str}</TableCell>
                               <TableCell className="text-right"><CollapsibleTrigger asChild><Button variant="ghost" size="sm"><ChevronDown className="h-4 w-4" /></Button></CollapsibleTrigger></TableCell>
                           </TableRow>
                           <CollapsibleContent asChild>
                               <tr>
-                              <td colSpan={6} className="p-4 bg-muted/50 dark:bg-muted/20">
+                              {/* GÜNCELLENDİ: colSpan 7'ye çıkarıldı */}
+                              <td colSpan={7} className="p-4 bg-muted/50 dark:bg-muted/20">
                                   <h4 className="font-semibold mb-2 ml-2">Karşılaştırma ve Atama Detayları</h4>
                                   <Table><TableHeader><TableRow><TableHead className="w-[50px]">Seç</TableHead><TableHead>Kaynak</TableHead><TableHead>Ürün Adı</TableHead><TableHead>Ürün Kodu</TableHead><TableHead>Fiyat</TableHead></TableRow></TableHeader>
                                   <TableBody>
@@ -261,15 +266,14 @@ export default function App() {
   const [customers, setCustomers] = useState([]);
   const [assignments, setAssignments] = useState<{[key: string]: ComparisonItem[]}>({});
   const [dashboardStats, setDashboardStats] = useState({ totalRevenue: 0, customerCount: 0, totalUniqueProducts: 0, activeOrders: 0, });
-
-  // GÜNCELLEME: Arama ile ilgili state'ler buraya taşındı.
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
-  const [progress, setProgress] = useState({ status: 'idle', total: 0, processed: 0, message: '' });
+  const [progress, setProgress] = useState({ status: 'idle', total: 0, processed: 0 });
 
-  // GÜNCELLEME: Electron dinleyicileri artık App bileşeninde.
   useEffect(() => {
+    if (!window.electronAPI) return;
+
     window.electronAPI.onDatabaseResults((data) => {
       setSearchResults(data.results);
       setIsLoading(false);
@@ -298,20 +302,24 @@ export default function App() {
     window.electronAPI.onSearchError((errorMessage) => {
       setError(errorMessage);
       setIsLoading(false);
-      setProgress({ status: 'error', total: 0, processed: 0, message: '' });
+      setProgress({ status: 'error', total: 0, processed: 0 });
     });
 
-    // Excel dinleyicisi
-    if (window.electronAPI?.onExportResult) {
-      const removeListener = window.electronAPI.onExportResult((result) => {
-        if (result.status === 'success') {
-          toast.success(`Excel dosyası kaydedildi: ${result.path}`);
-        } else {
-          toast.error(`Excel hatası: ${result.message}`);
-        }
-      });
-      // Bu listener'ın temizlenmesi gerekebilir, ancak şimdilik bırakıyoruz.
-    }
+    const removeExportListener = window.electronAPI.onExportResult((result) => {
+      if (result.status === 'success') {
+        toast.success(`Excel dosyası kaydedildi: ${result.path}`);
+      } else {
+        toast.error(`Excel hatası: ${result.message}`);
+      }
+    });
+
+    // Clean up listeners on component unmount
+    return () => {
+        // Bu kısım Electron'un preload script'indeki yapıya göre
+        // `removeListener` fonksiyonları çağrılarak temizlenmeli.
+        // Şimdilik örnek olarak bırakılmıştır.
+    };
+
   }, []);
 
   useEffect(() => {
@@ -349,13 +357,12 @@ export default function App() {
     });
   };
 
-  // GÜNCELLEME: Arama başlatma fonksiyonu artık App bileşeninde.
   const handleSearch = (searchTerm: string) => {
     if (!searchTerm.trim() || isLoading) return;
     setIsLoading(true);
     setSearchResults([]);
     setError(null);
-    setProgress({ status: 'searching', total: 0, processed: 0, message: 'Arama başlatılıyor...' });
+    setProgress({ status: 'searching', total: 0, processed: 0 });
     window.electronAPI.performSearch(searchTerm);
   };
 
