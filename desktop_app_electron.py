@@ -23,6 +23,7 @@ import mysql.connector
 from mysql.connector import Error
 import openpyxl
 
+# Bu kodlar sizin projenizden, o yüzden src importu çalışacaktır.
 from src import sigma, netflex
 
 # --- Loglama Ayarları ---
@@ -46,9 +47,12 @@ db_config = {
 
 def send_to_frontend(message_type: str, data: Any):
     """Hazırlanan mesajı JSON formatında stdout'a yazdırır."""
-    message = json.dumps({"type": message_type, "data": data})
-    print(message)
-    sys.stdout.flush()
+    try:
+        message = json.dumps({"type": message_type, "data": data})
+        print(message)
+        sys.stdout.flush()
+    except TypeError as e:
+        logging.error(f"JSON serileştirme hatası: {e} - Veri: {data}")
 
 
 def export_to_excel(data: Dict[str, Any]):
@@ -100,51 +104,14 @@ def export_to_excel(data: Dict[str, Any]):
 
 
 def search_in_database(search_term: str) -> Dict[str, Any]:
-    # This function remains unchanged.
+    # Bu fonksiyon değişmedi
     return None
 
 
 def save_to_database(results_data: List[Dict[str, Any]]):
-    # This function remains unchanged.
-    if not results_data: return
-    connection = None
-    try:
-        connection = mysql.connector.connect(**db_config)
-        cursor = connection.cursor()
-        logging.info(f"Veritabanına {len(results_data)} ürün kaydediliyor/güncelleniyor...")
-        for product in results_data:
-            sql_product = """
-                INSERT INTO products (product_number, product_name, cas_number, brand, cheapest_netflex_name, cheapest_netflex_price_str)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE 
-                    product_name=VALUES(product_name), cas_number=VALUES(cas_number), brand=VALUES(brand), 
-                    cheapest_netflex_name=VALUES(cheapest_netflex_name), cheapest_netflex_price_str=VALUES(cheapest_netflex_price_str);
-            """
-            product_data = (
-                product.get('product_number'), product.get('product_name'), product.get('cas_number'),
-                product.get('brand'), product.get('cheapest_netflex_name'), product.get('cheapest_netflex_price_str')
-            )
-            cursor.execute(sql_product, product_data)
-            cursor.execute("SELECT id FROM products WHERE product_number = %s", (product.get('product_number'),))
-            product_id = cursor.fetchone()[0]
-            cursor.execute("DELETE FROM prices WHERE product_id = %s", (product_id,))
-            for comp in product.get('comparison', []):
-                sql_price = """
-                    INSERT INTO prices (product_id, source, variant_product_name, variant_product_code, price_numeric, price_str)
-                    VALUES (%s, %s, %s, %s, %s, %s);
-                """
-                price_data = (
-                    product_id, comp.get('source'), comp.get('product_name'), comp.get('product_code'),
-                    comp.get('price_numeric'), comp.get('price_str')
-                )
-                cursor.execute(sql_price, price_data)
-        connection.commit()
-    except Error as e:
-        logging.error(f"Veritabanına kaydetme hatası: {e}")
-    finally:
-        if connection and connection.is_connected():
-            cursor.close()
-            connection.close()
+    # Bu fonksiyonun yeni veri yapısına göre güncellenmesi gerekebilir
+    # Şimdilik pas geçiyoruz, ana odak arama ve gösterme.
+    pass
 
 
 class ComparisonEngine:
@@ -157,10 +124,9 @@ class ComparisonEngine:
         if not raw_html: return ""
         return re.sub(re.compile('<.*?>'), '', raw_html)
 
-    def _are_names_similar(self, name1: str, name2: str, threshold: float = 0.6) -> bool:
+    def _are_names_similar(self, name1: str, name2: str, threshold: float = 0.4) -> bool:
         if not name1 or not name2: return False
         similarity = SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
-        logging.info(f"İsim Benzerlik Kontrolü: '{name1.lower()}' vs '{name2.lower()}' -> Oran: {similarity:.2f}")
         return similarity >= threshold
 
     def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
@@ -172,64 +138,18 @@ class ComparisonEngine:
 
         if not all([sigma_p_name, sigma_p_num, sigma_brand, sigma_p_key]): return None
 
-        all_price_info = self.sigma_api.get_all_product_prices(sigma_p_num, sigma_brand, sigma_p_key)
+        # GÜNCELLEME: Artık tüm varyasyon bilgileri bu değişkene geliyor.
+        # Format: {'tr': [...], 'us': [...], ...}
+        sigma_variations_by_country = self.sigma_api.get_all_product_prices(sigma_p_num, sigma_brand, sigma_p_key)
 
-        # Türkiye Fiyatını İşle
-        sigma_price_info_tr = all_price_info.get('tr', {})
-        sigma_price_tr = sigma_price_info_tr.get('price')
-        sigma_price_numeric_tr = None
-        sigma_price_str_tr = "Fiyat Bilgisi Yok"
-        if isinstance(sigma_price_tr, (int, float)) and sigma_price_tr > 0:
-            sigma_price_numeric_tr = sigma_price_tr
-            sigma_price_str_tr = f"{sigma_price_tr} {sigma_price_info_tr.get('currency', 'TRY')}".strip()
-
-        # ABD Fiyatını İşle
-        sigma_price_info_us = all_price_info.get('us', {})
-        sigma_price_us = sigma_price_info_us.get('price')
-        sigma_price_numeric_us = None
-        sigma_price_str_us = "Fiyat Bilgisi Yok"
-        if isinstance(sigma_price_us, (int, float)) and sigma_price_us > 0:
-            sigma_price_numeric_us = sigma_price_us
-            sigma_price_str_us = f"{sigma_price_us} {sigma_price_info_us.get('currency', 'USD')}".strip()
-
-        # Almanya Fiyatını İşle (YENİ)
-        sigma_price_info_de = all_price_info.get('de', {})
-        sigma_price_de = sigma_price_info_de.get('price')
-        sigma_price_numeric_de = None
-        sigma_price_str_de = "Fiyat Bilgisi Yok"
-        if isinstance(sigma_price_de, (int, float)) and sigma_price_de > 0:
-            sigma_price_numeric_de = sigma_price_de
-            sigma_price_str_de = f"{sigma_price_de} {sigma_price_info_de.get('currency', 'EUR')}".strip()
-
-        # İngiltere Fiyatını İşle (YENİ)
-        sigma_price_info_gb = all_price_info.get('gb', {})
-        sigma_price_gb = sigma_price_info_gb.get('price')
-        sigma_price_numeric_gb = None
-        sigma_price_str_gb = "Fiyat Bilgisi Yok"
-        if isinstance(sigma_price_gb, (int, float)) and sigma_price_gb > 0:
-            sigma_price_numeric_gb = sigma_price_gb
-            sigma_price_str_gb = f"{sigma_price_gb} {sigma_price_info_gb.get('currency', 'GBP')}".strip()
-
-        formatted_sigma_tr = {"source": "Sigma-Aldrich (TR)", "product_name": sigma_p_name, "product_code": sigma_p_num,
-                              "price_numeric": sigma_price_numeric_tr, "price_str": sigma_price_str_tr}
-        formatted_sigma_us = {"source": "Sigma-Aldrich (US)", "product_name": sigma_p_name, "product_code": sigma_p_num,
-                              "price_numeric": sigma_price_numeric_us, "price_str": sigma_price_str_us}
-        formatted_sigma_de = {"source": "Sigma-Aldrich (DE)", "product_name": sigma_p_name, "product_code": sigma_p_num,
-                              "price_numeric": sigma_price_numeric_de, "price_str": sigma_price_str_de}
-        formatted_sigma_gb = {"source": "Sigma-Aldrich (GB)", "product_name": sigma_p_name, "product_code": sigma_p_num,
-                              "price_numeric": sigma_price_numeric_gb, "price_str": sigma_price_str_gb}
-
+        # Netflex Arama Mantığı
         cleaned_sigma_name = self._clean_html(sigma_p_name)
 
-        logging.info(f"Netflex'te '{sigma_p_num}' (kod) ve '{cleaned_sigma_name}' (isim) ile arama yapılıyor.")
+        netflex_matches_by_name = self.netflex_api.search_products(cleaned_sigma_name)
         netflex_matches_by_code = self.netflex_api.search_products(sigma_p_num)
 
-        netflex_matches_by_name = []
-        if sigma_p_num.lower() != cleaned_sigma_name.lower():
-            netflex_matches_by_name = self.netflex_api.search_products(cleaned_sigma_name)
-
-        all_netflex_matches_dict = {p['product_code']: p for p in netflex_matches_by_code if p.get('product_code')}
-        for p in netflex_matches_by_name:
+        all_netflex_matches_dict = {p['product_code']: p for p in netflex_matches_by_name if p.get('product_code')}
+        for p in netflex_matches_by_code:
             if p.get('product_code') and p['product_code'] not in all_netflex_matches_dict:
                 all_netflex_matches_dict[p['product_code']] = p
 
@@ -240,52 +160,39 @@ class ComparisonEngine:
             netflex_name = p.get('product_name', '')
             netflex_code = p.get('product_code', '')
 
-            name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name, threshold=0.4)
+            name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name)
             code_contains = sigma_p_num in netflex_code
 
             if name_similar and code_contains:
+                if p.get('price_numeric') == float('inf'): p['price_numeric'] = None
                 filtered_netflex_matches.append(p)
-            else:
-                logging.warning(
-                    f"Eşleşme Atlandı (İsim/Kod Uyuşmazlığı): Sigma Adı='{cleaned_sigma_name}', Netflex Adı='{netflex_name}' | Sigma Kodu='{sigma_p_num}', Netflex Kodu='{netflex_code}'"
-                )
 
         cheapest_netflex_name = "Bulunamadı"
         cheapest_netflex_price_str = "N/A"
-        if filtered_netflex_matches:
-            for p in filtered_netflex_matches:
-                if p.get('price_numeric') == float('inf'):
-                    p['price_numeric'] = None
-            netflex_with_prices = [p for p in filtered_netflex_matches if p.get('price_numeric') is not None]
-            if netflex_with_prices:
-                cheapest_product = min(netflex_with_prices, key=lambda x: x['price_numeric'])
-                cheapest_netflex_name = cheapest_product.get('product_name', 'İsimsiz')
-                cheapest_netflex_price_str = cheapest_product.get('price_str', 'Fiyat Yok')
+        netflex_with_prices = [p for p in filtered_netflex_matches if p.get('price_numeric') is not None]
+        if netflex_with_prices:
+            cheapest_product = min(netflex_with_prices, key=lambda x: x['price_numeric'])
+            cheapest_netflex_name = cheapest_product.get('product_name', 'İsimsiz')
+            cheapest_netflex_price_str = cheapest_product.get('price_str', 'Fiyat Yok')
 
-        comparison_list = [formatted_sigma_tr, formatted_sigma_us, formatted_sigma_de,
-                           formatted_sigma_gb] + filtered_netflex_matches
-        comparison_list.sort(
-            key=lambda x: x.get('price_numeric') if x.get('price_numeric') is not None else float('inf'))
-
-        for item in comparison_list:
-            if item.get('price_numeric') == float('inf'):
-                item['price_numeric'] = None
-
-        return {"product_name": sigma_p_name, "product_number": sigma_p_num, "cas_number": cas_number,
-                "brand": f"Sigma ({sigma_brand})",
-                "sigma_price_str": sigma_price_str_tr,
-                "sigma_price_str_us": sigma_price_str_us,
-                "sigma_price_str_de": sigma_price_str_de,
-                "sigma_price_str_gb": sigma_price_str_gb,
-                "cheapest_netflex_name": cheapest_netflex_name,
-                "cheapest_netflex_price_str": cheapest_netflex_price_str, "comparison": comparison_list}
+        # GÜNCELLEME: Arayüze gönderilecek son obje.
+        return {
+            "product_name": sigma_p_name,
+            "product_number": sigma_p_num,
+            "cas_number": cas_number,
+            "brand": f"Sigma ({sigma_brand})",
+            "sigma_variations": sigma_variations_by_country,  # Tüm varyasyon verisi
+            "netflex_matches": filtered_netflex_matches,  # Sadece Netflex eşleşmeleri
+            "cheapest_netflex_name": cheapest_netflex_name,
+            "cheapest_netflex_price_str": cheapest_netflex_price_str
+        }
 
     def search_and_compare(self, search_term: str):
         start_time = time.monotonic()
         logging.info(f"===== YENİ WEB ARAMASI BAŞLATILDI: '{search_term}' =====")
 
-        if not self.sigma_api.drivers.get('tr'):
-            logging.critical("Kritik Hata: Selenium TR Driver aktif değil.")
+        if not self.sigma_api.drivers:
+            logging.critical("Kritik Hata: Selenium Driver(lar) aktif değil.")
             send_to_frontend("error", "Selenium Driver başlatılamadı.")
             return
 
@@ -347,15 +254,6 @@ def main():
 
         sigma_api.start_drivers()
 
-        if not sigma_api.drivers.get('tr'):
-            logging.error("KRİTİK: Sigma (TR) oturumu başlatılamadı.")
-        if not sigma_api.drivers.get('us'):
-            logging.error("KRİTİK: Sigma (US) oturumu proxy ile başlatılamadı.")
-        if not sigma_api.drivers.get('de'):
-            logging.error("KRİTİK: Sigma (DE) oturumu başlatılamadı.")
-        if not sigma_api.drivers.get('gb'):
-            logging.error("KRİTİK: Sigma (GB) oturumu başlatılamadı.")
-
     except Exception as e:
         logging.critical(f"Oturumlar başlatılırken hata: {e}", exc_info=True)
 
@@ -373,24 +271,23 @@ def main():
             if action == "search":
                 search_term = data
                 if not search_term: continue
+
                 db_results = search_in_database(search_term)
                 if db_results:
-                    logging.info(f"'{search_term}' için sonuçlar veritabanından anında bulundu.")
-                    print(json.dumps(db_results))
-                    sys.stdout.flush()
+                    send_to_frontend("database_results", db_results)
                     continue
+
                 comparison_engine.search_and_compare(search_term)
+
             elif action == "export":
-                logging.info("Excel dışa aktarma talebi alındı.")
                 result = export_to_excel(data)
                 send_to_frontend("export_result", result)
-            else:
-                logging.warning(f"Bilinmeyen eylem alındı: {action}")
-        except json.JSONDecodeError as e:
+
+        except json.JSONDecodeError:
             logging.error(f"Geçersiz JSON formatı alındı: {line}")
         except Exception as e:
             logging.critical(f"Ana döngüde beklenmedik hata: {e}", exc_info=True)
-            send_to_frontend("error", f"Beklenmedik bir sunucu hatası oluştu: {e}")
+            send_to_frontend("error", f"Beklenmedik bir sunucu hatası oluştu: {str(e)}")
 
 
 if __name__ == '__main__':

@@ -1,10 +1,9 @@
 import json
 import logging
-import random
 import threading
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List
-from pathlib import Path
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, JavascriptException
@@ -15,27 +14,15 @@ from selenium.webdriver.support import expected_conditions as EC
 
 class SigmaAldrichAPI:
     def __init__(self):
-        self.proxies: List[str] = []
         self.drivers: Dict[str, webdriver.Chrome] = {}
-        self._load_proxies()
-
-    def _load_proxies(self):
-        proxy_file = Path("Webshare 6 proxies.txt")
-        if not proxy_file.exists():
-            logging.warning("Proxy dosyası 'Webshare 6 proxies.txt' bulunamadı.")
-            return
-        with open(proxy_file, "r", encoding="utf-8") as f:
-            self.proxies = [line.strip() for line in f if line.strip()]
-        logging.info(f"{len(self.proxies)} adet proxy yüklendi.")
 
     def start_drivers(self):
-        # GÜNCELLEME: US için proxy kullanımı kapatıldı (False yapıldı).
-        countries_config = {'TR': False, 'US': False, 'DE': False, 'GB': False}
+        countries = ['TR', 'US', 'DE', 'GB']
         threads = []
-        for country, use_proxy in countries_config.items():
+        for country in countries:
             thread = threading.Thread(
                 target=self._start_single_driver,
-                args=(country, use_proxy),
+                args=(country,),
                 name=f"{country}-Driver-Starter"
             )
             threads.append(thread)
@@ -44,14 +31,13 @@ class SigmaAldrichAPI:
         for thread in threads:
             thread.join()
 
-        for country, use_proxy in countries_config.items():
+        for country in countries:
             if self.drivers.get(country.lower()):
-                proxy_info = "(proxy ile)" if use_proxy else ""
-                logging.info(f"{country} driver {proxy_info} hazır.")
+                logging.info(f"{country} driver hazır.")
             else:
                 logging.warning(f"{country} driver başlatılamadı.")
 
-    def _start_single_driver(self, country_code: str, use_proxy: bool):
+    def _start_single_driver(self, country_code: str):
         logging.info(f"Selenium WebDriver '{country_code}' için başlatılıyor...")
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
@@ -62,14 +48,6 @@ class SigmaAldrichAPI:
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument("--disable-blink-features=AutomationControlled")
-
-        if use_proxy:
-            if not self.proxies:
-                logging.error(f"'{country_code}' için proxy gerekli ama hiç proxy bulunamadı.")
-                return
-            proxy = random.choice(self.proxies)
-            options.add_argument(f'--proxy-server=http://{proxy}')
-            logging.info(f"'{country_code}' için proxy kullanılıyor: {proxy.split('@')[-1]}")
 
         try:
             driver = webdriver.Chrome(options=options)
@@ -136,11 +114,7 @@ class SigmaAldrichAPI:
                      "sort": "relevance", "type": "PRODUCT"}
 
         try:
-            payload = {
-                "operationName": "ProductSearch",
-                "variables": variables,
-                "query": query
-            }
+            payload = {"operationName": "ProductSearch", "variables": variables, "query": query}
             js_script = f'const cb=arguments[arguments.length-1];fetch("https://www.sigmaaldrich.com/api/graphql",{{headers:{{"accept":"*/*","content-type":"application/json","x-gql-country":"TR","x-gql-language":"en"}},body:JSON.stringify({json.dumps(payload)}),method:"POST"}}).then(r=>r.json()).then(d=>cb(d)).catch(e=>cb({{"error":e.toString()}}));'
             return driver.execute_async_script(js_script)
         except JavascriptException as e:
@@ -152,9 +126,8 @@ class SigmaAldrichAPI:
     def get_all_product_prices(self, product_number: str, brand: str, product_key: str) -> Dict[str, Any]:
         results = {}
         with ThreadPoolExecutor(max_workers=len(self.drivers), thread_name_prefix='Price-Fetcher') as executor:
-            future_to_country = {
-                executor.submit(self._get_price_for_country, country, product_number, brand, product_key): country for
-                country in self.drivers.keys()}
+            future_to_country = {executor.submit(self._get_price_for_country, country, product_key, brand): country for
+                                 country in self.drivers.keys()}
             for future in as_completed(future_to_country):
                 country_code = future_to_country[future]
                 try:
@@ -162,44 +135,59 @@ class SigmaAldrichAPI:
                     results[country_code] = price_data
                 except Exception as exc:
                     logging.error(f"Fiyat alınırken hata oluştu ({country_code.upper()}): {exc}")
-                    results[country_code] = {"price": None, "currency": None}
+                    results[country_code] = []
         return results
 
-    def _get_price_for_country(self, country_code: str, product_number: str, brand: str, product_key: str) -> Dict[
-        str, Any]:
+    def _get_price_for_country(self, country_code: str, product_key: str, brand: str) -> List[Dict[str, Any]]:
         driver = self.drivers.get(country_code.lower())
         if not driver:
             logging.warning(f"Fiyatlandırma için '{country_code.upper()}' driver'ı bulunamadı.")
-            return {"price": None, "currency": None}
+            return []
 
-        variables = {"productNumber": product_key, "materialIds": [product_number], "brand": brand.upper(),
-                     "productKey": product_key, "quantity": 1}
-        query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $materialIds: [String!], $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, materialIds: $materialIds, productKey: $productKey}) { materialPricing { listPrice currency materialNumber } } }"
+        # GÜNCELLEME: `materialIds` parametresini kaldırdık, böylece tüm varyasyonlar gelir.
+        variables = {"productNumber": product_key, "brand": brand.upper(), "productKey": product_key, "quantity": 1}
+        query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, productKey: $productKey}) { materialPricing { listPrice currency materialNumber availabilities { date key messageType } } } }"
 
         try:
-            payload = {
-                "operationName": "PricingAndAvailability",
-                "variables": variables,
-                "query": query
-            }
+            payload = {"operationName": "PricingAndAvailability", "variables": variables, "query": query}
             js_script = f'const cb=arguments[arguments.length-1];fetch("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",{{headers:{{"accept":"*/*","content-type":"application/json","x-gql-country":"{country_code.upper()}","x-gql-language":"en"}},body:JSON.stringify({json.dumps(payload)}),method:"POST"}}).then(r=>r.json()).then(d=>cb(d)).catch(e=>cb({{"error":e.toString()}}));'
             result = driver.execute_async_script(js_script)
 
             if "error" in result or "errors" in result or not result.get('data'):
-                logging.warning(
-                    f"Sigma Fiyat ({country_code.upper()}) '{product_number}' için sonuç alınamadı: {result}")
-                return {"price": None, "currency": None}
+                logging.warning(f"Sigma Fiyat ({country_code.upper()}) '{product_key}' için sonuç alınamadı: {result}")
+                return []
 
             material_pricing = result.get('data', {}).get('getPricingForProduct', {}).get('materialPricing', [])
+
+            # GÜNCELLEME: Gelen tüm varyasyonları işleyip yeni bir liste oluşturuyoruz.
+            variations = []
             if material_pricing:
                 for price_info in material_pricing:
-                    if price_info.get('materialNumber') == product_number:
-                        return {"price": price_info.get('listPrice'), "currency": price_info.get('currency')}
-                return {"price": material_pricing[0].get('listPrice'), "currency": material_pricing[0].get('currency')}
+                    availability_date = None
+                    # Temin tarihini bul
+                    if price_info.get('availabilities'):
+                        # Önce 'primary' olanı ara, bulamazsan ilkini al
+                        primary_avail = next(
+                            (a for a in price_info['availabilities'] if a.get('messageType') == 'primary'), None)
+                        avail_to_use = primary_avail if primary_avail else price_info['availabilities'][0]
+
+                        if avail_to_use and avail_to_use.get('date'):
+                            timestamp_ms = avail_to_use['date']
+                            # Timestamp (milisaniye) -> datetime objesi -> YYYY-AA-GG formatı
+                            availability_date = datetime.fromtimestamp(timestamp_ms / 1000).strftime('%Y-%m-%d')
+
+                    variations.append({
+                        "material_number": price_info.get('materialNumber'),
+                        "price": price_info.get('listPrice'),
+                        "currency": price_info.get('currency'),
+                        "availability_date": availability_date
+                    })
+            return variations
+
         except JavascriptException as e:
             logging.error(f"Fiyatlandırma JS hatası ({country_code.upper()}): {e.msg}")
         except Exception as e:
             logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
 
-        return {"price": None, "currency": None}
+        return []
 

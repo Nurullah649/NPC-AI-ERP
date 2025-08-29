@@ -2,7 +2,6 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-// GÜNCELLEME: 'exec' fonksiyonu eklendi.
 const { spawn, exec } = require('child_process');
 
 let win;
@@ -28,33 +27,32 @@ function startPythonService() {
       if (completeJsonString) {
         try {
           const message = JSON.parse(completeJsonString);
-          const { type, data } = message;
-
-          switch (type) {
-            case 'database_results':
-              win.webContents.send('database-results', data);
-              break;
-            case 'product_found':
-              win.webContents.send('search-product-found', data);
-              break;
-            case 'progress':
-              win.webContents.send('search-progress', data);
-              break;
-            case 'complete':
-              win.webContents.send('search-complete', data);
-              break;
-            case 'export_result':
-              win.webContents.send('export-result', data);
-              break;
-            case 'error':
-               win.webContents.send('search-error', data);
-               break;
-            default:
-              console.warn(`Python'dan bilinmeyen mesaj türü alındı: ${type}`);
+          if (message && typeof message === 'object' && message.type && message.data !== undefined) {
+            const { type, data } = message;
+            if (win && !win.isDestroyed()) {
+                const channelMap = {
+                    database_results: 'database-results',
+                    product_found: 'search-product-found',
+                    progress: 'search-progress',
+                    complete: 'search-complete',
+                    export_result: 'export-result',
+                    error: 'search-error'
+                };
+                const channel = channelMap[type];
+                if (channel) {
+                    win.webContents.send(channel, data);
+                } else {
+                    console.warn(`Python'dan bilinmeyen mesaj türü alındı: ${type}`);
+                }
+            }
+          } else {
+             console.error('Python\'dan gelen JSON beklenen formatta değil:', completeJsonString);
           }
         } catch (error) {
             console.error('Python\'dan gelen JSON parse edilemedi:', completeJsonString, error);
-            win.webContents.send('search-error', 'Python\'dan gelen veri anlaşılamadı.');
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('search-error', 'Python\'dan gelen veri anlaşılamadı.');
+            }
         }
       }
       boundary = buffer.indexOf('\n');
@@ -87,9 +85,17 @@ function createWindow() {
       enableRemoteModule: false,
     },
   });
-  // Geliştirme için:
+
+  win.setMenu(null);
+
   win.loadURL('http://localhost:3000');
-  // win.loadFile(path.join(__dirname, '../renderer/build/index.html'));
+
+  // GÜNCELLEME: DevTools'u kapatma komutu sayfa yüklendikten sonra çalışacak.
+  win.webContents.on('did-finish-load', () => {
+    if (win.webContents.isDevToolsOpened()) {
+      win.webContents.closeDevTools();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -98,25 +104,19 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-// GÜNCELLEME: Uygulama kapandığında Python işlemini ve TÜM ALT İŞLEMLERİNİ sonlandır.
 app.on('window-all-closed', () => {
   if (pythonProcess) {
     console.log(`Uygulama kapanıyor, Python servisi (PID: ${pythonProcess.pid}) ve alt işlemleri sonlandırılıyor.`);
-
-    // Windows için özel ve daha güvenilir kapatma komutu
     if (process.platform === "win32") {
-      // /T -> İşlemi ve başlattığı tüm alt işlemleri sonlandırır. (En önemlisi bu)
-      // /F -> İşlemi zorla sonlandırır.
       exec(`taskkill /PID ${pythonProcess.pid} /T /F`, (err, stdout, stderr) => {
         if (err) {
-          console.error("Python işlemini sonlandırırken hata oluştu (taskkill):", err);
-          return;
+          console.error("Python işlemini sonlandırırken hata oluştu (taskkill):", stderr);
+        } else {
+          console.log("Python işlemi ve alt işlemleri başarıyla sonlandırıldı.", stdout);
         }
-        console.log("Python işlemi ve alt işlemleri başarıyla sonlandırıldı.", stdout);
       });
     } else {
-      // macOS ve Linux için standart kill komutu genellikle yeterlidir.
-      pythonProcess.kill('SIGINT');
+      process.kill(-pythonProcess.pid, 'SIGINT');
     }
   }
   if (process.platform !== 'darwin') {
@@ -129,7 +129,7 @@ function sendCommandToPython(command) {
         const commandString = JSON.stringify(command);
         pythonProcess.stdin.write(`${commandString}\n`);
     } else {
-        const errorMessage = 'Python servisi hazır değil.';
+        const errorMessage = 'Python servisi hazır değil veya başlatılamadı.';
         if (win && !win.isDestroyed()) {
             win.webContents.send('search-error', errorMessage);
         }
@@ -143,3 +143,4 @@ ipcMain.on('perform-search', (event, searchTerm) => {
 ipcMain.on('export-to-excel', (event, data) => {
   sendCommandToPython({ action: 'export', data: data });
 });
+
