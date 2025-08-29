@@ -10,6 +10,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List
 from pathlib import Path
+from difflib import SequenceMatcher  # YENİ: İsim benzerliği kontrolü için eklendi
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -101,7 +102,7 @@ def export_to_excel(data: Dict[str, Any]):
 
 
 # ==============================================================================
-# VERİTABANI VE API SINIFLARI (Değişiklik yok)
+# VERİTABANI VE API SINIFLARI
 # ==============================================================================
 
 def search_in_database(search_term: str) -> Dict[str, Any]:
@@ -151,7 +152,6 @@ def search_in_database(search_term: str) -> Dict[str, Any]:
                 "comparison": comparison_list
             })
         elapsed_time = time.monotonic() - start_time
-        # GÜNCELLEME: Veritabanı sonucu da artık standart formatta gönderiliyor.
         return {"type": "database_results", "data": {"results": results_list, "execution_time": round(elapsed_time, 2)}}
     except Error as e:
         logging.error(f"Veritabanı arama hatası: {e}")
@@ -374,6 +374,24 @@ class ComparisonEngine:
         if not raw_html: return ""
         return re.sub(re.compile('<.*?>'), '', raw_html)
 
+    # YENİ: İki ürün isminin benzerliğini kontrol etmek için bir fonksiyon eklendi.
+    def _are_names_similar(self, name1: str, name2: str, threshold: float = 0.6) -> bool:
+        """İki ürün isminin benzerlik oranını hesaplar ve belirlenen eşiğin üzerinde olup olmadığını kontrol eder."""
+        if not name1 or not name2:
+            return False
+        # Karşılaştırma öncesi isimleri küçük harfe çevirerek tutarlılığı artırıyoruz.
+        simple_name1 = name1.lower()
+        simple_name2 = name2.lower()
+
+        # SequenceMatcher ile iki metin arasındaki benzerlik oranını alıyoruz.
+        similarity = SequenceMatcher(None, simple_name1, simple_name2).ratio()
+
+        # Loglama ile hangi isimlerin karşılaştırıldığını ve benzerlik oranını takip edebiliriz.
+        logging.info(f"İsim Benzerlik Kontrolü: '{simple_name1}' vs '{simple_name2}' -> Oran: {similarity:.2f}")
+
+        # Benzerlik oranı belirlediğimiz eşikten (örn: %60) yüksekse True döndürür.
+        return similarity >= threshold
+
     def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
         sigma_p_name = sigma_product.get('product_name_sigma')
         sigma_p_num = sigma_product.get('product_number')
@@ -394,12 +412,42 @@ class ComparisonEngine:
 
         formatted_sigma_product = {"source": "Sigma-Aldrich", "product_name": sigma_p_name, "product_code": sigma_p_num,
                                    "price_numeric": sigma_price_numeric, "price_str": sigma_price_str}
-        cleaned_sigma_name = self._clean_html(sigma_p_name)
-        netflex_matches = self.netflex_api.search_products(cleaned_sigma_name)
-        filtered_netflex_matches = [p for p in netflex_matches if
-                                    p.get('product_code') and sigma_p_num in p.get('product_code')]
 
-        if not filtered_netflex_matches: return None
+        cleaned_sigma_name = self._clean_html(sigma_p_name)
+
+        logging.info(f"Netflex'te '{cleaned_sigma_name}' (isim) ve '{sigma_p_num}' (kod) ile arama yapılıyor.")
+        netflex_matches_by_name = self.netflex_api.search_products(cleaned_sigma_name)
+
+        netflex_matches_by_code = []
+        if sigma_p_num and sigma_p_num.lower() != cleaned_sigma_name.lower():
+            netflex_matches_by_code = self.netflex_api.search_products(sigma_p_num)
+
+        all_netflex_matches_dict = {p['product_code']: p for p in netflex_matches_by_name if p.get('product_code')}
+        for p in netflex_matches_by_code:
+            if p.get('product_code') and p['product_code'] not in all_netflex_matches_dict:
+                all_netflex_matches_dict[p['product_code']] = p
+
+        netflex_matches = list(all_netflex_matches_dict.values())
+
+        # --- GÜNCELLENMİŞ FİLTRELEME MANTIĞI ---
+        # Artık sadece ürün kodunu değil, aynı zamanda isim benzerliğini de kontrol ediyoruz.
+        filtered_netflex_matches = []
+        for p in netflex_matches:
+            # Koşul 1: Ürün kodu var mı ve Sigma ürün kodu Netflex ürün kodunu içeriyor mu?
+            code_match = p.get('product_code') and sigma_p_num in p.get('product_code')
+
+            if code_match:
+                # Koşul 2: İsimler yeni eklediğimiz fonksiyon ile yeterince benziyor mu?
+                netflex_name = p.get('product_name', '')
+                if self._are_names_similar(cleaned_sigma_name, netflex_name):
+                    filtered_netflex_matches.append(p)
+                else:
+                    # İsimler benzemiyorsa bu eşleşmeyi atlıyoruz ve logluyoruz.
+                    logging.warning(
+                        f"Eşleşme Atlandı (İsim Benzerliği Düşük): Sigma Adı='{cleaned_sigma_name}', Netflex Adı='{netflex_name}'")
+
+        if not filtered_netflex_matches:
+            return None
 
         cheapest_netflex_name = "Bulunamadı"
         cheapest_netflex_price_str = "N/A"
@@ -422,7 +470,6 @@ class ComparisonEngine:
                 "cheapest_netflex_name": cheapest_netflex_name,
                 "cheapest_netflex_price_str": cheapest_netflex_price_str, "comparison": comparison_list}
 
-    # GÜNCELLEME: Bu fonksiyon artık sonuçları biriktirmek yerine anlık olarak gönderiyor.
     def search_and_compare(self, search_term: str):
         start_time = time.monotonic()
         logging.info(f"===== YENİ WEB ARAMASI BAŞLATILDI: '{search_term}' =====")
@@ -452,10 +499,8 @@ class ComparisonEngine:
                     processed_count += 1
                     if result:
                         found_and_matched_products.append(result)
-                        # Her bir eşleşen ürün bulunduğunda arayüze gönder
                         send_to_frontend("product_found", result)
 
-                    # Her bir ürün işlendiğinde ilerleme durumu gönder
                     send_to_frontend("progress",
                                      {"status": "processing", "total": total_to_process, "processed": processed_count})
 
@@ -466,11 +511,9 @@ class ComparisonEngine:
                     send_to_frontend("progress",
                                      {"status": "processing", "total": total_to_process, "processed": processed_count})
 
-        # Tüm işlemler bittiğinde, bulunanları veritabanına kaydet
         if found_and_matched_products:
             save_to_database(found_and_matched_products)
 
-        # Arama tamamlama mesajını gönder
         elapsed_time = time.monotonic() - start_time
         send_to_frontend("complete", {"status": "complete", "total_found": len(found_and_matched_products),
                                       "execution_time": round(elapsed_time, 2)})
@@ -530,13 +573,11 @@ def main():
                     sys.stdout.flush()
                     continue
 
-                # GÜNCELLEME: Bu fonksiyon artık kendisi print ettiği için bir değişkene atanmıyor.
                 comparison_engine.search_and_compare(search_term)
 
             elif action == "export":
                 logging.info("Excel dışa aktarma talebi alındı.")
                 result = export_to_excel(data)
-                # GÜNCELLEME: Excel sonucu da standart formatta gönderiliyor.
                 send_to_frontend("export_result", result)
 
             else:

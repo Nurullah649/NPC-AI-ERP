@@ -87,8 +87,9 @@ function createWindow() {
       enableRemoteModule: false,
     },
   });
-  // Geliştirme için: win.loadURL('http://localhost:3000');
-  win.loadFile(path.join(__dirname, '../renderer/build/index.html'));
+  // Geliştirme için:
+  win.loadURL('http://localhost:3000');
+  // win.loadFile(path.join(__dirname, '../renderer/build/index.html'));
 }
 
 app.whenReady().then(() => {
