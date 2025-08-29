@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, createContext, useContext, useEffect } from "react";
-import { Euro, Home, Search, Users, Package2, DollarSign, Activity, PlusCircle, User, UserPlus, FileText, ChevronDown, Moon, Sun, LoaderCircle, AlertCircle, FileDown } from "lucide-react";
+import { Euro, Home, Search, Users, Package2, DollarSign, Activity, PlusCircle, User, UserPlus, FileText, ChevronDown, Moon, Sun, LoaderCircle, AlertCircle, FileDown, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -30,14 +30,16 @@ interface ComparisonItem {
   price_str: string;
 }
 
-// GÜNCELLENDİ: US fiyatını içerecek şekilde ProductResult arayüzü güncellendi.
+// GÜNCELLEME: Yeni fiyat alanları eklendi
 interface ProductResult {
   product_name: string;
   product_number: string;
   cas_number: string;
   brand: string;
   sigma_price_str: string;
-  sigma_price_str_us: string; // YENİ: ABD Fiyatı için alan eklendi.
+  sigma_price_str_us: string;
+  sigma_price_str_de: string;
+  sigma_price_str_gb: string;
   cheapest_netflex_name: string;
   cheapest_netflex_price_str: string;
   comparison: ComparisonItem[];
@@ -62,12 +64,12 @@ declare global {
 // --------------------------------------------------------------------------------
 // Tema Sağlayıcısı (ThemeProvider)
 // --------------------------------------------------------------------------------
-const ThemeProviderContext = createContext({ theme: "system", setTheme: (theme: string) => {}, });
-const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-ui-theme" }) => {
+const ThemeProviderContext = createContext({ theme: "system", setTheme: (theme: any) => {}, });
+const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-ui-theme" }: any) => {
   const [theme, setTheme] = useState(defaultTheme);
   useEffect(() => { const storedTheme = localStorage.getItem(storageKey) || defaultTheme; setTheme(storedTheme); }, []);
   useEffect(() => { const root = window.document.documentElement; root.classList.remove("light", "dark"); if (theme === "system") { const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; root.classList.add(systemTheme); return; } root.classList.add(theme); }, [theme]);
-  const value = { theme, setTheme: (newTheme: string) => { localStorage.setItem(storageKey, newTheme); setTheme(newTheme); }, };
+  const value = { theme, setTheme: (newTheme: any) => { localStorage.setItem(storageKey, newTheme); setTheme(newTheme); }, };
   return (<ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>);
 };
 const useTheme = () => useContext(ThemeProviderContext);
@@ -84,7 +86,7 @@ const ModeToggle = () => {
 // --------------------------------------------------------------------------------
 // Sidebar Bileşeni
 // --------------------------------------------------------------------------------
-const Sidebar = ({ setPage, currentPage }) => {
+const Sidebar = ({ setPage, currentPage }: any) => {
   const navItems = [ { name: "home", href: "#", icon: Home, label: "Ana Sayfa" }, { name: "search", href: "#", icon: Search, label: "Ürün Arama" }, { name: "customers", href: "#", icon: Users, label: "Müşteriler" }, ];
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
@@ -101,8 +103,8 @@ const Sidebar = ({ setPage, currentPage }) => {
 // --------------------------------------------------------------------------------
 // Ana Sayfa (Dashboard)
 // --------------------------------------------------------------------------------
-const HomePage = ({ stats }) => {
-  const formatCurrency = (value) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+const HomePage = ({ stats }: any) => {
+  const formatCurrency = (value: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
   return (
     <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-bold tracking-tight">Hoş Geldiniz!</h1>
@@ -120,18 +122,18 @@ const HomePage = ({ stats }) => {
 // --------------------------------------------------------------------------------
 // Müşteriler Sayfası
 // --------------------------------------------------------------------------------
-const CustomersPage = ({ customers, setCustomers, assignments }) => {
+const CustomersPage = ({ customers, setCustomers, assignments }: any) => {
   const [newCustomer, setNewCustomer] = useState({ name: "" });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const handleAddCustomer = () => { if (newCustomer.name.trim()) { setCustomers([...customers, { id: customers.length > 0 ? Math.max(...customers.map(c => c.id)) + 1 : 1, ...newCustomer }]); setNewCustomer({ name: "" }); setIsAddDialogOpen(false); toast.success("Yeni müşteri başarıyla eklendi!"); } else { toast.error("Lütfen müşteri adını girin."); } };
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const handleAddCustomer = () => { if (newCustomer.name.trim()) { setCustomers([...customers, { id: customers.length > 0 ? Math.max(...customers.map((c: any) => c.id)) + 1 : 1, ...newCustomer }]); setNewCustomer({ name: "" }); setIsAddDialogOpen(false); toast.success("Yeni müşteri başarıyla eklendi!"); } else { toast.error("Lütfen müşteri adını girin."); } };
   const handleExport = () => { if (!selectedCustomer || !window.electronAPI) return; const assignedProducts = assignments[selectedCustomer.id] || []; toast.info("Excel dosyası oluşturuluyor..."); window.electronAPI.exportToExcel({ customerName: selectedCustomer.name, products: assignedProducts }); };
   const assignedProducts = selectedCustomer ? (assignments[selectedCustomer.id] || []) : [];
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6"><h1 className="text-2xl font-bold">Müşteriler</h1><Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}><DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" /> Yeni Müşteri Ekle</Button></DialogTrigger><DialogContent className="sm:max-w-[425px]"><DialogHeader><DialogTitle>Yeni Müşteri Ekle</DialogTitle><DialogDescription>Yeni müşterinin adını ve soyadını girin.</DialogDescription></DialogHeader><div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="name" className="text-right">Ad Soyad</Label><Input id="name" value={newCustomer.name} onChange={(e) => setNewCustomer({ name: e.target.value })} className="col-span-3" /></div></div><DialogFooter><Button type="submit" onClick={handleAddCustomer}>Kaydet</Button></DialogFooter></DialogContent></Dialog></div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{customers.map((customer) => (<Card key={customer.id} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setSelectedCustomer(customer)}><CardHeader><CardTitle className="flex items-center gap-2 py-4"><User className="h-5 w-5" />{customer.name}</CardTitle></CardHeader></Card>))}</div>
-      <Dialog open={!!selectedCustomer} onOpenChange={() => setSelectedCustomer(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{selectedCustomer?.name} - Atanmış Ürünler</DialogTitle><DialogDescription>Bu müşteriye atanmış ürünlerin listesi.</DialogDescription></DialogHeader>{assignedProducts.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Ürün Adı</TableHead><TableHead>Kodu</TableHead><TableHead>Fiyat</TableHead></TableRow></TableHeader><TableBody>{assignedProducts.map(product => (<TableRow key={product.product_code}><TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} /><TableCell>{product.product_code}</TableCell><TableCell>{product.price_str}</TableCell></TableRow>))}</TableBody></Table>) : (<div className="flex flex-col items-center justify-center text-center py-10"><FileText className="h-12 w-12 text-muted-foreground" /><p className="mt-4 text-muted-foreground">Bu müşteriye henüz atanmış bir ürün bulunmuyor.</p></div>)}<DialogFooter><Button variant="outline" onClick={handleExport} disabled={assignedProducts.length === 0}><FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar</Button></DialogFooter></DialogContent></Dialog>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{customers.map((customer: any) => (<Card key={customer.id} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setSelectedCustomer(customer)}><CardHeader><CardTitle className="flex items-center gap-2 py-4"><User className="h-5 w-5" />{customer.name}</CardTitle></CardHeader></Card>))}</div>
+      <Dialog open={!!selectedCustomer} onOpenChange={() => setSelectedCustomer(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{selectedCustomer?.name} - Atanmış Ürünler</DialogTitle><DialogDescription>Bu müşteriye atanmış ürünlerin listesi.</DialogDescription></DialogHeader>{assignedProducts.length > 0 ? (<Table><TableHeader><TableRow><TableHead>Ürün Adı</TableHead><TableHead>Kodu</TableHead><TableHead>Fiyat</TableHead></TableRow></TableHeader><TableBody>{assignedProducts.map((product: any) => (<TableRow key={product.product_code}><TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} /><TableCell>{product.product_code}</TableCell><TableCell>{product.price_str}</TableCell></TableRow>))}</TableBody></Table>) : (<div className="flex flex-col items-center justify-center text-center py-10"><FileText className="h-12 w-12 text-muted-foreground" /><p className="mt-4 text-muted-foreground">Bu müşteriye henüz atanmış bir ürün bulunmuyor.</p></div>)}<DialogFooter><Button variant="outline" onClick={handleExport} disabled={assignedProducts.length === 0}><FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 };
@@ -147,7 +149,7 @@ const SearchPage = ({
   error,
   progress,
   handleSearch
-}) => {
+}: any) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<ComparisonItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -164,7 +166,7 @@ const SearchPage = ({
   const handleAssignToCustomer = () => {
     if (!selectedCustomer) { toast.error("Lütfen bir müşteri seçin."); return; }
     onAssignProducts(selectedCustomer, selectedProducts);
-    const customerName = customers.find(c => c.id.toString() === selectedCustomer)?.name;
+    const customerName = customers.find((c: any) => c.id.toString() === selectedCustomer)?.name;
     toast.success(`${selectedProducts.length} ürün, ${customerName} adlı müşteriye atandı!`);
     setSelectedProducts([]);
     setSelectedCustomer(null);
@@ -200,25 +202,37 @@ const SearchPage = ({
               <CardHeader><CardTitle>Arama Sonuçları ({searchResults.length})</CardTitle></CardHeader>
               <CardContent>
                   <Table>
-                      {/* GÜNCELLENDİ: Tablo başlığına US Fiyatı kolonu eklendi */}
-                      <TableHeader><TableRow><TableHead>Sigma Ürün Adı</TableHead><TableHead>Ürün Kodu</TableHead><TableHead>CAS</TableHead><TableHead>Sigma Fiyatı (TR)</TableHead><TableHead>Sigma Fiyatı (US)</TableHead><TableHead>En Ucuz Netflex</TableHead><TableHead className="text-right">Detaylar</TableHead></TableRow></TableHeader>
-                      {searchResults.map((product, index) => (
+                      {/* GÜNCELLEME: Yeni kolon başlıkları eklendi */}
+                      <TableHeader><TableRow>
+                        <TableHead>Sigma Ürün Adı</TableHead>
+                        <TableHead>Ürün Kodu</TableHead>
+                        <TableHead>CAS</TableHead>
+                        <TableHead>Sigma Fiyat (TR)</TableHead>
+                        <TableHead>Sigma Fiyat (US)</TableHead>
+                        <TableHead>Sigma Fiyat (DE)</TableHead>
+                        <TableHead>Sigma Fiyat (GB)</TableHead>
+                        <TableHead>En Ucuz Netflex</TableHead>
+                        <TableHead className="text-right">Detaylar</TableHead>
+                      </TableRow></TableHeader>
+                      {searchResults.map((product: ProductResult, index: number) => (
                       <Collapsible asChild key={product.product_number + index}>
                           <TableBody>
                           <TableRow>
                               <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
                               <TableCell>{product.product_number}</TableCell>
                               <TableCell>{product.cas_number}</TableCell>
+                              {/* GÜNCELLEME: Yeni fiyat kolonları eklendi */}
                               <TableCell>{product.sigma_price_str}</TableCell>
-                              {/* YENİ: US Fiyatı için yeni hücre eklendi */}
                               <TableCell>{product.sigma_price_str_us}</TableCell>
+                              <TableCell>{product.sigma_price_str_de}</TableCell>
+                              <TableCell>{product.sigma_price_str_gb}</TableCell>
                               <TableCell>{product.cheapest_netflex_price_str}</TableCell>
                               <TableCell className="text-right"><CollapsibleTrigger asChild><Button variant="ghost" size="sm"><ChevronDown className="h-4 w-4" /></Button></CollapsibleTrigger></TableCell>
                           </TableRow>
                           <CollapsibleContent asChild>
+                              {/* GÜNCELLEME: colSpan 9 olarak güncellendi */}
                               <tr>
-                              {/* GÜNCELLENDİ: colSpan 7'ye çıkarıldı */}
-                              <td colSpan={7} className="p-4 bg-muted/50 dark:bg-muted/20">
+                              <td colSpan={9} className="p-4 bg-muted/50 dark:bg-muted/20">
                                   <h4 className="font-semibold mb-2 ml-2">Karşılaştırma ve Atama Detayları</h4>
                                   <Table><TableHeader><TableRow><TableHead className="w-[50px]">Seç</TableHead><TableHead>Kaynak</TableHead><TableHead>Ürün Adı</TableHead><TableHead>Ürün Kodu</TableHead><TableHead>Fiyat</TableHead></TableRow></TableHeader>
                                   <TableBody>
@@ -250,7 +264,7 @@ const SearchPage = ({
       {selectedProducts.length > 0 && (
          <div className="fixed bottom-4 right-4 z-20">
             <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}><DialogTrigger asChild><Button size="lg" className="shadow-lg"><UserPlus className="mr-2 h-4 w-4" />{selectedProducts.length} Ürünü Müşteriye Ata</Button></DialogTrigger>
-            <DialogContent><DialogHeader><DialogTitle>Müşteriye Ata</DialogTitle><DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription></DialogHeader><div className="py-4"><Select onValueChange={setSelectedCustomer}><SelectTrigger><SelectValue placeholder="Bir müşteri seçin..." /></SelectTrigger><SelectContent>{customers.map(customer => (<SelectItem key={customer.id} value={customer.id.toString()}>{customer.name}</SelectItem>))}</SelectContent></Select></div><Button onClick={handleAssignToCustomer} className="w-full">Atamayı Onayla</Button></DialogContent></Dialog>
+            <DialogContent><DialogHeader><DialogTitle>Müşteriye Ata</DialogTitle><DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription></DialogHeader><div className="py-4"><Select onValueChange={setSelectedCustomer}><SelectTrigger><SelectValue placeholder="Bir müşteri seçin..." /></SelectTrigger><SelectContent>{customers.map((customer: any) => (<SelectItem key={customer.id} value={customer.id.toString()}>{customer.name}</SelectItem>))}</SelectContent></Select></div><Button onClick={handleAssignToCustomer} className="w-full">Atamayı Onayla</Button></DialogContent></Dialog>
          </div>
       )}
     </div>
@@ -263,17 +277,15 @@ const SearchPage = ({
 // --------------------------------------------------------------------------------
 export default function App() {
   const [page, setPage] = useState("home");
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<{[key: string]: ComparisonItem[]}>({});
   const [dashboardStats, setDashboardStats] = useState({ totalRevenue: 0, customerCount: 0, totalUniqueProducts: 0, activeOrders: 0, });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
-  const [progress, setProgress] = useState({ status: 'idle', total: 0, processed: 0 });
+  const [progress, setProgress] = useState({ status: 'idle', total: 0, processed: 0, message: '' });
 
   useEffect(() => {
-    if (!window.electronAPI) return;
-
     window.electronAPI.onDatabaseResults((data) => {
       setSearchResults(data.results);
       setIsLoading(false);
@@ -302,24 +314,18 @@ export default function App() {
     window.electronAPI.onSearchError((errorMessage) => {
       setError(errorMessage);
       setIsLoading(false);
-      setProgress({ status: 'error', total: 0, processed: 0 });
+      setProgress({ status: 'error', total: 0, processed: 0, message: '' });
     });
 
-    const removeExportListener = window.electronAPI.onExportResult((result) => {
-      if (result.status === 'success') {
-        toast.success(`Excel dosyası kaydedildi: ${result.path}`);
-      } else {
-        toast.error(`Excel hatası: ${result.message}`);
-      }
-    });
-
-    // Clean up listeners on component unmount
-    return () => {
-        // Bu kısım Electron'un preload script'indeki yapıya göre
-        // `removeListener` fonksiyonları çağrılarak temizlenmeli.
-        // Şimdilik örnek olarak bırakılmıştır.
-    };
-
+    if (window.electronAPI?.onExportResult) {
+      window.electronAPI.onExportResult((result) => {
+        if (result.status === 'success') {
+          toast.success(`Excel dosyası kaydedildi: ${result.path}`);
+        } else {
+          toast.error(`Excel hatası: ${result.message}`);
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -349,7 +355,7 @@ export default function App() {
     });
   }, [assignments, customers]);
 
-  const handleAssignProducts = (customerId, products: ComparisonItem[]) => {
+  const handleAssignProducts = (customerId: string, products: ComparisonItem[]) => {
     setAssignments(prev => {
       const currentAssigned = prev[customerId] || [];
       const newProducts = products.filter(p => !currentAssigned.some(ap => ap.product_code === p.product_code));
@@ -362,7 +368,7 @@ export default function App() {
     setIsLoading(true);
     setSearchResults([]);
     setError(null);
-    setProgress({ status: 'searching', total: 0, processed: 0 });
+    setProgress({ status: 'searching', total: 0, processed: 0, message: 'Arama başlatılıyor...' });
     window.electronAPI.performSearch(searchTerm);
   };
 
@@ -402,3 +408,4 @@ export default function App() {
     </ThemeProvider>
   );
 }
+

@@ -172,8 +172,9 @@ class ComparisonEngine:
 
         if not all([sigma_p_name, sigma_p_num, sigma_brand, sigma_p_key]): return None
 
-        all_price_info = self.sigma_api.get_product_prices_both(sigma_p_num, sigma_brand, sigma_p_key)
+        all_price_info = self.sigma_api.get_all_product_prices(sigma_p_num, sigma_brand, sigma_p_key)
 
+        # Türkiye Fiyatını İşle
         sigma_price_info_tr = all_price_info.get('tr', {})
         sigma_price_tr = sigma_price_info_tr.get('price')
         sigma_price_numeric_tr = None
@@ -182,6 +183,7 @@ class ComparisonEngine:
             sigma_price_numeric_tr = sigma_price_tr
             sigma_price_str_tr = f"{sigma_price_tr} {sigma_price_info_tr.get('currency', 'TRY')}".strip()
 
+        # ABD Fiyatını İşle
         sigma_price_info_us = all_price_info.get('us', {})
         sigma_price_us = sigma_price_info_us.get('price')
         sigma_price_numeric_us = None
@@ -190,10 +192,32 @@ class ComparisonEngine:
             sigma_price_numeric_us = sigma_price_us
             sigma_price_str_us = f"{sigma_price_us} {sigma_price_info_us.get('currency', 'USD')}".strip()
 
+        # Almanya Fiyatını İşle (YENİ)
+        sigma_price_info_de = all_price_info.get('de', {})
+        sigma_price_de = sigma_price_info_de.get('price')
+        sigma_price_numeric_de = None
+        sigma_price_str_de = "Fiyat Bilgisi Yok"
+        if isinstance(sigma_price_de, (int, float)) and sigma_price_de > 0:
+            sigma_price_numeric_de = sigma_price_de
+            sigma_price_str_de = f"{sigma_price_de} {sigma_price_info_de.get('currency', 'EUR')}".strip()
+
+        # İngiltere Fiyatını İşle (YENİ)
+        sigma_price_info_gb = all_price_info.get('gb', {})
+        sigma_price_gb = sigma_price_info_gb.get('price')
+        sigma_price_numeric_gb = None
+        sigma_price_str_gb = "Fiyat Bilgisi Yok"
+        if isinstance(sigma_price_gb, (int, float)) and sigma_price_gb > 0:
+            sigma_price_numeric_gb = sigma_price_gb
+            sigma_price_str_gb = f"{sigma_price_gb} {sigma_price_info_gb.get('currency', 'GBP')}".strip()
+
         formatted_sigma_tr = {"source": "Sigma-Aldrich (TR)", "product_name": sigma_p_name, "product_code": sigma_p_num,
                               "price_numeric": sigma_price_numeric_tr, "price_str": sigma_price_str_tr}
         formatted_sigma_us = {"source": "Sigma-Aldrich (US)", "product_name": sigma_p_name, "product_code": sigma_p_num,
                               "price_numeric": sigma_price_numeric_us, "price_str": sigma_price_str_us}
+        formatted_sigma_de = {"source": "Sigma-Aldrich (DE)", "product_name": sigma_p_name, "product_code": sigma_p_num,
+                              "price_numeric": sigma_price_numeric_de, "price_str": sigma_price_str_de}
+        formatted_sigma_gb = {"source": "Sigma-Aldrich (GB)", "product_name": sigma_p_name, "product_code": sigma_p_num,
+                              "price_numeric": sigma_price_numeric_gb, "price_str": sigma_price_str_gb}
 
         cleaned_sigma_name = self._clean_html(sigma_p_name)
 
@@ -211,15 +235,12 @@ class ComparisonEngine:
 
         all_netflex_matches = list(all_netflex_matches_dict.values())
 
-        # GÜNCELLENMİŞ FİLTRELEME MANTIĞI
         filtered_netflex_matches = []
         for p in all_netflex_matches:
             netflex_name = p.get('product_name', '')
             netflex_code = p.get('product_code', '')
 
-            # Koşul 1: İsim benzerliği %40'ın üzerinde mi?
             name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name, threshold=0.4)
-            # Koşul 2: Netflex ürün kodu, Sigma ürün kodunu içeriyor mu?
             code_contains = sigma_p_num in netflex_code
 
             if name_similar and code_contains:
@@ -241,7 +262,8 @@ class ComparisonEngine:
                 cheapest_netflex_name = cheapest_product.get('product_name', 'İsimsiz')
                 cheapest_netflex_price_str = cheapest_product.get('price_str', 'Fiyat Yok')
 
-        comparison_list = [formatted_sigma_tr, formatted_sigma_us] + filtered_netflex_matches
+        comparison_list = [formatted_sigma_tr, formatted_sigma_us, formatted_sigma_de,
+                           formatted_sigma_gb] + filtered_netflex_matches
         comparison_list.sort(
             key=lambda x: x.get('price_numeric') if x.get('price_numeric') is not None else float('inf'))
 
@@ -253,6 +275,8 @@ class ComparisonEngine:
                 "brand": f"Sigma ({sigma_brand})",
                 "sigma_price_str": sigma_price_str_tr,
                 "sigma_price_str_us": sigma_price_str_us,
+                "sigma_price_str_de": sigma_price_str_de,
+                "sigma_price_str_gb": sigma_price_str_gb,
                 "cheapest_netflex_name": cheapest_netflex_name,
                 "cheapest_netflex_price_str": cheapest_netflex_price_str, "comparison": comparison_list}
 
@@ -260,7 +284,7 @@ class ComparisonEngine:
         start_time = time.monotonic()
         logging.info(f"===== YENİ WEB ARAMASI BAŞLATILDI: '{search_term}' =====")
 
-        if not self.sigma_api.driver_tr:
+        if not self.sigma_api.drivers.get('tr'):
             logging.critical("Kritik Hata: Selenium TR Driver aktif değil.")
             send_to_frontend("error", "Selenium Driver başlatılamadı.")
             return
@@ -323,10 +347,14 @@ def main():
 
         sigma_api.start_drivers()
 
-        if not sigma_api.driver_tr:
+        if not sigma_api.drivers.get('tr'):
             logging.error("KRİTİK: Sigma (TR) oturumu başlatılamadı.")
-        if not sigma_api.driver_us:
+        if not sigma_api.drivers.get('us'):
             logging.error("KRİTİK: Sigma (US) oturumu proxy ile başlatılamadı.")
+        if not sigma_api.drivers.get('de'):
+            logging.error("KRİTİK: Sigma (DE) oturumu başlatılamadı.")
+        if not sigma_api.drivers.get('gb'):
+            logging.error("KRİTİK: Sigma (GB) oturumu başlatılamadı.")
 
     except Exception as e:
         logging.critical(f"Oturumlar başlatılırken hata: {e}", exc_info=True)
