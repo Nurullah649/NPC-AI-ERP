@@ -761,8 +761,19 @@ function MainApplication() {
             toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
         })
         window.electronAPI.onProductFound((product) => {
-            setSearchResults((prev) => [...prev, product])
-        })
+            // Kontrol: Ürün zaten listede var mı?
+            setSearchResults((prev) => {
+                const isProductAlreadyInList = prev.some(
+                    (p) => p.product_number === product.product_number
+                );
+                // Eğer ürün listede yoksa ekle
+                if (!isProductAlreadyInList) {
+                    return [...prev, product];
+                }
+                // Varsa listeyi olduğu gibi bırak
+                return prev;
+            });
+        });
         window.electronAPI.onSearchProgress((progressData) => {
             setProgress(progressData)
         })
@@ -911,4 +922,3 @@ export default function App() {
         </ThemeProvider>
     );
 }
-
