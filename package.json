@@ -1,7 +1,7 @@
 {
-  "name": "interlab-stock-and-price-comparison-tool",
+  "name": "NPC-AI ERP",
   "version": "1.0.0",
-  "description": "Interlab Stok ve Fiyat Karşılaştırma Aracı",
+  "description": "NPC-AI ERP",
   "main": "main.js",
   "scripts": {
     "postinstall": "cd medical-chemical-sales && npm install --legacy-peer-deps --verbose",

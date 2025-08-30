@@ -27,9 +27,16 @@ function startPythonService() {
       if (completeJsonString) {
         try {
           const message = JSON.parse(completeJsonString);
-          if (message && typeof message === 'object' && message.type && message.data !== undefined) {
+          if (message && typeof message === 'object' && message.type) {
             const { type, data } = message;
             if (win && !win.isDestroyed()) {
+
+                if (type === 'services_ready' && data === true) {
+                    console.log('Python servisleri hazır, React tarafına sinyal gönderiliyor.');
+                    win.webContents.send('services-ready');
+                    continue;
+                }
+
                 const channelMap = {
                     database_results: 'database-results',
                     product_found: 'search-product-found',
@@ -79,6 +86,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
+    backgroundColor: '#FFFFFF',
+    icon: path.join(__dirname, 'icon.png'), // DÜZENLEME: Uygulama ikonu eklendi.
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -90,7 +99,6 @@ function createWindow() {
 
   win.loadURL('http://localhost:3000');
 
-  // GÜNCELLEME: DevTools'u kapatma komutu sayfa yüklendikten sonra çalışacak.
   win.webContents.on('did-finish-load', () => {
     if (win.webContents.isDevToolsOpened()) {
       win.webContents.closeDevTools();
@@ -143,4 +151,3 @@ ipcMain.on('perform-search', (event, searchTerm) => {
 ipcMain.on('export-to-excel', (event, data) => {
   sendCommandToPython({ action: 'export', data: data });
 });
-

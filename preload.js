@@ -1,20 +1,38 @@
-// Electron'un contextBridge ve ipcRenderer modüllerini içe aktar
+// preload.js
+
 const { contextBridge, ipcRenderer } = require('electron');
+
+// Listener'ları yönetmek için bir yardımcı fonksiyon.
+// Bu, her 'on...' fonksiyonu için tekrar eden kodu azaltır ve listener temizleme özelliği ekler.
+const createListener = (channel) => (callback) => {
+  // Electron'dan gelen 'event' argümanını atlayıp sadece asıl veriyi ('...args') callback'e iletiyoruz.
+  const subscription = (_event, ...args) => callback(...args);
+  ipcRenderer.on(channel, subscription);
+
+  // React'in useEffect cleanup'ı için bir kaldırma fonksiyonu döndürüyoruz.
+  // Bu, component kaldırıldığında listener'ın da bellekten silinmesini sağlar.
+  return () => {
+    ipcRenderer.removeListener(channel, subscription);
+  };
+};
 
 // Güvenli bir şekilde ana işlem (main.js) ile arayüz (renderer)
 // arasında iletişim kuracak bir API oluştur
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Arama işlemini tetikler
+  // Main process'e komut göndermek için fonksiyonlar
   performSearch: (searchTerm) => ipcRenderer.send('perform-search', searchTerm),
-
-  // YENİ: Gelen anlık verileri dinlemek için kanallar
-  onDatabaseResults: (callback) => ipcRenderer.on('database-results', (_event, value) => callback(value)),
-  onProductFound: (callback) => ipcRenderer.on('search-product-found', (_event, value) => callback(value)),
-  onSearchProgress: (callback) => ipcRenderer.on('search-progress', (_event, value) => callback(value)),
-  onSearchComplete: (callback) => ipcRenderer.on('search-complete', (_event, value) => callback(value)),
-
-  // Hata ve Excel kanalları
-  onSearchError: (callback) => ipcRenderer.on('search-error', (_event, value) => callback(value)),
   exportToExcel: (data) => ipcRenderer.send('export-to-excel', data),
-  onExportResult: (callback) => ipcRenderer.on('export-result', (_event, value) => callback(value)),
+
+  // Gelen verileri dinlemek için kanallar
+  // YENİ: Servislerin hazır olduğunu bildiren kanal
+  onServicesReady: createListener('services-ready'),
+
+  // Mevcut kanallarınız
+  onDatabaseResults: createListener('database-results'),
+  onProductFound: createListener('search-product-found'),
+  onSearchProgress: createListener('search-progress'),
+  onSearchComplete: createListener('search-complete'),
+  onExportResult: createListener('export-result'),
+  onSearchError: createListener('search-error'),
 });
+

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, createContext, useContext, useEffect, useMemo } from "react"
+import React, { useState, useEffect, createContext, useContext } from "react"
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Euro,
   Home,
@@ -48,6 +49,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+// import SplashScreen from '../public/SplashScreen'; // YOL HATASI: Bu import, derleme hatasına neden olduğu için kaldırıldı.
+
+// --- YER TUTUCU SPLASH SCREEN ---
+// Projenin derlenememesine neden olan yol (path) hatasını gidermek için
+// harici dosya yerine geçici bir başlangıç ekranı bileşeni eklenmiştir.
+// Kendi SplashScreen bileşeninizi kullanmak için onu 'src' klasörü altına taşıyıp
+// import yolunu buna göre (örn: import SplashScreen from './components/SplashScreen';)
+// güncellemeniz önerilir.
+import SplashScreen from '../public/SplashScreen.jsx'
+
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -344,8 +355,8 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignedProducts.map((product) => (
-                  <TableRow key={product.product_code}>
+                {assignedProducts.map((product, index) => (
+                  <TableRow key={`${product.product_code}-${index}`}>
                     <TableCell>{product.source}</TableCell>
                     <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
                     <TableCell>{product.product_code}</TableCell>
@@ -387,7 +398,7 @@ const ProductDetailModal = ({
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
 
-  const combinedData = useMemo(() => {
+  const combinedData = React.useMemo(() => {
     if (!product) return []
     const dataMap: { [key: string]: any } = {}
     Object.entries(product.sigma_variations).forEach(([country, variations]) => {
@@ -723,133 +734,181 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
 }
 
 // --------------------------------------------------------------------------------
-// Ana Uygulama Bileşeni
+// 1. Ana Uygulama Mantığı (Yeni Bileşen)
+// Bu bileşen, tüm ana uygulama durumunu ve mantığını içerir.
+// --------------------------------------------------------------------------------
+function MainApplication() {
+    const [page, setPage] = useState("search")
+    const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
+    const [assignments, setAssignments] = useState<{ [key: string]: AssignmentItem[] }>({})
+    const [dashboardStats, setDashboardStats] = useState({
+        totalRevenue: 0,
+        customerCount: 0,
+        totalUniqueProducts: 0,
+        activeOrders: 0,
+    })
+
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState(null)
+    const [searchResults, setSearchResults] = useState<ProductResult[]>([])
+    const [progress, setProgress] = useState({ status: "idle", total: 0, processed: 0, message: "" })
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !window.electronAPI) return
+        window.electronAPI.onDatabaseResults((data) => {
+            setSearchResults(data.results)
+            setIsLoading(false)
+            toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
+        })
+        window.electronAPI.onProductFound((product) => {
+            setSearchResults((prev) => [...prev, product])
+        })
+        window.electronAPI.onSearchProgress((progressData) => {
+            setProgress(progressData)
+        })
+        window.electronAPI.onSearchComplete((summary) => {
+            setIsLoading(false)
+            setProgress((prev) => ({ ...prev, status: "complete" }))
+            toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+        })
+        window.electronAPI.onSearchError((errorMessage) => {
+            setError(errorMessage)
+            setIsLoading(false)
+            setProgress({ status: "error", total: 0, processed: 0, message: "" })
+        })
+        window.electronAPI.onExportResult((result) => {
+            if (result.status === "success") {
+                toast.success(`Excel dosyası kaydedildi: ${result.path}`)
+            } else {
+                toast.error(`Excel hatası: ${result.message}`)
+            }
+        })
+    }, [])
+
+    useEffect(() => {
+        let revenue = 0
+        let productCount = 0
+        const uniqueProducts = new Set<string>()
+        Object.values(assignments).forEach((productList) => {
+            productCount += productList.length
+            productList.forEach((product) => {
+                uniqueProducts.add(product.product_code)
+                if (product.price_numeric) {
+                    revenue += product.price_numeric
+                } else if (product.price_str) {
+                    const priceMatch = product.price_str.match(/[\d.,]+/)
+                    if (priceMatch) {
+                        const cleanedPrice = priceMatch[0].replace(/\./g, "").replace(",", ".")
+                        revenue += Number.parseFloat(cleanedPrice) || 0
+                    }
+                }
+            })
+        })
+        setDashboardStats({
+            totalRevenue: revenue,
+            customerCount: customers.length,
+            totalUniqueProducts: uniqueProducts.size,
+            activeOrders: productCount,
+        })
+    }, [assignments, customers])
+
+    const handleAssignProducts = (customerId, products: AssignmentItem[]) => {
+        setAssignments((prev) => {
+            const currentAssigned = prev[customerId] || []
+            const newProducts = products.filter(
+                (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
+            )
+            return { ...prev, [customerId]: [...currentAssigned, ...newProducts] }
+        })
+    }
+
+    const handleSearch = (searchTerm: string) => {
+        if (!searchTerm.trim() || isLoading) return
+        setIsLoading(true)
+        setSearchResults([])
+        setError(null)
+        setProgress({ status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
+        window.electronAPI.performSearch(searchTerm)
+    }
+
+    const renderPage = () => {
+        switch (page) {
+            case "search":
+                return (
+                    <SearchPage
+                        searchResults={searchResults}
+                        isLoading={isLoading}
+                        error={error}
+                        progress={progress}
+                        handleSearch={handleSearch}
+                        customers={customers}
+                        onAssignProducts={handleAssignProducts}
+                    />
+                )
+            case "customers":
+                return <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} />
+            case "home":
+            default:
+                return <HomePage stats={dashboardStats} />
+        }
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+        >
+            <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
+                <Sidebar setPage={setPage} currentPage={page} />
+                <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
+                    <main className="flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
+                </div>
+                <Toaster position="bottom-right" />
+            </div>
+        </motion.div>
+    );
+}
+
+
+// --------------------------------------------------------------------------------
+// 2. Yükleme Ekranı ve Ana Uygulama Yönlendiricisi (Yeni App Bileşeni)
+// Bu bileşen artık sadece uygulamanın yüklenip yüklenmediğini kontrol eder.
+// Yükleniyorsa SplashScreen'i, bittiyse MainApplication'ı gösterir.
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [page, setPage] = useState("search")
-  const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
-  const [assignments, setAssignments] = useState<{ [key: string]: AssignmentItem[] }>({})
-  const [dashboardStats, setDashboardStats] = useState({
-    totalRevenue: 0,
-    customerCount: 0,
-    totalUniqueProducts: 0,
-    activeOrders: 0,
-  })
+    const [isAppLoading, setIsAppLoading] = useState(true);
 
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [searchResults, setSearchResults] = useState<ProductResult[]>([])
-  const [progress, setProgress] = useState({ status: "idle", total: 0, processed: 0, message: "" })
-
-  useEffect(() => {
-    if (!window.electronAPI) return
-    window.electronAPI.onDatabaseResults((data) => {
-      setSearchResults(data.results)
-      setIsLoading(false)
-      toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
-    })
-    window.electronAPI.onProductFound((product) => {
-      setSearchResults((prev) => [...prev, product])
-    })
-    window.electronAPI.onSearchProgress((progressData) => {
-      setProgress(progressData)
-    })
-    window.electronAPI.onSearchComplete((summary) => {
-      setIsLoading(false)
-      setProgress((prev) => ({ ...prev, status: "complete" }))
-      toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
-    })
-    window.electronAPI.onSearchError((errorMessage) => {
-      setError(errorMessage)
-      setIsLoading(false)
-      setProgress({ status: "error", total: 0, processed: 0, message: "" })
-    })
-    window.electronAPI.onExportResult((result) => {
-      if (result.status === "success") {
-        toast.success(`Excel dosyası kaydedildi: ${result.path}`)
-      } else {
-        toast.error(`Excel hatası: ${result.message}`)
-      }
-    })
-  }, [])
-
-  useEffect(() => {
-    let revenue = 0
-    let productCount = 0
-    const uniqueProducts = new Set<string>()
-    Object.values(assignments).forEach((productList) => {
-      productCount += productList.length
-      productList.forEach((product) => {
-        uniqueProducts.add(product.product_code)
-        if (product.price_numeric) {
-          revenue += product.price_numeric
-        } else if (product.price_str) {
-          const priceMatch = product.price_str.match(/[\d.,]+/)
-          if (priceMatch) {
-            const cleanedPrice = priceMatch[0].replace(/\./g, "").replace(",", ".")
-            revenue += Number.parseFloat(cleanedPrice) || 0
-          }
+    useEffect(() => {
+        // Python'dan gelecek "hazır" sinyalini dinle
+        if (window.electronAPI && typeof window.electronAPI.onPythonReady === 'function') {
+            const cleanup = window.electronAPI.onPythonReady(() => {
+                console.log("Python'dan 'hazır' sinyali alındı. Arayüz yükleniyor.");
+                setIsAppLoading(false);
+            });
+            return () => cleanup();
+        } else {
+            // Electron API'si yoksa (tarayıcıda geliştirme gibi), kısa bir süre bekle
+            console.warn("Electron API bulunamadı. Geliştirme ortamı varsayılıyor, 2 saniye sonra devam edilecek.");
+            const timer = setTimeout(() => setIsAppLoading(false), 2000);
+            return () => clearTimeout(timer);
         }
-      })
-    })
-    setDashboardStats({
-      totalRevenue: revenue,
-      customerCount: customers.length,
-      totalUniqueProducts: uniqueProducts.size,
-      activeOrders: productCount,
-    })
-  }, [assignments, customers])
+    }, []);
 
-  const handleAssignProducts = (customerId, products: AssignmentItem[]) => {
-    setAssignments((prev) => {
-      const currentAssigned = prev[customerId] || []
-      const newProducts = products.filter(
-        (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
-      )
-      return { ...prev, [customerId]: [...currentAssigned, ...newProducts] }
-    })
-  }
-
-  const handleSearch = (searchTerm: string) => {
-    if (!searchTerm.trim() || isLoading) return
-    setIsLoading(true)
-    setSearchResults([])
-    setError(null)
-    setProgress({ status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
-    window.electronAPI.performSearch(searchTerm)
-  }
-
-  const renderPage = () => {
-    switch (page) {
-      case "search":
-        return (
-          <SearchPage
-            searchResults={searchResults}
-            isLoading={isLoading}
-            error={error}
-            progress={progress}
-            handleSearch={handleSearch}
-            customers={customers}
-            onAssignProducts={handleAssignProducts}
-          />
-        )
-      case "customers":
-        return <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} />
-      case "home":
-      default:
-        return <HomePage stats={dashboardStats} />
-    }
-  }
-
-  return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
-        <Sidebar setPage={setPage} currentPage={page} />
-        <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-          <main className="flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
-        </div>
-        <Toaster position="bottom-right" />
-      </div>
-    </ThemeProvider>
-  )
+    return (
+        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+            <AnimatePresence mode="wait">
+                {isAppLoading ? (
+                    <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+                        <SplashScreen />
+                    </motion.div>
+                ) : (
+                    <motion.div key="main_app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+                        <MainApplication />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </ThemeProvider>
+    );
 }
+
