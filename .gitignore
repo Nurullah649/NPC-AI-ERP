@@ -1,4 +1,9 @@
 /node_modules
 /medical-chemical-sales/node_modules
 /medical-chemical-sales/.next
+/medical-chemical-sales/out
+*.spec
+/dist
 /config
+/bin
+/build

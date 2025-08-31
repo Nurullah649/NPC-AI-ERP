@@ -3,17 +3,30 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn, exec } = require('child_process');
+// const isDev = require('electron-is-dev'); // Kullanıcının isteği üzerine kaldırıldı.
 
 let win;
 let pythonProcess = null;
 
 function startPythonService() {
-  const scriptPath = path.join(__dirname, 'desktop_app_electron.py');
-  pythonProcess = spawn('python', ['-u', scriptPath]);
+  let pythonExecutable;
+
+  // GÜNCELLEME: 'electron-is-dev' yerine Electron'un kendi 'app.isPackaged' özelliği kullanıldı.
+  // app.isPackaged, uygulama paketlendiğinde 'true', geliştirme ortamında 'false' döner.
+  if (!app.isPackaged) {
+    const scriptPath = path.join(__dirname, 'desktop_app_electron.py');
+    pythonProcess = spawn('python', ['-u', scriptPath]);
+  } else {
+    // process.resourcesPath, uygulamanın kök klasöründeki resources dizinini gösterir.
+    const exePath = path.join(process.resourcesPath, 'bin', 'desktop_app.exe');
+    pythonProcess = spawn(exePath);
+  }
+
   console.log(`Python arka plan servisi başlatıldı. PID: ${pythonProcess.pid}`);
 
   pythonProcess.stderr.on('data', (data) => {
-    console.error(`[PYTHON LOG]: ${data.toString()}`);
+    // stderr'den gelen logları "HATA" olarak etiketleyelim ki daha net görünsün.
+    console.error(`[PYTHON HATA]: ${data.toString()}`);
   });
 
   let buffer = '';
@@ -30,11 +43,10 @@ function startPythonService() {
           if (message && typeof message === 'object' && message.type) {
             const { type, data } = message;
             if (win && !win.isDestroyed()) {
-
                 if (type === 'services_ready' && data === true) {
                     console.log('Python servisleri hazır, React tarafına sinyal gönderiliyor.');
                     win.webContents.send('services-ready');
-                    continue;
+                    return; // "continue" yerine "return" daha güvenli olabilir.
                 }
 
                 const channelMap = {
@@ -48,18 +60,11 @@ function startPythonService() {
                 const channel = channelMap[type];
                 if (channel) {
                     win.webContents.send(channel, data);
-                } else {
-                    console.warn(`Python'dan bilinmeyen mesaj türü alındı: ${type}`);
                 }
             }
-          } else {
-             console.error('Python\'dan gelen JSON beklenen formatta değil:', completeJsonString);
           }
         } catch (error) {
             console.error('Python\'dan gelen JSON parse edilemedi:', completeJsonString, error);
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('search-error', 'Python\'dan gelen veri anlaşılamadı.');
-            }
         }
       }
       boundary = buffer.indexOf('\n');
@@ -69,25 +74,20 @@ function startPythonService() {
   pythonProcess.on('close', (code) => {
     console.error(`Python servisi ${code} koduyla sonlandı.`);
     pythonProcess = null;
-    if (win && !win.isDestroyed()) {
-        win.webContents.send('search-error', 'Arka plan servisi beklenmedik bir şekilde sonlandı.');
-    }
   });
 
   pythonProcess.on('error', (err) => {
     console.error('Python servisi başlatılamadı:', err);
-    if (win && !win.isDestroyed()) {
-        win.webContents.send('search-error', `Arka plan servisi başlatılamadı: ${err.message}`);
-    }
   });
 }
+
 
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
     backgroundColor: '#FFFFFF',
-    icon: path.join(__dirname, 'icon.png'), // DÜZENLEME: Uygulama ikonu eklendi.
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -97,14 +97,21 @@ function createWindow() {
 
   win.setMenu(null);
 
-  win.loadURL('http://localhost:3000');
+  // GÜNCELLEME: 'isDev' yerine '!app.isPackaged' kullanıldı.
+  if (!app.isPackaged) {
+    win.loadURL('http://localhost:3000');
+  } else {
+    win.loadFile(path.join(__dirname, 'medical-chemical-sales', 'out', 'index.html'));
+  }
 
+  // YENİ: Paket uygulamasında hata ayıklamayı kolaylaştırmak için
+  // Geliştirici Araçları'nı otomatik olarak açıyoruz.
   win.webContents.on('did-finish-load', () => {
-    if (win.webContents.isDevToolsOpened()) {
-      win.webContents.closeDevTools();
-    }
+    // GÜNCELLEME: '!isDev' yerine 'app.isPackaged' kullanıldı.
+
   });
 }
+
 
 app.whenReady().then(() => {
   createWindow();
@@ -114,15 +121,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (pythonProcess) {
-    console.log(`Uygulama kapanıyor, Python servisi (PID: ${pythonProcess.pid}) ve alt işlemleri sonlandırılıyor.`);
     if (process.platform === "win32") {
-      exec(`taskkill /PID ${pythonProcess.pid} /T /F`, (err, stdout, stderr) => {
-        if (err) {
-          console.error("Python işlemini sonlandırırken hata oluştu (taskkill):", stderr);
-        } else {
-          console.log("Python işlemi ve alt işlemleri başarıyla sonlandırıldı.", stdout);
-        }
-      });
+      exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
     } else {
       process.kill(-pythonProcess.pid, 'SIGINT');
     }
@@ -137,9 +137,8 @@ function sendCommandToPython(command) {
         const commandString = JSON.stringify(command);
         pythonProcess.stdin.write(`${commandString}\n`);
     } else {
-        const errorMessage = 'Python servisi hazır değil veya başlatılamadı.';
         if (win && !win.isDestroyed()) {
-            win.webContents.send('search-error', errorMessage);
+            win.webContents.send('search-error', 'Python servisi hazır değil.');
         }
     }
 }
@@ -151,3 +150,4 @@ ipcMain.on('perform-search', (event, searchTerm) => {
 ipcMain.on('export-to-excel', (event, data) => {
   sendCommandToPython({ action: 'export', data: data });
 });
+

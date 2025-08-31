@@ -1,5 +1,6 @@
-# Gerekli Kütüphaneler: selenium, requests, mysql-connector-python, openpyxl
+# Gerekli Kütüphaneler: selenium, requests, mysql-connector-python, openpyxl, python-dotenv
 import sys
+import os
 import time
 import json
 import atexit
@@ -22,9 +23,21 @@ from selenium.webdriver.support import expected_conditions as EC
 import mysql.connector
 from mysql.connector import Error
 import openpyxl
+from dotenv import load_dotenv
 
 # Bu kodlar sizin projenizden, o yüzden src importu çalışacaktır.
 from src import sigma, netflex
+
+
+# --- PAKETLEME İÇİN DOSYA YOLU FONKSİYONU ---
+def get_resource_path(relative_path: str) -> str:
+    """ Geliştirme ve PyInstaller (.exe) ortamlarında doğru dosya yolunu döndürür. """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 
 # --- Loglama Ayarları ---
 logging.basicConfig(
@@ -46,16 +59,23 @@ db_config = {
 
 
 def send_to_frontend(message_type: str, data: Any):
-    """Hazırlanan mesajı JSON formatında stdout'a yazdırır."""
+    """
+    Hazırlanan mesajı JSON formatında stdout'a yazdırır.
+    Uygulama kapatıldığında oluşabilecek 'BrokenPipeError' veya 'OSError' gibi
+    hataları yakalayarak programın çökmesini engeller.
+    """
     try:
         message = json.dumps({"type": message_type, "data": data})
         print(message)
         sys.stdout.flush()
     except TypeError as e:
         logging.error(f"JSON serileştirme hatası: {e} - Veri: {data}")
+    except (OSError, BrokenPipeError):
+        pass
 
 
 def export_to_excel(data: Dict[str, Any]):
+    """ ### GÜNCELLENDİ: Excel'e Stok Bilgisi Eklendi ### """
     customer_name = data.get("customerName", "Bilinmeyen_Musteri")
     products = data.get("products", [])
     safe_customer_name = re.sub(r'[\\/*?:"<>|]', "", customer_name)
@@ -70,16 +90,19 @@ def export_to_excel(data: Dict[str, Any]):
         sheet = workbook.active
         sheet.title = "Ürün Listesi"
 
-        headers = ["Ürün Adı", "Ürün Kodu", "Fiyat"]
+        # Başlıklara stok durumu eklendi
+        headers = ["Ürün Adı", "Ürün Kodu", "Fiyat", "Stok Durumu (Netflex)"]  ### GÜNCELLENDİ ###
         sheet.append(headers)
         for cell in sheet["1:1"]:
             cell.font = openpyxl.styles.Font(bold=True)
 
         for product in products:
+            # Her bir satıra stok bilgisi eklendi
             row = [
                 product.get("product_name", "N/A"),
                 product.get("product_code", "N/A"),
-                product.get("price_str", "N/A")
+                product.get("price_str", "N/A"),
+                product.get("cheapest_netflex_stock", "N/A")  ### GÜNCELLENDİ ###
             ]
             sheet.append(row)
 
@@ -104,13 +127,10 @@ def export_to_excel(data: Dict[str, Any]):
 
 
 def search_in_database(search_term: str) -> Dict[str, Any]:
-    # Bu fonksiyon değişmedi
     return None
 
 
 def save_to_database(results_data: List[Dict[str, Any]]):
-    # Bu fonksiyonun yeni veri yapısına göre güncellenmesi gerekebilir
-    # Şimdilik pas geçiyoruz, ana odak arama ve gösterme.
     pass
 
 
@@ -130,6 +150,7 @@ class ComparisonEngine:
         return similarity >= threshold
 
     def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
+        """ ### GÜNCELLENDİ: En ucuz Netflex ürününün stok bilgisini de alacak şekilde güncellendi. ### """
         sigma_p_name = sigma_product.get('product_name_sigma')
         sigma_p_num = sigma_product.get('product_number')
         sigma_brand = sigma_product.get('brand')
@@ -138,13 +159,10 @@ class ComparisonEngine:
 
         if not all([sigma_p_name, sigma_p_num, sigma_brand, sigma_p_key]): return None
 
-        # GÜNCELLEME: Artık tüm varyasyon bilgileri bu değişkene geliyor.
-        # Format: {'tr': [...], 'us': [...], ...}
         sigma_variations_by_country = self.sigma_api.get_all_product_prices(sigma_p_num, sigma_brand, sigma_p_key)
-
-        # Netflex Arama Mantığı
         cleaned_sigma_name = self._clean_html(sigma_p_name)
 
+        # Netflex'ten gelen yanıtta artık 'stock' anahtarı da var.
         netflex_matches_by_name = self.netflex_api.search_products(cleaned_sigma_name)
         netflex_matches_by_code = self.netflex_api.search_products(sigma_p_num)
 
@@ -154,37 +172,38 @@ class ComparisonEngine:
                 all_netflex_matches_dict[p['product_code']] = p
 
         all_netflex_matches = list(all_netflex_matches_dict.values())
-
         filtered_netflex_matches = []
         for p in all_netflex_matches:
             netflex_name = p.get('product_name', '')
             netflex_code = p.get('product_code', '')
-
             name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name)
             code_contains = sigma_p_num in netflex_code
-
             if name_similar and code_contains:
                 if p.get('price_numeric') == float('inf'): p['price_numeric'] = None
                 filtered_netflex_matches.append(p)
 
         cheapest_netflex_name = "Bulunamadı"
         cheapest_netflex_price_str = "N/A"
+        cheapest_netflex_stock = "N/A"  ### YENİ ###
+
         netflex_with_prices = [p for p in filtered_netflex_matches if p.get('price_numeric') is not None]
         if netflex_with_prices:
             cheapest_product = min(netflex_with_prices, key=lambda x: x['price_numeric'])
             cheapest_netflex_name = cheapest_product.get('product_name', 'İsimsiz')
             cheapest_netflex_price_str = cheapest_product.get('price_str', 'Fiyat Yok')
+            cheapest_netflex_stock = cheapest_product.get('stock',
+                                                          'N/A')  ### YENİ: En ucuz ürünün stok bilgisi alınıyor.
 
-        # GÜNCELLEME: Arayüze gönderilecek son obje.
         return {
             "product_name": sigma_p_name,
             "product_number": sigma_p_num,
             "cas_number": cas_number,
             "brand": f"Sigma ({sigma_brand})",
-            "sigma_variations": sigma_variations_by_country,  # Tüm varyasyon verisi
-            "netflex_matches": filtered_netflex_matches,  # Sadece Netflex eşleşmeleri
+            "sigma_variations": sigma_variations_by_country,
+            "netflex_matches": filtered_netflex_matches,
             "cheapest_netflex_name": cheapest_netflex_name,
-            "cheapest_netflex_price_str": cheapest_netflex_price_str
+            "cheapest_netflex_price_str": cheapest_netflex_price_str,
+            "cheapest_netflex_stock": cheapest_netflex_stock  ### YENİ: Stok bilgisi sonuca ekleniyor.
         }
 
     def search_and_compare(self, search_term: str):
@@ -234,18 +253,27 @@ class ComparisonEngine:
                                       "execution_time": round(elapsed_time, 2)})
 
 
-sigma_api = sigma.SigmaAldrichAPI()
-netflex_api = netflex.NetflexAPI()
-comparison_engine = ComparisonEngine(sigma_api, netflex_api)
-
-
 def main():
     logging.info("========================================")
     logging.info("      Python Arka Plan Servisi Başlatıldı")
     logging.info("========================================")
 
-    logging.info("Uygulama oturumları başlatılıyor...")
+    sigma_api = None
+    netflex_api = None
+    comparison_engine = None
     try:
+        logging.info("Uygulama oturumları başlatılıyor...")
+
+        env_path = get_resource_path("config/.env")
+        load_dotenv(dotenv_path=env_path)
+
+        netflex_user = os.getenv("KULLANICI")
+        netflex_pass = os.getenv("SIFRE")
+
+        netflex_api = netflex.NetflexAPI(username=netflex_user, password=netflex_pass)
+        sigma_api = sigma.SigmaAldrichAPI()
+        comparison_engine = ComparisonEngine(sigma_api, netflex_api)
+
         netflex_token = netflex_api.get_token()
         if not netflex_token:
             logging.error("KRİTİK: Netflex oturumu başlatılamadı.")
@@ -253,12 +281,15 @@ def main():
             logging.info("Netflex oturumu başarıyla başlatıldı.")
 
         sigma_api.start_drivers()
+        atexit.register(sigma_api.stop_drivers)
 
     except Exception as e:
-        logging.critical(f"Oturumlar başlatılırken hata: {e}", exc_info=True)
+        logging.critical(f"Oturumlar başlatılırken kritik hata: {e}", exc_info=True)
+        if sigma_api:
+            atexit.register(sigma_api.stop_drivers)
 
-    atexit.register(sigma_api.stop_drivers)
-    logging.info("Servis hazır. Komutlar bekleniyor...")
+    send_to_frontend("services_ready", True)
+    logging.info("Servis hazır. Arayüzden komutlar bekleniyor...")
 
     for line in sys.stdin:
         line = line.strip()
@@ -271,6 +302,11 @@ def main():
             if action == "search":
                 search_term = data
                 if not search_term: continue
+
+                if not comparison_engine:
+                    logging.error("Arama motoru başlatılamadığı için arama yapılamıyor.")
+                    send_to_frontend("error", "Arama motoru başlatılamadı. Lütfen uygulamayı yeniden başlatın.")
+                    continue
 
                 db_results = search_in_database(search_term)
                 if db_results:
@@ -292,4 +328,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

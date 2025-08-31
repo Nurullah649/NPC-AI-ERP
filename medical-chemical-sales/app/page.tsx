@@ -1,9 +1,8 @@
 "use client"
 
-import React, { useState, useEffect, createContext, useContext } from "react"
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, createContext, useContext } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import {
-  Euro,
   Home,
   Search,
   Users,
@@ -19,6 +18,9 @@ import {
   AlertCircle,
   FileDown,
   ListFilter,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -49,16 +51,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-// import SplashScreen from '../public/SplashScreen'; // YOL HATASI: Bu import, derleme hatasına neden olduğu için kaldırıldı.
 
 // --- YER TUTUCU SPLASH SCREEN ---
-// Projenin derlenememesine neden olan yol (path) hatasını gidermek için
-// harici dosya yerine geçici bir başlangıç ekranı bileşeni eklenmiştir.
-// Kendi SplashScreen bileşeninizi kullanmak için onu 'src' klasörü altına taşıyıp
-// import yolunu buna göre (örn: import SplashScreen from './components/SplashScreen';)
-// güncellemeniz önerilir.
-import SplashScreen from '../public/SplashScreen.jsx'
-
+import SplashScreen from "@/public/SplashScreen"
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -77,6 +72,7 @@ interface NetflexResult {
   product_code: string
   price_numeric: number | null
   price_str: string
+  stock: number | string
 }
 
 interface ProductResult {
@@ -93,6 +89,7 @@ interface ProductResult {
   netflex_matches: NetflexResult[]
   cheapest_netflex_name: string
   cheapest_netflex_price_str: string
+  cheapest_netflex_stock: number | string
 }
 
 interface AssignmentItem {
@@ -101,6 +98,7 @@ interface AssignmentItem {
   price_numeric: number | null
   price_str: string
   source: string
+  cheapest_netflex_stock?: number | string
 }
 
 // Global Electron API tanımı
@@ -208,22 +206,11 @@ const Sidebar = ({ setPage, currentPage }) => {
 // Ana Sayfa (Dashboard)
 // --------------------------------------------------------------------------------
 const HomePage = ({ stats }) => {
-  const formatCurrency = (value) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value)
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-2xl font-bold tracking-tight">Hoş Geldiniz!</h1>
       <p className="text-muted-foreground">Yönetim sisteminize genel bir bakış.</p>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Toplam Ciro</CardTitle>
-            <Euro className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">Müşterilere atanan tüm ürünler</p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Müşteriler</CardTitle>
@@ -262,10 +249,12 @@ const HomePage = ({ stats }) => {
 // --------------------------------------------------------------------------------
 // Müşteriler Sayfası
 // --------------------------------------------------------------------------------
-const CustomersPage = ({ customers, setCustomers, assignments }) => {
+const CustomersPage = ({ customers, setCustomers, assignments, setAssignments }) => {
   const [newCustomer, setNewCustomer] = useState({ name: "" })
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [customerToDelete, setCustomerToDelete] = useState(null)
+
   const handleAddCustomer = () => {
     if (newCustomer.name.trim()) {
       setCustomers([
@@ -279,6 +268,21 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
       toast.error("Lütfen müşteri adını girin.")
     }
   }
+
+  const handleDeleteCustomer = () => {
+    if (!customerToDelete) return
+
+    setCustomers(customers.filter((c) => c.id !== customerToDelete.id))
+    setAssignments((prev) => {
+      const newAssignments = { ...prev }
+      delete newAssignments[customerToDelete.id]
+      return newAssignments
+    })
+
+    toast.success(`'${customerToDelete.name}' adlı müşteri silindi.`)
+    setCustomerToDelete(null)
+  }
+
   const handleExport = () => {
     if (!selectedCustomer || !window.electronAPI) return
     const assignedProducts = assignments[selectedCustomer.id] || []
@@ -326,9 +330,21 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
         {customers.map((customer) => (
           <Card
             key={customer.id}
-            className="cursor-pointer hover:shadow-lg transition-shadow"
+            className="group relative cursor-pointer transition-shadow hover:shadow-lg"
             onClick={() => setSelectedCustomer(customer)}
           >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 h-7 w-7 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                setCustomerToDelete(customer)
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Müşteriyi Sil</span>
+            </Button>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 py-4">
                 <User className="h-5 w-5" />
@@ -339,7 +355,7 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
         ))}
       </div>
       <Dialog open={!!selectedCustomer} onOpenChange={() => setSelectedCustomer(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{selectedCustomer?.name} - Atanmış Ürünler</DialogTitle>
             <DialogDescription>Bu müşteriye atanmış ürünlerin listesi.</DialogDescription>
@@ -352,6 +368,7 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
                   <TableHead>Ürün Adı</TableHead>
                   <TableHead>Kodu</TableHead>
                   <TableHead>Fiyat</TableHead>
+                  <TableHead>Stok</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -361,12 +378,13 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
                     <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
                     <TableCell>{product.product_code}</TableCell>
                     <TableCell>{product.price_str}</TableCell>
+                    <TableCell>{product.cheapest_netflex_stock ?? "N/A"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           ) : (
-            <div className="flex flex-col items-center justify-center text-center py-10">
+            <div className="flex flex-col items-center justify-center py-10 text-center">
               <FileText className="h-12 w-12 text-muted-foreground" />
               <p className="mt-4 text-muted-foreground">Bu müşteriye henüz atanmış bir ürün bulunmuyor.</p>
             </div>
@@ -378,28 +396,56 @@ const CustomersPage = ({ customers, setCustomers, assignments }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={!!customerToDelete} onOpenChange={() => setCustomerToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Müşteriyi Silmek İstediğinizden Emin misiniz?</DialogTitle>
+            <DialogDescription>
+              '{customerToDelete?.name}' adlı müşteriyi silmek üzeresiniz. Bu işlem geri alınamaz. Müşteriye atanmış
+              tüm ürün bilgileri de silinecektir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomerToDelete(null)}>
+              İptal
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteCustomer}>
+              Sil
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 // --------------------------------------------------------------------------------
-// Ürün Detayları için Modal (Popup) Bileşeni
+// Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const ProductDetailModal = ({
-  product,
-  isOpen,
-  onClose,
-  visibleCountries,
-  onSelectionChange,
-  selectedItems,
-  customers,
-  onAssignConfirm,
-}) => {
-  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
+const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, customers, onAssignProducts }) => {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
+  const [visibleCountries, setVisibleCountries] = useState({ tr: true, us: true, de: true, gb: true })
+  const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
 
-  const combinedData = React.useMemo(() => {
-    if (!product) return []
+  const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
+  const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
+  const onSearchClick = () => handleSearch(searchTerm)
+  const progressValue = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0
+
+  const toggleProductExpansion = (productNumber: string) => {
+    setExpandedProducts((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(productNumber)) {
+        newSet.delete(productNumber)
+      } else {
+        newSet.add(productNumber)
+      }
+      return newSet
+    })
+  }
+
+  const getCombinedData = (product: ProductResult) => {
     const dataMap: { [key: string]: any } = {}
     Object.entries(product.sigma_variations).forEach(([country, variations]) => {
       if (variations) {
@@ -420,181 +466,7 @@ const ProductDetailModal = ({
       dataMap[key].netflex = match
     })
     return Object.values(dataMap)
-  }, [product])
-
-  if (!product) return null
-  const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
-
-  const handleSelect = (item, source, priceData) => {
-    const assignmentItem: AssignmentItem = {
-      product_name: source === "Netflex" ? item.netflex.product_name : product.product_name,
-      product_code: item.material_number,
-      price_numeric: priceData.price,
-      price_str: priceData.price !== null ? `${priceData.price} ${priceData.currency}` : "Fiyat Bilgisi Yok",
-      source: `Sigma (${source.toUpperCase()})`,
-    }
-    if (source === "Netflex") {
-      assignmentItem.source = "Netflex"
-      assignmentItem.price_str = item.netflex.price_str
-    }
-    onSelectionChange(assignmentItem)
   }
-
-  const handleConfirmAssignment = () => {
-    if (!selectedCustomer) {
-      toast.error("Lütfen bir müşteri seçin.")
-      return
-    }
-    onAssignConfirm(selectedCustomer, selectedItems)
-    setIsAssignDialogOpen(false)
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[150vw] max-w-[200vw] h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle dangerouslySetInnerHTML={{ __html: product.product_name }} />
-          <DialogDescription>
-            Ürün Kodu: {product.product_number} | CAS: {product.cas_number}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex-grow overflow-y-auto pr-4">
-          <h3 className="font-semibold text-lg mb-2">Karşılaştırma Tablosu</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[150px]">Ürün Kodu</TableHead>
-                <TableHead>Netflex</TableHead>
-                {Object.entries(countryHeaders).map(
-                  ([code, name]) => visibleCountries[code] && <TableHead key={code}>{name}</TableHead>,
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {combinedData.map((item, index) => (
-                <TableRow key={index}>
-                  <TableCell className="font-mono">{item.material_number}</TableCell>
-                  <TableCell>
-                    {item.netflex ? (
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id={`cb-netflex-${item.material_number}`}
-                          onCheckedChange={(checked) => handleSelect(item, "Netflex", item.netflex)}
-                          checked={selectedItems.some(
-                            (p) => p.product_code === item.material_number && p.source === "Netflex",
-                          )}
-                        />
-                        <Label htmlFor={`cb-netflex-${item.material_number}`} className="flex-grow">
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-semibold">{item.netflex.price_str}</span>
-                            <span
-                              className="text-xs text-muted-foreground truncate"
-                              title={item.netflex.product_name}
-                              dangerouslySetInnerHTML={{ __html: item.netflex.product_name }}
-                            />
-                          </div>
-                        </Label>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  {Object.keys(countryHeaders).map(
-                    (code) =>
-                      visibleCountries[code] && (
-                        <TableCell key={code}>
-                          {item.sigma[code] ? (
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                id={`cb-${code}-${item.material_number}`}
-                                onCheckedChange={() => handleSelect(item, code, item.sigma[code])}
-                                checked={selectedItems.some(
-                                  (p) =>
-                                    p.product_code === item.material_number && p.source.includes(code.toUpperCase()),
-                                )}
-                              />
-                              <Label
-                                htmlFor={`cb-${code}-${item.material_number}`}
-                                className="flex items-baseline gap-2"
-                              >
-                                <span className="font-semibold whitespace-nowrap">
-                                  {item.sigma[code].price !== null
-                                    ? `${item.sigma[code].price} ${item.sigma[code].currency}`
-                                    : "N/A"}
-                                </span>
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {item.sigma[code].availability_date || "Tarih Yok"}
-                                </span>
-                              </Label>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                      ),
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        <DialogFooter>
-          {selectedItems.length > 0 && (
-            <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  {selectedItems.length} Ürünü Müşteriye Ata
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Müşteriye Ata</DialogTitle>
-                  <DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                  <Select onValueChange={setSelectedCustomer}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Bir müşteri seçin..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}{" "}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleConfirmAssignment} className="w-full">
-                    Atamayı Onayla
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
-          <Button variant="outline" onClick={onClose}>
-            Kapat
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// --------------------------------------------------------------------------------
-// Ürün Arama Sayfası
-// --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, customers, onAssignProducts }) => {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedProduct, setSelectedProduct] = useState<ProductResult | null>(null)
-  const [visibleCountries, setVisibleCountries] = useState({ tr: true, us: true, de: true, gb: true })
-  const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
-
-  const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
-  const onSearchClick = () => handleSearch(searchTerm)
-  const progressValue = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0
 
   const handleSelectionChange = (item: AssignmentItem) => {
     setSelectedForAssignment((prev) => {
@@ -607,12 +479,82 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
     })
   }
 
+  const handleSelect = (product: ProductResult, item, source, priceData) => {
+    const assignmentItem: AssignmentItem = {
+      product_name: source === "Netflex" ? item.netflex.product_name : product.product_name,
+      product_code: item.material_number,
+      price_numeric: priceData.price,
+      price_str: priceData.price !== null ? `${priceData.price} ${priceData.currency}` : "Fiyat Bilgisi Yok",
+      source: `Sigma (${source.toUpperCase()})`,
+      cheapest_netflex_stock: "N/A", // Default value
+    }
+    if (source === "Netflex") {
+      assignmentItem.source = "Netflex"
+      assignmentItem.price_str = item.netflex.price_str
+      assignmentItem.cheapest_netflex_stock = item.netflex.stock
+    }
+    handleSelectionChange(assignmentItem)
+  }
+
   const handleAssignConfirm = (customerId, products) => {
     onAssignProducts(customerId, products)
     const customerName = customers.find((c) => c.id.toString() === customerId)?.name
     toast.success(`${products.length} ürün, ${customerName} adlı müşteriye atandı!`)
     setSelectedForAssignment([])
-    setSelectedProduct(null)
+  }
+
+  const AssignmentDialog = () => {
+    const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
+    const [selectedCustomer, setSelectedCustomer] = useState(null)
+
+    const handleConfirmAssignment = () => {
+      if (!selectedCustomer) {
+        toast.error("Lütfen bir müşteri seçin.")
+        return
+      }
+      handleAssignConfirm(selectedCustomer, selectedForAssignment)
+      setIsAssignDialogOpen(false)
+    }
+
+    if (selectedForAssignment.length === 0) return null
+
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="shadow-lg">
+              <UserPlus className="mr-2 h-4 w-4" />
+              {selectedForAssignment.length} Ürünü Müşteriye Ata
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Müşteriye Ata</DialogTitle>
+              <DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Select onValueChange={setSelectedCustomer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Bir müşteri seçin..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={customer.id.toString()}>
+                      {customer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleConfirmAssignment} className="w-full">
+                Atamayı Onayla
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
   }
 
   return (
@@ -655,28 +597,24 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
 
       {isLoading && (
         <div className="my-4 p-4 border rounded-lg">
-          {" "}
           <div className="flex justify-between items-center mb-2">
-            {" "}
             <p className="text-sm font-medium">
-              {" "}
               {progress.status === "found_sigma"
                 ? `Sigma'da ${progress.total} ürün bulundu, işleniyor...`
-                : `Ürünler işleniyor...`}{" "}
-            </p>{" "}
+                : `Ürünler işleniyor...`}
+            </p>
             <p className="text-sm text-muted-foreground">
               {progress.processed} / {progress.total}
-            </p>{" "}
-          </div>{" "}
-          <Progress value={progressValue} className="w-full" />{" "}
+            </p>
+          </div>
+          <Progress value={progressValue} className="w-full" />
         </div>
       )}
       {error && (
         <Alert variant="destructive">
-          {" "}
-          <AlertCircle className="h-4 w-4" /> <AlertTitle>Hata</AlertTitle> <AlertDescription>
-            {error}
-          </AlertDescription>{" "}
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Hata</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
       {searchResults.length > 0 && (
@@ -685,30 +623,133 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
             <CardTitle>Arama Sonuçları ({searchResults.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sigma Ürün Adı</TableHead>
-                  <TableHead>Ürün Kodu</TableHead>
-                  <TableHead>CAS</TableHead>
-                  <TableHead>En Ucuz Netflex</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {searchResults.map((product, index) => (
-                  <TableRow
-                    key={product.product_number + index}
-                    onClick={() => setSelectedProduct(product)}
-                    className="cursor-pointer hover:bg-muted/50"
-                  >
-                    <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
-                    <TableCell>{product.product_number}</TableCell>
-                    <TableCell>{product.cas_number}</TableCell>
-                    <TableCell>{product.cheapest_netflex_price_str}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="grid grid-cols-5 gap-4 p-4 border-b bg-muted/30 font-semibold text-sm">
+              <div>Ürün Adı</div>
+              <div>Kodu</div>
+              <div>CAS Numarası</div>
+              <div>Fiyat</div>
+              <div>Stok</div>
+            </div>
+            <div className="space-y-4">
+              {searchResults.map((product, index) => (
+                <div key={product.product_number + index} className="border rounded-lg">
+                  <div className="flex items-center justify-between p-4 hover:bg-muted/50">
+                    <div className="flex-1 grid grid-cols-5 gap-4 items-center">
+                      <div className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
+                      <div>{product.product_number}</div>
+                      <div>{product.cas_number}</div>
+                      <div>{product.cheapest_netflex_price_str}</div>
+                      <div>{product.cheapest_netflex_stock}</div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)}>
+                      {expandedProducts.has(product.product_number) ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  {expandedProducts.has(product.product_number) && (
+                    <div className="border-t bg-muted/20 p-4">
+                      <h4 className="font-semibold mb-3">Ürün Varyasyonları</h4>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[150px]">Ürün Kodu</TableHead>
+                              <TableHead>Netflex</TableHead>
+                              {Object.entries(countryHeaders).map(
+                                ([code, name]) => visibleCountries[code] && <TableHead key={code}>{name}</TableHead>,
+                              )}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {getCombinedData(product).map((item, itemIndex) => (
+                              <TableRow key={itemIndex}>
+                                <TableCell className="font-mono">{item.material_number}</TableCell>
+                                <TableCell>
+                                  {item.netflex ? (
+                                    <div className="flex items-center gap-2">
+                                      <Checkbox
+                                        id={`cb-netflex-${item.material_number}-${index}`}
+                                        onCheckedChange={(checked) =>
+                                          handleSelect(product, item, "Netflex", item.netflex)
+                                        }
+                                        checked={selectedForAssignment.some(
+                                          (p) => p.product_code === item.material_number && p.source === "Netflex",
+                                        )}
+                                      />
+                                      <Label
+                                        htmlFor={`cb-netflex-${item.material_number}-${index}`}
+                                        className="flex-grow cursor-pointer"
+                                      >
+                                        <div className="flex flex-col">
+                                          <div className="flex items-baseline gap-2">
+                                            <span className="font-semibold">{item.netflex.price_str}</span>
+                                            <span className="font-medium text-sm text-muted-foreground">
+                                              Stok: {item.netflex.stock}
+                                            </span>
+                                          </div>
+                                          <span
+                                            className="text-xs text-muted-foreground truncate"
+                                            title={item.netflex.product_name}
+                                            dangerouslySetInnerHTML={{ __html: item.netflex.product_name }}
+                                          />
+                                        </div>
+                                      </Label>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">-</span>
+                                  )}
+                                </TableCell>
+                                {Object.keys(countryHeaders).map(
+                                  (code) =>
+                                    visibleCountries[code] && (
+                                      <TableCell key={code}>
+                                        {item.sigma[code] ? (
+                                          <div className="flex items-center gap-2">
+                                            <Checkbox
+                                              id={`cb-${code}-${item.material_number}-${index}`}
+                                              onCheckedChange={() =>
+                                                handleSelect(product, item, code, item.sigma[code])
+                                              }
+                                              checked={selectedForAssignment.some(
+                                                (p) =>
+                                                  p.product_code === item.material_number &&
+                                                  p.source.includes(code.toUpperCase()),
+                                              )}
+                                            />
+                                            <Label
+                                              htmlFor={`cb-${code}-${item.material_number}-${index}`}
+                                              className="flex items-baseline gap-2"
+                                            >
+                                              <span className="font-semibold whitespace-nowrap">
+                                                {item.sigma[code].price !== null
+                                                  ? `${item.sigma[code].price} ${item.sigma[code].currency}`
+                                                  : "N/A"}
+                                              </span>
+                                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                {item.sigma[code].availability_date || "Tarih Yok"}
+                                              </span>
+                                            </Label>
+                                          </div>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">-</span>
+                                        )}
+                                      </TableCell>
+                                    ),
+                                )}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -719,16 +760,8 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
           <p className="mt-4 text-muted-foreground">Bu arama için sonuç bulunamadı.</p>
         </div>
       )}
-      <ProductDetailModal
-        isOpen={!!selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-        product={selectedProduct}
-        visibleCountries={visibleCountries}
-        onSelectionChange={handleSelectionChange}
-        selectedItems={selectedForAssignment}
-        customers={customers}
-        onAssignConfirm={handleAssignConfirm}
-      />
+
+      <AssignmentDialog />
     </div>
   )
 }
@@ -738,149 +771,171 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
 // Bu bileşen, tüm ana uygulama durumunu ve mantığını içerir.
 // --------------------------------------------------------------------------------
 function MainApplication() {
-    const [page, setPage] = useState("search")
-    const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
-    const [assignments, setAssignments] = useState<{ [key: string]: AssignmentItem[] }>({})
-    const [dashboardStats, setDashboardStats] = useState({
-        totalRevenue: 0,
-        customerCount: 0,
-        totalUniqueProducts: 0,
-        activeOrders: 0,
+  const [page, setPage] = useState("search")
+  // --- YENİ: VERİLERİ LOCALSTORAGE'DAN YÜKLEME ---
+  const [customers, setCustomers] = useState(() => {
+    try {
+      const savedCustomers = localStorage.getItem("customers")
+      return savedCustomers ? JSON.parse(savedCustomers) : []
+    } catch (error) {
+      console.error("Müşteri verileri yüklenirken hata oluştu:", error)
+      return []
+    }
+  })
+  const [assignments, setAssignments] = useState(() => {
+    try {
+      const savedAssignments = localStorage.getItem("assignments")
+      return savedAssignments ? JSON.parse(savedAssignments) : {}
+    } catch (error) {
+      console.error("Atama verileri yüklenirken hata oluştu:", error)
+      return {}
+    }
+  })
+  // --- BİTİŞ ---
+
+  const [dashboardStats, setDashboardStats] = useState({
+    customerCount: 0,
+    totalUniqueProducts: 0,
+    activeOrders: 0,
+  })
+
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [searchResults, setSearchResults] = useState<ProductResult[]>([])
+  const [progress, setProgress] = useState({ status: "idle", total: 0, processed: 0, message: "" })
+
+  // --- YENİ: MÜŞTERİLER DEĞİŞTİĞİNDE LOCALSTORAGE'A KAYDETME ---
+  useEffect(() => {
+    try {
+      localStorage.setItem("customers", JSON.stringify(customers))
+    } catch (error) {
+      console.error("Müşteri verileri kaydedilirken hata oluştu:", error)
+    }
+  }, [customers])
+
+  // --- YENİ: ATAMALAR DEĞİŞTİĞİNDE LOCALSTORAGE'A KAYDETME ---
+  useEffect(() => {
+    try {
+      localStorage.setItem("assignments", JSON.stringify(assignments))
+    } catch (error) {
+      console.error("Atama verileri kaydedilirken hata oluştu:", error)
+    }
+  }, [assignments])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI) return
+    window.electronAPI.onDatabaseResults((data) => {
+      setSearchResults(data.results)
+      setIsLoading(false)
+      toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
     })
-
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState(null)
-    const [searchResults, setSearchResults] = useState<ProductResult[]>([])
-    const [progress, setProgress] = useState({ status: "idle", total: 0, processed: 0, message: "" })
-
-    useEffect(() => {
-        if (typeof window === 'undefined' || !window.electronAPI) return
-        window.electronAPI.onDatabaseResults((data) => {
-            setSearchResults(data.results)
-            setIsLoading(false)
-            toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
-        })
-        window.electronAPI.onProductFound((product) => {
-            // Kontrol: Ürün zaten listede var mı?
-            setSearchResults((prev) => {
-                const isProductAlreadyInList = prev.some(
-                    (p) => p.product_number === product.product_number
-                );
-                // Eğer ürün listede yoksa ekle
-                if (!isProductAlreadyInList) {
-                    return [...prev, product];
-                }
-                // Varsa listeyi olduğu gibi bırak
-                return prev;
-            });
-        });
-        window.electronAPI.onSearchProgress((progressData) => {
-            setProgress(progressData)
-        })
-        window.electronAPI.onSearchComplete((summary) => {
-            setIsLoading(false)
-            setProgress((prev) => ({ ...prev, status: "complete" }))
-            toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
-        })
-        window.electronAPI.onSearchError((errorMessage) => {
-            setError(errorMessage)
-            setIsLoading(false)
-            setProgress({ status: "error", total: 0, processed: 0, message: "" })
-        })
-        window.electronAPI.onExportResult((result) => {
-            if (result.status === "success") {
-                toast.success(`Excel dosyası kaydedildi: ${result.path}`)
-            } else {
-                toast.error(`Excel hatası: ${result.message}`)
-            }
-        })
-    }, [])
-
-    useEffect(() => {
-        let revenue = 0
-        let productCount = 0
-        const uniqueProducts = new Set<string>()
-        Object.values(assignments).forEach((productList) => {
-            productCount += productList.length
-            productList.forEach((product) => {
-                uniqueProducts.add(product.product_code)
-                if (product.price_numeric) {
-                    revenue += product.price_numeric
-                } else if (product.price_str) {
-                    const priceMatch = product.price_str.match(/[\d.,]+/)
-                    if (priceMatch) {
-                        const cleanedPrice = priceMatch[0].replace(/\./g, "").replace(",", ".")
-                        revenue += Number.parseFloat(cleanedPrice) || 0
-                    }
-                }
-            })
-        })
-        setDashboardStats({
-            totalRevenue: revenue,
-            customerCount: customers.length,
-            totalUniqueProducts: uniqueProducts.size,
-            activeOrders: productCount,
-        })
-    }, [assignments, customers])
-
-    const handleAssignProducts = (customerId, products: AssignmentItem[]) => {
-        setAssignments((prev) => {
-            const currentAssigned = prev[customerId] || []
-            const newProducts = products.filter(
-                (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
-            )
-            return { ...prev, [customerId]: [...currentAssigned, ...newProducts] }
-        })
-    }
-
-    const handleSearch = (searchTerm: string) => {
-        if (!searchTerm.trim() || isLoading) return
-        setIsLoading(true)
-        setSearchResults([])
-        setError(null)
-        setProgress({ status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
-        window.electronAPI.performSearch(searchTerm)
-    }
-
-    const renderPage = () => {
-        switch (page) {
-            case "search":
-                return (
-                    <SearchPage
-                        searchResults={searchResults}
-                        isLoading={isLoading}
-                        error={error}
-                        progress={progress}
-                        handleSearch={handleSearch}
-                        customers={customers}
-                        onAssignProducts={handleAssignProducts}
-                    />
-                )
-            case "customers":
-                return <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} />
-            case "home":
-            default:
-                return <HomePage stats={dashboardStats} />
+    window.electronAPI.onProductFound((product) => {
+      setSearchResults((prev) => {
+        const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
+        if (!isProductAlreadyInList) {
+          return [...prev, product]
         }
+        return prev
+      })
+    })
+    window.electronAPI.onSearchProgress((progressData) => {
+      setProgress(progressData)
+    })
+    window.electronAPI.onSearchComplete((summary) => {
+      setIsLoading(false)
+      setProgress((prev) => ({ ...prev, status: "complete" }))
+      toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+    })
+    window.electronAPI.onSearchError((errorMessage) => {
+      setError(errorMessage)
+      setIsLoading(false)
+      setProgress({ status: "error", total: 0, processed: 0, message: "" })
+    })
+    window.electronAPI.onExportResult((result) => {
+      if (result.status === "success") {
+        toast.success(`Excel dosyası kaydedildi: ${result.path}`)
+      } else {
+        toast.error(`Excel hatası: ${result.message}`)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    let productCount = 0
+    const uniqueProducts = new Set<string>()
+    Object.values(assignments).forEach((productList) => {
+      productCount += productList.length
+      productList.forEach((product) => {
+        uniqueProducts.add(product.product_code)
+      })
+    })
+    setDashboardStats({
+      customerCount: customers.length,
+      totalUniqueProducts: uniqueProducts.size,
+      activeOrders: productCount,
+    })
+  }, [assignments, customers])
+
+  const handleAssignProducts = (customerId, products: AssignmentItem[]) => {
+    setAssignments((prev) => {
+      const currentAssigned = prev[customerId] || []
+      const newProducts = products.filter(
+        (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
+      )
+      return { ...prev, [customerId]: [...currentAssigned, ...newProducts] }
+    })
+  }
+
+  const handleSearch = (searchTerm: string) => {
+    if (!searchTerm.trim() || isLoading) return
+    setIsLoading(true)
+    setSearchResults([])
+    setError(null)
+    setProgress({ status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
+    window.electronAPI.performSearch(searchTerm)
+  }
+
+  const renderPage = () => {
+    switch (page) {
+      case "search":
+        return (
+          <SearchPage
+            searchResults={searchResults}
+            isLoading={isLoading}
+            error={error}
+            progress={progress}
+            handleSearch={handleSearch}
+            customers={customers}
+            onAssignProducts={handleAssignProducts}
+          />
+        )
+      case "customers":
+        return (
+          <CustomersPage
+            customers={customers}
+            setCustomers={setCustomers}
+            assignments={assignments}
+            setAssignments={setAssignments}
+          />
+        )
+      case "home":
+      default:
+        return <HomePage stats={dashboardStats} />
     }
+  }
 
-    return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-        >
-            <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
-                <Sidebar setPage={setPage} currentPage={page} />
-                <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-                    <main className="flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
-                </div>
-                <Toaster position="bottom-right" />
-            </div>
-        </motion.div>
-    );
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
+        <Sidebar setPage={setPage} currentPage={page} />
+        <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
+          <main className="flex-1 items-start gap-4 p-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
+        </div>
+        <Toaster position="bottom-right" />
+      </div>
+    </motion.div>
+  )
 }
-
 
 // --------------------------------------------------------------------------------
 // 2. Yükleme Ekranı ve Ana Uygulama Yönlendiricisi (Yeni App Bileşeni)
@@ -888,37 +943,38 @@ function MainApplication() {
 // Yükleniyorsa SplashScreen'i, bittiyse MainApplication'ı gösterir.
 // --------------------------------------------------------------------------------
 export default function App() {
-    const [isAppLoading, setIsAppLoading] = useState(true);
+  const [isAppLoading, setIsAppLoading] = useState(true)
 
-    useEffect(() => {
-        // Python'dan gelecek "hazır" sinyalini dinle
-        if (window.electronAPI && typeof window.electronAPI.onPythonReady === 'function') {
-            const cleanup = window.electronAPI.onPythonReady(() => {
-                console.log("Python'dan 'hazır' sinyali alındı. Arayüz yükleniyor.");
-                setIsAppLoading(false);
-            });
-            return () => cleanup();
-        } else {
-            // Electron API'si yoksa (tarayıcıda geliştirme gibi), kısa bir süre bekle
-            console.warn("Electron API bulunamadı. Geliştirme ortamı varsayılıyor, 2 saniye sonra devam edilecek.");
-            const timer = setTimeout(() => setIsAppLoading(false), 2000);
-            return () => clearTimeout(timer);
-        }
-    }, []);
+  useEffect(() => {
+    // Python'dan gelecek "hazır" sinyalini dinle
+    if (window.electronAPI && typeof window.electronAPI.onPythonReady === "function") {
+      const cleanup = window.electronAPI.onPythonReady(() => {
+        console.log("Python'dan 'hazır' sinyali alındı. Arayüz yükleniyor.")
+        setIsAppLoading(false)
+      })
+      return () => cleanup()
+    } else {
+      // Electron API'si yoksa (tarayıcıda geliştirme gibi), kısa bir süre bekle
+      console.warn("Electron API bulunamadı. Geliştirme ortamı varsayılıyor, 2 saniye sonra devam edilecek.")
+      const timer = setTimeout(() => setIsAppLoading(false), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [])
 
-    return (
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-            <AnimatePresence mode="wait">
-                {isAppLoading ? (
-                    <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-                        <SplashScreen />
-                    </motion.div>
-                ) : (
-                    <motion.div key="main_app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-                        <MainApplication />
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </ThemeProvider>
-    );
+  return (
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
+      <AnimatePresence mode="wait">
+        {isAppLoading ? (
+          <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+            <SplashScreen />
+          </motion.div>
+        ) : (
+          <motion.div key="main_app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+            <MainApplication />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </ThemeProvider>
+  )
 }
+

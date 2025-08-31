@@ -120,6 +120,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Proje geneline uygulanacak font ailesi */
+    font-family: 'Inter', sans-serif;
     /* Tema değiştirilirken arkaplan ve metin renkleri için
        yumuşak bir geçiş animasyonu ekliyoruz. */
     transition-property: color, background-color;

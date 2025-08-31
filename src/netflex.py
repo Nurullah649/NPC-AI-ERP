@@ -4,50 +4,23 @@ import json
 import logging
 import threading
 from typing import Dict, Any, List
-from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
-from dotenv import load_dotenv
 import os
-
-# --- .env Dosya Yolu Düzeltmesi ---
-# Bu kodun 'src' gibi bir alt dizinde olduğunu varsayarak,
-# proje kök dizinini bulmak için bir üst dizine çıkıyoruz.
-
-# Bu dosyanın bulunduğu dizini alır (örn: .../proje_koku/src)
-kod_dizini = Path(__file__).resolve().parent
-# Bir üst dizine çıkarak proje kökünü bulur (örn: .../proje_koku)
-proje_koku = kod_dizini.parent
-# Proje kökünden itibaren doğru .env yolu oluşturulur (.../proje_koku/config/.env)
-env_yolu = proje_koku / "config" / ".env"
-
-# Belirtilen yoldaki .env dosyasını yükle
-load_dotenv(dotenv_path=env_yolu)
-
-
-# ------------------------------------
 
 
 class NetflexAPI:
-    def __init__(self, max_workers=10):
+    def __init__(self, username: str, password: str, max_workers: int = 10):
         """
-        NetflexAPI sınıfı başlatıldığında ortam değişkenlerini okur
-        ve oturum (session) ayarlarını yapar.
+        NetflexAPI sınıfı, başlatılırken kullanıcı adı ve şifre alır.
+        .env dosyasını okuma sorumluluğu bu sınıftan kaldırılmıştır.
         """
-        # Ortam değişkenlerini class başlatılırken okumak daha güvenilirdir.
-        # Bu, 'None' dönme sorununu engeller.
-        adi = os.getenv("KULLANICI")
-        sifre = os.getenv("SIFRE")
+        if not username or not password:
+            logging.critical("Netflex HATA: Başlatma sırasında KULLANICI adı veya SIFRE sağlanmadı!")
+            raise ValueError("NetflexAPI için KULLANICI adı ve SIFRE gereklidir.")
 
-        # Eğer kullanıcı adı veya şifre bulunamazsa, kritik bir log mesajı bas.
-        if not adi or not sifre:
-            logging.critical("Netflex HATA: .env dosyasından KULLANICI veya SIFRE okunamadı!")
-            logging.critical(f"Aranan .env dosya yolu: {env_yolu}")
-            # Bu durumda programın durması daha iyi olabilir, örneğin:
-            # raise ValueError(".env dosyasında KULLANICI ve SIFRE değişkenleri ayarlanmalı.")
-
-        self.credentials = {"adi": adi, "sifre": sifre}
+        self.credentials = {"adi": username, "sifre": password}
         self.session = requests.Session()
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
         self.session.mount('https://', adapter)
@@ -55,7 +28,7 @@ class NetflexAPI:
         self.token_last_updated = 0
         self.token_lock = threading.Lock()
 
-    def get_token(self):
+    def get_token(self) -> str or None:
         """
         API için geçerli bir token alır. Token eskiyse yenisini talep eder.
         Thread-safe (aynı anda birden fazla iş parçacığı tarafından güvenle çağrılabilir).
@@ -85,7 +58,7 @@ class NetflexAPI:
 
     def search_products(self, search_term: str) -> List[Dict[str, Any]]:
         """
-        Verilen arama terimi için Netflex'te ürün arar.
+        Verilen arama terimi için Netflex'te ürün arar ve stok bilgisini ekler.
         """
         token = self.get_token()
         if not token:
@@ -108,22 +81,33 @@ class NetflexAPI:
                 return []
 
             for product in products:
+                # Fiyat bilgisini işle
                 price_value = product.get('urn_Fiyat')
                 currency = product.get('urn_FiyatDovizi', '')
                 price_numeric = float('inf')  # Sayısal sıralama için sonsuz bir değer
                 price_str = "Fiyat Bilgisi Yok"
 
-                # Fiyatın geçerli bir sayı olup olmadığını kontrol et
                 if isinstance(price_value, (int, float)) and price_value > 0:
                     price_numeric = float(price_value)
                     price_str = f"{price_value} {currency}".strip()
+
+                # *** YENİ EKLENEN STOK BİLGİSİ BÖLÜMÜ ***
+                stock_value = product.get('urn_Stok')
+                stock_info = "Stok Durumu Yok"  # Varsayılan değer
+
+                # Gelen değerin sayı olup olmadığını kontrol et (None veya başka bir tip olmamalı)
+                if isinstance(stock_value, (int, float)):
+                    stock_info = int(stock_value)  # 0.0 gibi değerleri 0'a çevirir
+
+                # *** BİTİŞ ***
 
                 found_products.append({
                     "source": "Netflex",
                     "product_name": product.get('urn_Adi'),
                     "product_code": product.get('urn_Kodu'),
                     "price_numeric": price_numeric,
-                    "price_str": price_str
+                    "price_str": price_str,
+                    "stock": stock_info  # Stok bilgisini sonuca ekle
                 })
             return found_products
 
