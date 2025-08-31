@@ -1,41 +1,82 @@
 import json
 import logging
+import signal
 import threading
+import os
+import requests
+from requests.adapters import HTTPAdapter
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+from typing import Dict, Any, List, Generator
+from queue import Queue, Empty
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, JavascriptException
+from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
+def make_cancellable_post_request(session, url, headers, json_payload, cancel_event: threading.Event):
+    """
+    Bir `requests` POST isteğini kendi thread'inde çalıştırarak iptal edilebilir hale getirir.
+    """
+    result_queue = Queue()
+
+    def request_worker():
+        try:
+            response = session.post(url, headers=headers, json=json_payload, timeout=20)
+            result_queue.put(response)
+        except Exception as e:
+            result_queue.put(e)
+
+    worker_thread = threading.Thread(target=request_worker)
+    worker_thread.daemon = True
+    worker_thread.start()
+
+    while worker_thread.is_alive():
+        if cancel_event.is_set():
+            logging.info(f"Ağ isteği (POST {url[:50]}...) dış sinyal ile iptal edildi.")
+            return None
+        try:
+            result = result_queue.get(timeout=0.1)
+            if isinstance(result, Exception):
+                if not cancel_event.is_set():
+                    if isinstance(result, requests.exceptions.Timeout):
+                        logging.warning(f"Sigma ağ isteği zaman aşımına uğradı.")
+                    else:
+                        logging.error(f"Sigma ağ isteğinde hata: {result}")
+                return None
+            return result
+        except Empty:
+            continue
+
+    # Thread bittikten sonra kuyruğu son bir kez kontrol et
+    try:
+        result = result_queue.get_nowait()
+        if isinstance(result, Exception):
+            if not cancel_event.is_set(): logging.error(f"Sigma ağ isteğinde hata: {result}")
+            return None
+        return result
+    except Empty:
+        return None
+
+
 class SigmaAldrichAPI:
     def __init__(self):
         self.drivers: Dict[str, webdriver.Chrome] = {}
+        self.sessions: Dict[str, requests.Session] = {}
 
     def start_drivers(self):
         countries = ['TR', 'US', 'DE', 'GB']
-        threads = []
-        for country in countries:
-            thread = threading.Thread(
-                target=self._start_single_driver,
-                args=(country,),
-                name=f"{country}-Driver-Starter"
-            )
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
+        with ThreadPoolExecutor(max_workers=len(countries), thread_name_prefix="Driver-Starter") as executor:
+            executor.map(self._start_single_driver, countries)
 
         for country in countries:
-            if self.drivers.get(country.lower()):
-                logging.info(f"{country} driver hazır.")
+            if self.drivers.get(country.lower()) and self.sessions.get(country.lower()):
+                logging.info(f"{country} sürücüsü ve oturumu hazır.")
             else:
-                logging.warning(f"{country} driver başlatılamadı.")
+                logging.warning(f"{country} sürücüsü ve/veya oturumu başlatılamadı.")
 
     def _start_single_driver(self, country_code: str):
         logging.info(f"Selenium WebDriver '{country_code}' için başlatılıyor...")
@@ -43,15 +84,16 @@ class SigmaAldrichAPI:
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
-        options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+        options.add_argument(f"user-agent={ua}")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument("--disable-blink-features=AutomationControlled")
 
+        driver = None
         try:
             driver = webdriver.Chrome(options=options)
-            driver.set_script_timeout(180)
+            driver.set_script_timeout(30)
             logging.info(f"Selenium WebDriver ('{country_code}') başarıyla başlatıldı.")
 
             url = f"https://www.sigmaaldrich.com/{country_code}/en"
@@ -60,134 +102,199 @@ class SigmaAldrichAPI:
             try:
                 cookie_wait = WebDriverWait(driver, 15)
                 accept_button = cookie_wait.until(EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler")))
-                driver.execute_script("arguments[0].click();", accept_button)
-                logging.info(f"({country_code}) Çerez onayı tıklandı (JS ile).")
+                accept_button.click()
+                logging.info(f"({country_code}) Çerez onayı tıklandı.")
             except TimeoutException:
                 logging.debug(f"({country_code}) Çerez onayı butonu bulunamadı veya zaman aşımı.")
 
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": ua,
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Content-Type": "application/json",
+                "x-gql-country": country_code.upper(),
+                "x-gql-language": "en",
+                "Origin": "https://www.sigmaaldrich.com",
+                "Referer": f"https://www.sigmaaldrich.com/{country_code.lower()}/en/search/ethanol?focus=products&page=1&perpage=30&sort=relevance&term=ethanol&type=product_group"
+            })
+            for cookie in driver.get_cookies():
+                session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
+
             self.drivers[country_code.lower()] = driver
+            self.sessions[country_code.lower()] = session
         except Exception as e:
             logging.critical(f"'{country_code}' için WebDriver başlatılamadı: {e}", exc_info=True)
-            if 'driver' in locals() and driver:
+            if driver:
                 driver.quit()
 
     def stop_drivers(self):
-        logging.info("Tüm Selenium WebDriver'lar kapatılıyor.")
+        logging.info("Tüm Selenium sürücüleri ve oturumları kapatılıyor.")
         for code, driver in self.drivers.items():
             if driver:
-                logging.info(f"'{code.upper()}' driver kapatılıyor.")
-                driver.quit()
+                try:
+                    driver.quit()
+                    logging.info(f"'{code.upper()}' sürücüsü kapatıldı.")
+                except (WebDriverException, InvalidSessionIdException):
+                    logging.warning(f"'{code.upper()}' sürücüsü kapatılırken zaten ulaşılamaz durumdaydı.")
         self.drivers.clear()
+        self.sessions.clear()
 
-    def search_products(self, search_term: str) -> List[Dict[str, Any]]:
+    def kill_drivers(self):
+        logging.warning("Tüm Sigma WebDriver işlemleri zorla sonlandırılıyor...")
+        driver_items = list(self.drivers.items())
+        for code, driver in driver_items:
+            try:
+                # kill_drivers'da os importu eksikti, eklendi.
+                pid = driver.service.process.pid
+                if os.name == 'nt':
+                    os.system(f"taskkill /F /PID {pid}")
+                else:
+                    os.kill(pid, signal.SIGKILL)
+                logging.info(f"Sigma WebDriver '{code.upper()}' (PID: {pid}) sonlandırıldı.")
+            except Exception as e:
+                logging.error(f"Sigma WebDriver '{code.upper()}' sonlandırılırken hata: {e}")
+        self.drivers.clear()
+        self.sessions.clear()
+
+    def search_products(self, search_term: str, cancellation_token: threading.Event) -> Generator[
+        List[Dict[str, Any]], None, None]:
         logging.info(f"Sigma (TR): '{search_term}' için arama yapılıyor...")
-        all_products = []
         current_page = 1
         while True:
-            result = self._search_page(search_term, current_page)
-            if "error" in result or "errors" in result or not result.get('data'):
+            if cancellation_token.is_set():
+                logging.info("Sigma ürün arama görevi iptal edildi.")
                 break
-            items = result['data'].get('getProductSearchResults', {}).get('items', [])
+
+            result_json = self._search_page(search_term, current_page, cancellation_token)
+            if result_json is None: break
+
+            items = result_json.get('data', {}).get('getProductSearchResults', {}).get('items', [])
             if not items:
+                logging.info(f"Sigma: '{search_term}' için {current_page - 1}. sayfadan sonra ürün bulunamadı.")
                 break
+
+            page_products = []
             for item in items:
                 cas = item.get('casNumber', 'N/A')
                 for p in item.get('products', []):
                     if p.get('productNumber'):
-                        all_products.append({
+                        page_products.append({
                             "product_name_sigma": p.get('name'), "product_number": p.get('productNumber'),
                             "product_key": p.get('productKey'), "brand": p.get('brand', {}).get('key', 'N-A'),
                             "cas_number": cas
                         })
-            current_page += 1
-        logging.info(f"Sigma'da (TR) toplam {len(all_products)} ürün bulundu.")
-        return all_products
 
-    def _search_page(self, search_term: str, page: int) -> Dict[str, Any]:
-        driver = self.drivers.get('tr')
-        if not driver:
-            logging.error("Arama için TR driver bulunamadı.")
-            return {"error": "TR driver not available"}
+            logging.info(f"Sigma: {len(page_products)} ürün {current_page}. sayfada bulundu. Arayüze gönderiliyor.")
+            yield page_products
+            current_page += 1
+
+    def _search_page(self, search_term: str, page: int, cancellation_token: threading.Event) -> Dict[str, Any]:
+        if cancellation_token.is_set(): return None
+        session = self.sessions.get('tr')
+        if not session:
+            logging.error("Arama için TR oturumu bulunamadı.")
+            return None
 
         query = "query ProductSearch($searchTerm: String, $page: Int!, $sort: Sort, $group: ProductSearchGroup, $selectedFacets: [FacetInput!], $type: ProductSearchType) { getProductSearchResults(input: { searchTerm: $searchTerm, pagination: { page: $page }, sort: $sort, group: $group, facets: $selectedFacets, type: $type }) { items { ... on Substance { casNumber products { name productNumber productKey brand { key } } } } } }"
         variables = {"searchTerm": search_term, "page": page, "group": "substance", "selectedFacets": [],
                      "sort": "relevance", "type": "PRODUCT"}
+        payload = {"operationName": "ProductSearch", "variables": variables, "query": query}
 
+        response = make_cancellable_post_request(session, "https://www.sigmaaldrich.com/api/graphql", session.headers,
+                                                 payload, cancellation_token)
+
+        if response is None: return None
         try:
-            payload = {"operationName": "ProductSearch", "variables": variables, "query": query}
-            js_script = f'const cb=arguments[arguments.length-1];fetch("https://www.sigmaaldrich.com/api/graphql",{{headers:{{"accept":"*/*","content-type":"application/json","x-gql-country":"TR","x-gql-language":"en"}},body:JSON.stringify({json.dumps(payload)}),method:"POST"}}).then(r=>r.json()).then(d=>cb(d)).catch(e=>cb({{"error":e.toString()}}));'
-            return driver.execute_async_script(js_script)
-        except JavascriptException as e:
-            logging.error(f"JS çalıştırma hatası (TR): {e.msg}")
-        except Exception as e:
-            logging.error(f"Arama (TR) sırasında beklenmedik hata: {e}")
-        return {"error": "script execution failed"}
+            response.raise_for_status()
+            return response.json()
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            if not cancellation_token.is_set():
+                logging.error(f"Sigma arama (Sayfa {page}) sırasında hata: {e}")
+            return None
 
-    def get_all_product_prices(self, product_number: str, brand: str, product_key: str) -> Dict[str, Any]:
+    def get_all_product_prices(self, product_number: str, brand: str, product_key: str,
+                               cancellation_token: threading.Event) -> Dict[str, Any]:
         results = {}
-        with ThreadPoolExecutor(max_workers=len(self.drivers), thread_name_prefix='Price-Fetcher') as executor:
-            future_to_country = {executor.submit(self._get_price_for_country, country, product_key, brand): country for
-                                 country in self.drivers.keys()}
-            for future in as_completed(future_to_country):
-                country_code = future_to_country[future]
+        with ThreadPoolExecutor(max_workers=len(self.sessions), thread_name_prefix='Price-Fetcher') as executor:
+            future_to_country = {
+                executor.submit(self._get_price_for_country, country, product_key, brand, cancellation_token): country
+                for country in self.sessions.keys()
+            }
+            # Periyodik kontrol ile iptal mekanizmasını daha duyarlı hale getir
+            while future_to_country:
+                if cancellation_token.is_set():
+                    for f in future_to_country: f.cancel()
+                    break
+
                 try:
-                    price_data = future.result()
-                    results[country_code] = price_data
-                except Exception as exc:
-                    logging.error(f"Fiyat alınırken hata oluştu ({country_code.upper()}): {exc}")
-                    results[country_code] = []
+                    # Zaman aşımı 0.5 saniyeden 3 saniyeye çıkarıldı.
+                    done_iterator = as_completed(future_to_country, timeout=3)
+
+                    for future in done_iterator:
+                        country_code = future_to_country.pop(future)
+                        try:
+                            price_data = future.result()
+                            if price_data is not None:
+                                results[country_code] = price_data
+                        except Exception as exc:
+                            if not cancellation_token.is_set():
+                                logging.error(f"Fiyat alınırken hata oluştu ({country_code.upper()}): {exc}")
+                            results[country_code] = []
+
+                except FuturesTimeoutError:
+                    # Bu hata beklenen bir durumdur. Hiçbir görev 3 saniyede bitmediğinde tetiklenir.
+                    # Sadece döngüye devam et, bu sayede iptal flag'i tekrar kontrol edilebilir.
+                    continue
+
         return results
 
-    def _get_price_for_country(self, country_code: str, product_key: str, brand: str) -> List[Dict[str, Any]]:
-        driver = self.drivers.get(country_code.lower())
-        if not driver:
-            logging.warning(f"Fiyatlandırma için '{country_code.upper()}' driver'ı bulunamadı.")
+    def _get_price_for_country(self, country_code: str, product_key: str, brand: str,
+                               cancellation_token: threading.Event) -> List[Dict[str, Any]]:
+        if cancellation_token.is_set(): return None
+        session = self.sessions.get(country_code.lower())
+        if not session:
+            logging.warning(f"Fiyatlandırma için '{country_code.upper()}' oturumu bulunamadı.")
             return []
 
-        # GÜNCELLEME: `materialIds` parametresini kaldırdık, böylece tüm varyasyonlar gelir.
         variables = {"productNumber": product_key, "brand": brand.upper(), "productKey": product_key, "quantity": 1}
         query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, productKey: $productKey}) { materialPricing { listPrice currency materialNumber availabilities { date key messageType } } } }"
+        payload = {"operationName": "PricingAndAvailability", "variables": variables, "query": query}
 
+        response = make_cancellable_post_request(session,
+                                                 "https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",
+                                                 session.headers, payload, cancellation_token)
+
+        if response is None: return []
         try:
-            payload = {"operationName": "PricingAndAvailability", "variables": variables, "query": query}
-            js_script = f'const cb=arguments[arguments.length-1];fetch("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",{{headers:{{"accept":"*/*","content-type":"application/json","x-gql-country":"{country_code.upper()}","x-gql-language":"en"}},body:JSON.stringify({json.dumps(payload)}),method:"POST"}}).then(r=>r.json()).then(d=>cb(d)).catch(e=>cb({{"error":e.toString()}}));'
-            result = driver.execute_async_script(js_script)
+            response.raise_for_status()
+            result = response.json()
 
-            if "error" in result or "errors" in result or not result.get('data'):
-                logging.warning(f"Sigma Fiyat ({country_code.upper()}) '{product_key}' için sonuç alınamadı: {result}")
+            if "errors" in result or not result.get('data'):
                 return []
 
             material_pricing = result.get('data', {}).get('getPricingForProduct', {}).get('materialPricing', [])
-
-            # GÜNCELLEME: Gelen tüm varyasyonları işleyip yeni bir liste oluşturuyoruz.
             variations = []
             if material_pricing:
                 for price_info in material_pricing:
                     availability_date = None
-                    # Temin tarihini bul
                     if price_info.get('availabilities'):
-                        # Önce 'primary' olanı ara, bulamazsan ilkini al
-                        primary_avail = next(
-                            (a for a in price_info['availabilities'] if a.get('messageType') == 'primary'), None)
-                        avail_to_use = primary_avail if primary_avail else price_info['availabilities'][0]
+                        # Daha güvenli bir 'next' kullanımı
+                        avail = next((a for a in price_info['availabilities'] if a.get('messageType') == 'primary'),
+                                     None)
+                        if not avail and price_info['availabilities']:
+                            avail = price_info['availabilities'][0]
 
-                        if avail_to_use and avail_to_use.get('date'):
-                            timestamp_ms = avail_to_use['date']
-                            # Timestamp (milisaniye) -> datetime objesi -> YYYY-AA-GG formatı
-                            availability_date = datetime.fromtimestamp(timestamp_ms / 1000).strftime('%Y-%m-%d')
+                        if avail and avail.get('date'):
+                            availability_date = datetime.fromtimestamp(avail['date'] / 1000).strftime('%Y-%m-%d')
 
                     variations.append({
-                        "material_number": price_info.get('materialNumber'),
-                        "price": price_info.get('listPrice'),
-                        "currency": price_info.get('currency'),
-                        "availability_date": availability_date
+                        "material_number": price_info.get('materialNumber'), "price": price_info.get('listPrice'),
+                        "currency": price_info.get('currency'), "availability_date": availability_date
                     })
             return variations
-
-        except JavascriptException as e:
-            logging.error(f"Fiyatlandırma JS hatası ({country_code.upper()}): {e.msg}")
-        except Exception as e:
-            logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
-
-        return []
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            if not cancellation_token.is_set():
+                logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
+            return []
 

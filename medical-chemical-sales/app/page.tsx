@@ -21,6 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  XCircle,
+  Building,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -55,6 +57,7 @@ import {
 // --- YER TUTUCU SPLASH SCREEN ---
 import SplashScreen from "@/public/SplashScreen"
 
+
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
 // --------------------------------------------------------------------------------
@@ -75,11 +78,17 @@ interface NetflexResult {
   stock: number | string
 }
 
+interface TciVariation {
+  unit: string
+  original_price: string
+  calculated_price: string
+}
+
 interface ProductResult {
   product_name: string
   product_number: string
   cas_number: string
-  brand: string
+  brand: string // "Sigma (Marka)" veya "TCI" olabilir
   sigma_variations: {
     tr?: SigmaVariation[]
     us?: SigmaVariation[]
@@ -90,16 +99,19 @@ interface ProductResult {
   cheapest_netflex_name: string
   cheapest_netflex_price_str: string
   cheapest_netflex_stock: number | string
+  tci_variations?: TciVariation[]
 }
 
 interface AssignmentItem {
   product_name: string
   product_code: string
+  cas_number: string
   price_numeric: number | null
   price_str: string
-  source: string
+  source: string // Marka ve detay (örn: "Sigma (TR)", "TCI", "Netflex")
   cheapest_netflex_stock?: number | string
 }
+
 
 // Global Electron API tanımı
 declare global {
@@ -160,9 +172,7 @@ const Sidebar = ({ setPage, currentPage }) => {
   ]
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
-      {" "}
       <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
-        {" "}
         <a
           href="#"
           onClick={() => setPage("home")}
@@ -170,7 +180,7 @@ const Sidebar = ({ setPage, currentPage }) => {
         >
           <Package2 className="h-4 w-4 transition-all group-hover:scale-110" />
           <span className="sr-only">Tales Job</span>
-        </a>{" "}
+        </a>
         <TooltipProvider>
           {navItems.map((item) => (
             <Tooltip key={item.name}>
@@ -192,12 +202,12 @@ const Sidebar = ({ setPage, currentPage }) => {
               </TooltipTrigger>
               <TooltipContent side="right">{item.label}</TooltipContent>
             </Tooltip>
-          ))}{" "}
-        </TooltipProvider>{" "}
-      </nav>{" "}
+          ))}
+        </TooltipProvider>
+      </nav>
       <nav className="mt-auto flex flex-col items-center gap-4 px-2 sm:py-5">
         <ModeToggle />
-      </nav>{" "}
+      </nav>
     </aside>
   )
 }
@@ -425,13 +435,22 @@ const CustomersPage = ({ customers, setCustomers, assignments, setAssignments })
 const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, customers, onAssignProducts }) => {
   const [searchTerm, setSearchTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
-  const [visibleCountries, setVisibleCountries] = useState({ tr: true, us: true, de: true, gb: true })
+  const [filters, setFilters] = useState({
+    brands: { sigma: true, tci: true },
+    countries: { tr: true, us: true, de: true, gb: true },
+  })
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
 
   const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
   const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
+
   const onSearchClick = () => handleSearch(searchTerm)
-  const progressValue = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0
+  const handleCancelSearch = () => {
+    if (window.electronAPI) {
+        window.electronAPI.cancelSearch();
+        toast.warning("Arama iptal ediliyor...");
+    }
+  }
 
   const toggleProductExpansion = (productNumber: string) => {
     setExpandedProducts((prev) => {
@@ -479,22 +498,45 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
     })
   }
 
-  const handleSelect = (product: ProductResult, item, source, priceData) => {
+  const handleSelectSigma = (product: ProductResult, item, countryCode, priceData) => {
     const assignmentItem: AssignmentItem = {
-      product_name: source === "Netflex" ? item.netflex.product_name : product.product_name,
+      product_name: product.product_name,
       product_code: item.material_number,
+      cas_number: product.cas_number,
       price_numeric: priceData.price,
       price_str: priceData.price !== null ? `${priceData.price} ${priceData.currency}` : "Fiyat Bilgisi Yok",
-      source: `Sigma (${source.toUpperCase()})`,
-      cheapest_netflex_stock: "N/A", // Default value
-    }
-    if (source === "Netflex") {
-      assignmentItem.source = "Netflex"
-      assignmentItem.price_str = item.netflex.price_str
-      assignmentItem.cheapest_netflex_stock = item.netflex.stock
+      source: `Sigma (${countryCode.toUpperCase()})`,
+      cheapest_netflex_stock: "N/A",
     }
     handleSelectionChange(assignmentItem)
   }
+
+  const handleSelectNetflex = (product: ProductResult, item) => {
+     const assignmentItem: AssignmentItem = {
+      product_name: item.netflex.product_name,
+      product_code: item.material_number,
+      cas_number: product.cas_number,
+      price_numeric: item.netflex.price_numeric,
+      price_str: item.netflex.price_str,
+      source: "Netflex",
+      cheapest_netflex_stock: item.netflex.stock,
+    }
+    handleSelectionChange(assignmentItem)
+  }
+
+  const handleSelectTCI = (product: ProductResult, variation: TciVariation) => {
+    const assignmentItem: AssignmentItem = {
+      product_name: product.product_name,
+      product_code: `${product.product_number}-${variation.unit}`,
+      cas_number: product.cas_number,
+      price_numeric: parseFloat(variation.calculated_price.replace(/[€.]/g, '').replace(',', '.')) || null,
+      price_str: variation.calculated_price,
+      source: 'TCI',
+      cheapest_netflex_stock: ''
+    };
+    handleSelectionChange(assignmentItem);
+  };
+
 
   const handleAssignConfirm = (customerId, products) => {
     onAssignProducts(customerId, products)
@@ -557,6 +599,24 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
     )
   }
 
+    const handleFilterChange = (type, key, value) => {
+        setFilters(prev => ({
+            ...prev,
+            [type]: {
+                ...prev[type],
+                [key]: value
+            }
+        }));
+    };
+
+    const filteredResults = searchResults.filter(product => {
+        const brand = product.brand.toLowerCase();
+        if (brand.includes('sigma')) return filters.brands.sigma;
+        if (brand.includes('tci')) return filters.brands.tci;
+        return true;
+    });
+
+
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Ürün Arama ve Atama</h1>
@@ -572,6 +632,12 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
         <Button onClick={onSearchClick} disabled={isLoading} className="w-28">
           {isLoading ? <LoaderCircle className="animate-spin" /> : "Ara"}
         </Button>
+        {/* {isLoading && (
+            <Button variant="destructive" onClick={handleCancelSearch} className="w-28">
+              <XCircle className="mr-2 h-4 w-4" />
+              İptal Et
+            </Button>
+        )} */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline">
@@ -579,13 +645,26 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="bottom" className="w-56">
-            <DropdownMenuLabel>Gösterilecek Ülkeler</DropdownMenuLabel>
+             <DropdownMenuLabel>Marka</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+             <DropdownMenuCheckboxItem
+                checked={filters.brands.sigma}
+                onCheckedChange={(checked) => handleFilterChange('brands', 'sigma', checked)}
+                onSelect={(e) => e.preventDefault()}
+              >Sigma</DropdownMenuCheckboxItem>
+             <DropdownMenuCheckboxItem
+                checked={filters.brands.tci}
+                onCheckedChange={(checked) => handleFilterChange('brands', 'tci', checked)}
+                onSelect={(e) => e.preventDefault()}
+              >TCI</DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Ülkeler (Sigma)</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {Object.entries(countryLabels).map(([code, label]) => (
               <DropdownMenuCheckboxItem
                 key={code}
-                checked={visibleCountries[code]}
-                onCheckedChange={() => setVisibleCountries((prev) => ({ ...prev, [code]: !prev[code] }))}
+                checked={filters.countries[code]}
+                onCheckedChange={(checked) => handleFilterChange('countries', code, checked)}
                 onSelect={(e) => e.preventDefault()}
               >
                 {label}
@@ -596,18 +675,9 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
       </div>
 
       {isLoading && (
-        <div className="my-4 p-4 border rounded-lg">
-          <div className="flex justify-between items-center mb-2">
-            <p className="text-sm font-medium">
-              {progress.status === "found_sigma"
-                ? `Sigma'da ${progress.total} ürün bulundu, işleniyor...`
-                : `Ürünler işleniyor...`}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {progress.processed} / {progress.total}
-            </p>
-          </div>
-          <Progress value={progressValue} className="w-full" />
+        <div className="my-4 flex items-center justify-center gap-3 text-muted-foreground">
+          <LoaderCircle className="h-5 w-5 animate-spin" />
+          <p className="text-sm font-medium">Ürünler aranıyor, lütfen bekleyin...</p>
         </div>
       )}
       {error && (
@@ -617,24 +687,26 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {searchResults.length > 0 && (
+      {filteredResults.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Arama Sonuçları ({searchResults.length})</CardTitle>
+            <CardTitle>Arama Sonuçları ({filteredResults.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-5 gap-4 p-4 border-b bg-muted/30 font-semibold text-sm">
+             <div className="grid grid-cols-6 gap-4 p-4 border-b bg-muted/30 font-semibold text-sm">
+              <div>Marka</div>
               <div>Ürün Adı</div>
               <div>Kodu</div>
-              <div>CAS Numarası</div>
+              <div>CAS</div>
               <div>Fiyat</div>
               <div>Stok</div>
             </div>
-            <div className="space-y-4">
-              {searchResults.map((product, index) => (
+            <div className="space-y-2">
+              {filteredResults.map((product, index) => (
                 <div key={product.product_number + index} className="border rounded-lg">
                   <div className="flex items-center justify-between p-4 hover:bg-muted/50">
-                    <div className="flex-1 grid grid-cols-5 gap-4 items-center">
+                    <div className="flex-1 grid grid-cols-6 gap-4 items-center">
+                       <div className="font-semibold flex items-center gap-2"><Building className="h-4 w-4 text-muted-foreground" /> {product.brand}</div>
                       <div className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
                       <div>{product.product_number}</div>
                       <div>{product.cas_number}</div>
@@ -650,103 +722,140 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
                     </Button>
                   </div>
 
+                  <AnimatePresence>
                   {expandedProducts.has(product.product_number) && (
-                    <div className="border-t bg-muted/20 p-4">
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="border-t bg-muted/20 p-4 overflow-hidden"
+                     >
                       <h4 className="font-semibold mb-3">Ürün Varyasyonları</h4>
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-[150px]">Ürün Kodu</TableHead>
-                              <TableHead>Netflex</TableHead>
-                              {Object.entries(countryHeaders).map(
-                                ([code, name]) => visibleCountries[code] && <TableHead key={code}>{name}</TableHead>,
-                              )}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {getCombinedData(product).map((item, itemIndex) => (
-                              <TableRow key={itemIndex}>
-                                <TableCell className="font-mono">{item.material_number}</TableCell>
-                                <TableCell>
-                                  {item.netflex ? (
-                                    <div className="flex items-center gap-2">
+                       {product.brand.toLowerCase().includes('sigma') ? (
+                         <div className="overflow-x-auto">
+                           <Table>
+                             <TableHeader>
+                               <TableRow>
+                                 <TableHead className="w-[150px]">Ürün Kodu</TableHead>
+                                 <TableHead>Netflex</TableHead>
+                                 {Object.entries(countryHeaders).map(
+                                   ([code, name]) => filters.countries[code] && <TableHead key={code}>{name}</TableHead>,
+                                 )}
+                               </TableRow>
+                             </TableHeader>
+                             <TableBody>
+                               {getCombinedData(product).map((item, itemIndex) => (
+                                 <TableRow key={itemIndex}>
+                                   <TableCell className="font-mono">{item.material_number}</TableCell>
+                                   <TableCell>
+                                     {item.netflex ? (
+                                       <div className="flex items-center gap-2">
+                                         <Checkbox
+                                           id={`cb-netflex-${item.material_number}-${index}`}
+                                           onCheckedChange={() => handleSelectNetflex(product, item)}
+                                           checked={selectedForAssignment.some(
+                                             (p) => p.product_code === item.material_number && p.source === "Netflex",
+                                           )}
+                                         />
+                                         <Label
+                                           htmlFor={`cb-netflex-${item.material_number}-${index}`}
+                                           className="flex-grow cursor-pointer"
+                                         >
+                                           <div className="flex flex-col">
+                                             <div className="flex items-baseline gap-2">
+                                               <span className="font-semibold">{item.netflex.price_str}</span>
+                                               <span className="font-medium text-sm text-muted-foreground">
+                                                 Stok: {item.netflex.stock}
+                                               </span>
+                                             </div>
+                                             <span
+                                               className="text-xs text-muted-foreground truncate"
+                                               title={item.netflex.product_name}
+                                               dangerouslySetInnerHTML={{ __html: item.netflex.product_name }}
+                                             />
+                                           </div>
+                                         </Label>
+                                       </div>
+                                     ) : (
+                                       <span className="text-xs text-muted-foreground">-</span>
+                                     )}
+                                   </TableCell>
+                                   {Object.keys(countryHeaders).map(
+                                     (code) =>
+                                       filters.countries[code] && (
+                                         <TableCell key={code}>
+                                           {item.sigma[code] ? (
+                                             <div className="flex items-center gap-2">
+                                               <Checkbox
+                                                 id={`cb-${code}-${item.material_number}-${index}`}
+                                                 onCheckedChange={() =>
+                                                   handleSelectSigma(product, item, code, item.sigma[code])
+                                                 }
+                                                 checked={selectedForAssignment.some(
+                                                   (p) =>
+                                                     p.product_code === item.material_number &&
+                                                     p.source === `Sigma (${code.toUpperCase()})`,
+                                                 )}
+                                               />
+                                               <Label
+                                                 htmlFor={`cb-${code}-${item.material_number}-${index}`}
+                                                 className="flex items-baseline gap-2 cursor-pointer"
+                                               >
+                                                 <span className="font-semibold whitespace-nowrap">
+                                                   {item.sigma[code].price !== null
+                                                     ? `${item.sigma[code].price} ${item.sigma[code].currency}`
+                                                     : "N/A"}
+                                                 </span>
+                                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                   {item.sigma[code].availability_date || "Tarih Yok"}
+                                                 </span>
+                                               </Label>
+                                             </div>
+                                           ) : (
+                                             <span className="text-xs text-muted-foreground">-</span>
+                                           )}
+                                         </TableCell>
+                                       ),
+                                   )}
+                                 </TableRow>
+                               ))}
+                             </TableBody>
+                           </Table>
+                         </div>
+                       ) : ( // TCI Products
+                          <Table>
+                             <TableHeader>
+                               <TableRow>
+                                 <TableHead className="w-[50px]"></TableHead>
+                                 <TableHead>Birim</TableHead>
+                                 <TableHead>Orijinal Fiyat</TableHead>
+                                 <TableHead>Hesaplanmış Fiyat (x1.4)</TableHead>
+                               </TableRow>
+                             </TableHeader>
+                             <TableBody>
+                               {product.tci_variations?.map((variation, vIndex) => (
+                                 <TableRow key={vIndex}>
+                                   <TableCell>
                                       <Checkbox
-                                        id={`cb-netflex-${item.material_number}-${index}`}
-                                        onCheckedChange={(checked) =>
-                                          handleSelect(product, item, "Netflex", item.netflex)
-                                        }
+                                        id={`cb-tci-${product.product_number}-${vIndex}`}
+                                        onCheckedChange={() => handleSelectTCI(product, variation)}
                                         checked={selectedForAssignment.some(
-                                          (p) => p.product_code === item.material_number && p.source === "Netflex",
+                                            p => p.product_code === `${product.product_number}-${variation.unit}` && p.source === 'TCI'
                                         )}
                                       />
-                                      <Label
-                                        htmlFor={`cb-netflex-${item.material_number}-${index}`}
-                                        className="flex-grow cursor-pointer"
-                                      >
-                                        <div className="flex flex-col">
-                                          <div className="flex items-baseline gap-2">
-                                            <span className="font-semibold">{item.netflex.price_str}</span>
-                                            <span className="font-medium text-sm text-muted-foreground">
-                                              Stok: {item.netflex.stock}
-                                            </span>
-                                          </div>
-                                          <span
-                                            className="text-xs text-muted-foreground truncate"
-                                            title={item.netflex.product_name}
-                                            dangerouslySetInnerHTML={{ __html: item.netflex.product_name }}
-                                          />
-                                        </div>
-                                      </Label>
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">-</span>
-                                  )}
-                                </TableCell>
-                                {Object.keys(countryHeaders).map(
-                                  (code) =>
-                                    visibleCountries[code] && (
-                                      <TableCell key={code}>
-                                        {item.sigma[code] ? (
-                                          <div className="flex items-center gap-2">
-                                            <Checkbox
-                                              id={`cb-${code}-${item.material_number}-${index}`}
-                                              onCheckedChange={() =>
-                                                handleSelect(product, item, code, item.sigma[code])
-                                              }
-                                              checked={selectedForAssignment.some(
-                                                (p) =>
-                                                  p.product_code === item.material_number &&
-                                                  p.source.includes(code.toUpperCase()),
-                                              )}
-                                            />
-                                            <Label
-                                              htmlFor={`cb-${code}-${item.material_number}-${index}`}
-                                              className="flex items-baseline gap-2"
-                                            >
-                                              <span className="font-semibold whitespace-nowrap">
-                                                {item.sigma[code].price !== null
-                                                  ? `${item.sigma[code].price} ${item.sigma[code].currency}`
-                                                  : "N/A"}
-                                              </span>
-                                              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                                {item.sigma[code].availability_date || "Tarih Yok"}
-                                              </span>
-                                            </Label>
-                                          </div>
-                                        ) : (
-                                          <span className="text-xs text-muted-foreground">-</span>
-                                        )}
-                                      </TableCell>
-                                    ),
-                                )}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
+                                   </TableCell>
+                                   <TableCell>{variation.unit}</TableCell>
+                                   <TableCell>{variation.original_price}</TableCell>
+                                   <TableCell className="font-semibold">{variation.calculated_price}</TableCell>
+                                 </TableRow>
+                               ))}
+                             </TableBody>
+                           </Table>
+                       )}
+                    </motion.div>
                   )}
+                  </AnimatePresence>
                 </div>
               ))}
             </div>
@@ -754,7 +863,7 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
         </Card>
       )}
 
-      {!isLoading && searchResults.length === 0 && progress.status === "complete" && (
+      {!isLoading && filteredResults.length === 0 && progress.status === "complete" && (
         <div className="text-center py-10">
           <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
           <p className="mt-4 text-muted-foreground">Bu arama için sonuç bulunamadı.</p>
@@ -767,12 +876,10 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
 }
 
 // --------------------------------------------------------------------------------
-// 1. Ana Uygulama Mantığı (Yeni Bileşen)
-// Bu bileşen, tüm ana uygulama durumunu ve mantığını içerir.
+// Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
 function MainApplication() {
   const [page, setPage] = useState("search")
-  // --- YENİ: VERİLERİ LOCALSTORAGE'DAN YÜKLEME ---
   const [customers, setCustomers] = useState(() => {
     try {
       const savedCustomers = localStorage.getItem("customers")
@@ -791,7 +898,6 @@ function MainApplication() {
       return {}
     }
   })
-  // --- BİTİŞ ---
 
   const [dashboardStats, setDashboardStats] = useState({
     customerCount: 0,
@@ -802,9 +908,8 @@ function MainApplication() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
   const [searchResults, setSearchResults] = useState<ProductResult[]>([])
-  const [progress, setProgress] = useState({ status: "idle", total: 0, processed: 0, message: "" })
+  const [progress, setProgress] = useState({ source: "", status: "idle", total: 0, processed: 0, message: "" })
 
-  // --- YENİ: MÜŞTERİLER DEĞİŞTİĞİNDE LOCALSTORAGE'A KAYDETME ---
   useEffect(() => {
     try {
       localStorage.setItem("customers", JSON.stringify(customers))
@@ -813,7 +918,6 @@ function MainApplication() {
     }
   }, [customers])
 
-  // --- YENİ: ATAMALAR DEĞİŞTİĞİNDE LOCALSTORAGE'A KAYDETME ---
   useEffect(() => {
     try {
       localStorage.setItem("assignments", JSON.stringify(assignments))
@@ -824,12 +928,8 @@ function MainApplication() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
-    window.electronAPI.onDatabaseResults((data) => {
-      setSearchResults(data.results)
-      setIsLoading(false)
-      toast.success(`Veritabanında ${data.results.length} sonuç bulundu.`)
-    })
-    window.electronAPI.onProductFound((product) => {
+
+    const cleanupProductFound = window.electronAPI.onProductFound((product) => {
       setSearchResults((prev) => {
         const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
         if (!isProductAlreadyInList) {
@@ -838,32 +938,48 @@ function MainApplication() {
         return prev
       })
     })
-    window.electronAPI.onSearchProgress((progressData) => {
+
+    const cleanupProgress = window.electronAPI.onSearchProgress((progressData) => {
       setProgress(progressData)
     })
-    window.electronAPI.onSearchComplete((summary) => {
+
+    const cleanupComplete = window.electronAPI.onSearchComplete((summary) => {
       setIsLoading(false)
       setProgress((prev) => ({ ...prev, status: "complete" }))
-      toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+      if (summary.status === 'cancelled') {
+         toast.info("Arama başarıyla iptal edildi.")
+      } else {
+         toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+      }
     })
-    window.electronAPI.onSearchError((errorMessage) => {
+
+    const cleanupError = window.electronAPI.onSearchError((errorMessage) => {
       setError(errorMessage)
       setIsLoading(false)
-      setProgress({ status: "error", total: 0, processed: 0, message: "" })
+      setProgress({ source:"", status: "error", total: 0, processed: 0, message: "" })
     })
-    window.electronAPI.onExportResult((result) => {
+
+    const cleanupExport = window.electronAPI.onExportResult((result) => {
       if (result.status === "success") {
         toast.success(`Excel dosyası kaydedildi: ${result.path}`)
       } else {
         toast.error(`Excel hatası: ${result.message}`)
       }
     })
+
+    return () => {
+        cleanupProductFound();
+        cleanupProgress();
+        cleanupComplete();
+        cleanupError();
+        cleanupExport();
+    }
   }, [])
 
   useEffect(() => {
     let productCount = 0
     const uniqueProducts = new Set<string>()
-    Object.values(assignments).forEach((productList) => {
+    Object.values(assignments).forEach((productList: AssignmentItem[]) => {
       productCount += productList.length
       productList.forEach((product) => {
         uniqueProducts.add(product.product_code)
@@ -891,7 +1007,7 @@ function MainApplication() {
     setIsLoading(true)
     setSearchResults([])
     setError(null)
-    setProgress({ status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
+    setProgress({ source: "", status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
     window.electronAPI.performSearch(searchTerm)
   }
 
@@ -938,15 +1054,12 @@ function MainApplication() {
 }
 
 // --------------------------------------------------------------------------------
-// 2. Yükleme Ekranı ve Ana Uygulama Yönlendiricisi (Yeni App Bileşeni)
-// Bu bileşen artık sadece uygulamanın yüklenip yüklenmediğini kontrol eder.
-// Yükleniyorsa SplashScreen'i, bittiyse MainApplication'ı gösterir.
+// Ana Uygulama Yönlendiricisi
 // --------------------------------------------------------------------------------
 export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true)
 
   useEffect(() => {
-    // Python'dan gelecek "hazır" sinyalini dinle
     if (window.electronAPI && typeof window.electronAPI.onPythonReady === "function") {
       const cleanup = window.electronAPI.onPythonReady(() => {
         console.log("Python'dan 'hazır' sinyali alındı. Arayüz yükleniyor.")
@@ -954,7 +1067,6 @@ export default function App() {
       })
       return () => cleanup()
     } else {
-      // Electron API'si yoksa (tarayıcıda geliştirme gibi), kısa bir süre bekle
       console.warn("Electron API bulunamadı. Geliştirme ortamı varsayılıyor, 2 saniye sonra devam edilecek.")
       const timer = setTimeout(() => setIsAppLoading(false), 2000)
       return () => clearTimeout(timer)
@@ -977,4 +1089,3 @@ export default function App() {
     </ThemeProvider>
   )
 }
-
