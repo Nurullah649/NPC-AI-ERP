@@ -8,7 +8,6 @@ from requests.adapters import HTTPAdapter
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from typing import Dict, Any, List, Generator
-from queue import Queue, Empty
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException
@@ -17,55 +16,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-def make_cancellable_post_request(session, url, headers, json_payload, cancel_event: threading.Event):
-    """
-    Bir `requests` POST isteğini kendi thread'inde çalıştırarak iptal edilebilir hale getirir.
-    """
-    result_queue = Queue()
-
-    def request_worker():
-        try:
-            response = session.post(url, headers=headers, json=json_payload, timeout=20)
-            result_queue.put(response)
-        except Exception as e:
-            result_queue.put(e)
-
-    worker_thread = threading.Thread(target=request_worker)
-    worker_thread.daemon = True
-    worker_thread.start()
-
-    while worker_thread.is_alive():
-        if cancel_event.is_set():
-            logging.info(f"Ağ isteği (POST {url[:50]}...) dış sinyal ile iptal edildi.")
-            return None
-        try:
-            result = result_queue.get(timeout=0.1)
-            if isinstance(result, Exception):
-                if not cancel_event.is_set():
-                    if isinstance(result, requests.exceptions.Timeout):
-                        logging.warning(f"Sigma ağ isteği zaman aşımına uğradı.")
-                    else:
-                        logging.error(f"Sigma ağ isteğinde hata: {result}")
-                return None
-            return result
-        except Empty:
-            continue
-
-    # Thread bittikten sonra kuyruğu son bir kez kontrol et
-    try:
-        result = result_queue.get_nowait()
-        if isinstance(result, Exception):
-            if not cancel_event.is_set(): logging.error(f"Sigma ağ isteğinde hata: {result}")
-            return None
-        return result
-    except Empty:
-        return None
-
-
 class SigmaAldrichAPI:
     def __init__(self):
         self.drivers: Dict[str, webdriver.Chrome] = {}
         self.sessions: Dict[str, requests.Session] = {}
+        # HIZ OPTİMİZASYONU: Her ülke için ayrı bir bağlantı havuzu.
+        # Bu, her bir Sigma alan adına (TR, US, DE, GB) olan bağlantıların
+        # yeniden kullanılmasını sağlayarak ağ gecikmesini azaltır.
+        self.adapter = HTTPAdapter(pool_connections=4, pool_maxsize=20)
 
     def start_drivers(self):
         countries = ['TR', 'US', 'DE', 'GB']
@@ -90,6 +48,13 @@ class SigmaAldrichAPI:
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument("--disable-blink-features=AutomationControlled")
 
+        # HIZ OPTİMİZASYONU: Resimlerin yüklenmesini engelleme.
+        # Bu ayar, Selenium'un sayfayı açarken resimleri indirmesini önler.
+        # Sayfa çok daha hızlı yüklenir ve çerezleri alıp API oturumuna geçme
+        # süresi önemli ölçüde kısalır.
+        prefs = {"profile.managed_default_content_settings.images": 2}
+        options.add_experimental_option("prefs", prefs)
+
         driver = None
         try:
             driver = webdriver.Chrome(options=options)
@@ -108,14 +73,11 @@ class SigmaAldrichAPI:
                 logging.debug(f"({country_code}) Çerez onayı butonu bulunamadı veya zaman aşımı.")
 
             session = requests.Session()
+            session.mount('https://', self.adapter)
             session.headers.update({
-                "User-Agent": ua,
-                "Accept": "*/*",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Content-Type": "application/json",
-                "x-gql-country": country_code.upper(),
-                "x-gql-language": "en",
-                "Origin": "https://www.sigmaaldrich.com",
+                "User-Agent": ua, "Accept": "*/*", "Accept-Language": "en-US,en;q=0.5",
+                "Content-Type": "application/json", "x-gql-country": country_code.upper(),
+                "x-gql-language": "en", "Origin": "https://www.sigmaaldrich.com",
                 "Referer": f"https://www.sigmaaldrich.com/{country_code.lower()}/en/search/ethanol?focus=products&page=1&perpage=30&sort=relevance&term=ethanol&type=product_group"
             })
             for cookie in driver.get_cookies():
@@ -145,7 +107,6 @@ class SigmaAldrichAPI:
         driver_items = list(self.drivers.items())
         for code, driver in driver_items:
             try:
-                # kill_drivers'da os importu eksikti, eklendi.
                 pid = driver.service.process.pid
                 if os.name == 'nt':
                     os.system(f"taskkill /F /PID {pid}")
@@ -189,7 +150,7 @@ class SigmaAldrichAPI:
             yield page_products
             current_page += 1
 
-    def _search_page(self, search_term: str, page: int, cancellation_token: threading.Event) -> Dict[str, Any]:
+    def _search_page(self, search_term: str, page: int, cancellation_token: threading.Event) -> Dict[str, Any] or None:
         if cancellation_token.is_set(): return None
         session = self.sessions.get('tr')
         if not session:
@@ -201,11 +162,10 @@ class SigmaAldrichAPI:
                      "sort": "relevance", "type": "PRODUCT"}
         payload = {"operationName": "ProductSearch", "variables": variables, "query": query}
 
-        response = make_cancellable_post_request(session, "https://www.sigmaaldrich.com/api/graphql", session.headers,
-                                                 payload, cancellation_token)
-
-        if response is None: return None
         try:
+            # HIZ OPTİMİZASYONU: Yavaş ve gereksiz 'make_cancellable_post_request' kaldırıldı.
+            response = session.post("https://www.sigmaaldrich.com/api/graphql", json=payload, timeout=20)
+            if cancellation_token.is_set(): return None
             response.raise_for_status()
             return response.json()
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
@@ -221,15 +181,16 @@ class SigmaAldrichAPI:
                 executor.submit(self._get_price_for_country, country, product_key, brand, cancellation_token): country
                 for country in self.sessions.keys()
             }
-            # Periyodik kontrol ile iptal mekanizmasını daha duyarlı hale getir
             while future_to_country:
                 if cancellation_token.is_set():
                     for f in future_to_country: f.cancel()
                     break
 
                 try:
-                    # Zaman aşımı 0.5 saniyeden 3 saniyeye çıkarıldı.
-                    done_iterator = as_completed(future_to_country, timeout=3)
+                    # HIZ OPTİMİZASYONU: Daha duyarlı iptal mekanizması.
+                    # Timeout 3 saniyeden 0.2 saniyeye düşürüldü. Bu, iptal komutunun
+                    # en fazla 0.2 saniye içinde fark edilmesini sağlar.
+                    done_iterator = as_completed(future_to_country, timeout=0.2)
 
                     for future in done_iterator:
                         country_code = future_to_country.pop(future)
@@ -241,16 +202,13 @@ class SigmaAldrichAPI:
                             if not cancellation_token.is_set():
                                 logging.error(f"Fiyat alınırken hata oluştu ({country_code.upper()}): {exc}")
                             results[country_code] = []
-
                 except FuturesTimeoutError:
-                    # Bu hata beklenen bir durumdur. Hiçbir görev 3 saniyede bitmediğinde tetiklenir.
-                    # Sadece döngüye devam et, bu sayede iptal flag'i tekrar kontrol edilebilir.
+                    # Bu zaman aşımı beklenen bir durumdur, iptal flag'ini kontrol etmek için döngüye devam edilir.
                     continue
-
         return results
 
     def _get_price_for_country(self, country_code: str, product_key: str, brand: str,
-                               cancellation_token: threading.Event) -> List[Dict[str, Any]]:
+                               cancellation_token: threading.Event) -> List[Dict[str, Any]] or None:
         if cancellation_token.is_set(): return None
         session = self.sessions.get(country_code.lower())
         if not session:
@@ -261,40 +219,31 @@ class SigmaAldrichAPI:
         query = "query PricingAndAvailability($productNumber: String!, $brand: String, $quantity: Int!, $productKey: String) { getPricingForProduct(input: {productNumber: $productNumber, brand: $brand, quantity: $quantity, productKey: $productKey}) { materialPricing { listPrice currency materialNumber availabilities { date key messageType } } } }"
         payload = {"operationName": "PricingAndAvailability", "variables": variables, "query": query}
 
-        response = make_cancellable_post_request(session,
-                                                 "https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",
-                                                 session.headers, payload, cancellation_token)
-
-        if response is None: return []
         try:
+            # HIZ OPTİMİZASYONU: Doğrudan ağ isteği.
+            response = session.post("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",
+                                    json=payload, timeout=20)
+            if cancellation_token.is_set(): return None
             response.raise_for_status()
             result = response.json()
 
-            if "errors" in result or not result.get('data'):
-                return []
+            if "errors" in result or not result.get('data'): return []
 
             material_pricing = result.get('data', {}).get('getPricingForProduct', {}).get('materialPricing', [])
             variations = []
-            if material_pricing:
-                for price_info in material_pricing:
-                    availability_date = None
-                    if price_info.get('availabilities'):
-                        # Daha güvenli bir 'next' kullanımı
-                        avail = next((a for a in price_info['availabilities'] if a.get('messageType') == 'primary'),
-                                     None)
-                        if not avail and price_info['availabilities']:
-                            avail = price_info['availabilities'][0]
+            for price_info in material_pricing:
+                availability_date = None
+                if avails := price_info.get('availabilities'):
+                    avail = next((a for a in avails if a.get('messageType') == 'primary'), avails[0])
+                    if avail_date := avail.get('date'):
+                        availability_date = datetime.fromtimestamp(avail_date / 1000).strftime('%Y-%m-%d')
 
-                        if avail and avail.get('date'):
-                            availability_date = datetime.fromtimestamp(avail['date'] / 1000).strftime('%Y-%m-%d')
-
-                    variations.append({
-                        "material_number": price_info.get('materialNumber'), "price": price_info.get('listPrice'),
-                        "currency": price_info.get('currency'), "availability_date": availability_date
-                    })
+                variations.append({
+                    "material_number": price_info.get('materialNumber'), "price": price_info.get('listPrice'),
+                    "currency": price_info.get('currency'), "availability_date": availability_date
+                })
             return variations
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
             if not cancellation_token.is_set():
                 logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
             return []
-

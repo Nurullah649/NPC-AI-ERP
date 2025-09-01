@@ -1,4 +1,4 @@
-# Gerekli Kütüphaneler: selenium, requests, mysql-connector-python, openpyxl, python-dotenv
+# Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz
 import sys
 import os
 import time
@@ -8,28 +8,30 @@ import logging
 import re
 import threading
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, as_completed
 from typing import Dict, Any, List
 from pathlib import Path
 import openpyxl
 from dotenv import load_dotenv
-from thefuzz import fuzz  # <-- YENİ İMPORT
+from thefuzz import fuzz
 import io
-from src import sigma,netflex,tci
+
+# Optimize edilmiş modülleri import et
+from src import sigma, netflex, tci
+
 # --- BAŞLANGIÇTA KODLAMAYI AYARLA ---
-# Windows'ta terminal karakter sorunlarını önlemek için stdout ve stderr'i UTF-8'e zorla
 if sys.platform == "win32":
     if sys.stdout.encoding != 'utf-8':
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     if sys.stderr.encoding != 'utf-8':
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
+
 # --- PAKETLEME İÇİN DOSYA YOLU FONKSİYONU ---
 def get_resource_path(relative_path: str) -> str:
-    """ Geliştirme ve PyInstaller (.exe) ortamlarında doğru dosya yolunu döndürür. """
     try:
         base_path = sys._MEIPASS
-    except Exception:
+    except AttributeError:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
@@ -40,96 +42,53 @@ logging.basicConfig(
     format='%(asctime)s - [%(levelname)s] - (%(threadName)s) - %(message)s',
     stream=sys.stderr
 )
-logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("selenium").setLevel(logging.WARNING)
 
-# --- MYSQL BAĞLANTI BİLGİLERİ ---
-db_config = {
-    'host': '192.168.19.130',
-    'user': 'ezgi',
-    'password': '13467928aT.',
-    'database': 'interlab_data'
-}
-
 
 def send_to_frontend(message_type: str, data: Any):
-    """
-    Hazırlanan mesajı JSON formatında stdout'a yazdırır.
-    Uygulama kapatıldığında oluşabilecek 'BrokenPipeError' veya 'OSError' gibi
-    hataları yakalayarak programın çökmesini engeller.
-    """
     try:
         message = json.dumps({"type": message_type, "data": data})
-        print(message)
-        sys.stdout.flush()
-    except TypeError as e:
-        logging.error(f"JSON serileştirme hatası: {e} - Veri: {data}")
-    except (OSError, BrokenPipeError):
-        pass
+        print(message, flush=True)
+    except (TypeError, OSError, BrokenPipeError) as e:
+        logging.error(f"Frontend'e mesaj gönderilemedi: {e}")
 
 
 def export_to_excel(data: Dict[str, Any]):
-    """ Excel'e ürün listesini aktarır. """
     customer_name = data.get("customerName", "Bilinmeyen_Musteri")
     products = data.get("products", [])
     safe_customer_name = re.sub(r'[\\/*?:"<>|]', "", customer_name)
-
     desktop_path = Path.home() / "Desktop"
     desktop_path.mkdir(exist_ok=True)
-    filename = f"{safe_customer_name}_urun_listesi_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.xlsx"
+    filename = f"{safe_customer_name}_urun_listesi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     filepath = desktop_path / filename
-
     try:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Ürün Listesi"
-
         headers = ["Ürün Adı", "Ürün Kodu", "Fiyat", "Stok Durumu (Netflex)"]
         sheet.append(headers)
-        for cell in sheet["1:1"]:
-            cell.font = openpyxl.styles.Font(bold=True)
-
+        for cell in sheet["1:1"]: cell.font = openpyxl.styles.Font(bold=True)
         for product in products:
             row = [
-                product.get("product_name", "N/A"),
-                product.get("product_code", "N/A"),
-                product.get("price_str", "N/A"),
-                product.get("cheapest_netflex_stock", "N/A")
+                product.get("product_name", "N/A"), product.get("product_code", "N/A"),
+                product.get("price_str", "N/A"), product.get("cheapest_netflex_stock", "N/A")
             ]
             sheet.append(row)
-
         for col in sheet.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(cell.value)
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            sheet.column_dimensions[column].width = adjusted_width
-
+            max_length = max(len(str(cell.value)) for cell in col if cell.value)
+            sheet.column_dimensions[col[0].column_letter].width = max_length + 2
         workbook.save(filepath)
-        logging.info(f"Excel dosyası başarıyla oluşturuldu: {filepath}")
+        logging.info(f"Excel dosyası oluşturuldu: {filepath}")
         return {"status": "success", "path": str(filepath)}
     except Exception as e:
         logging.error(f"Excel dosyası oluşturulurken hata: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
-def search_in_database(search_term: str) -> Dict[str, Any]:
-    return None
-
-
-def save_to_database(results_data: List[Dict[str, Any]]):
-    pass
-
-
 class ComparisonEngine:
-    def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI,
-                 tci_api: tci.TciScraper, max_workers=10):
+    def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI, tci_api: tci.TciScraper,
+                 max_workers=10):
         self.sigma_api = sigma_api
         self.netflex_api = netflex_api
         self.tci_api = tci_api
@@ -137,287 +96,166 @@ class ComparisonEngine:
         self.search_cancelled = threading.Event()
 
     def _clean_html(self, raw_html: str) -> str:
-        if not raw_html: return ""
-        return re.sub(re.compile('<.*?>'), '', raw_html)
+        return re.sub(re.compile('<.*?>'), '', raw_html) if raw_html else ""
 
     def _are_names_similar(self, name1: str, name2: str, avg_threshold: int = 50) -> bool:
-        """
-        İki ürün isminin benzerliğini gelişmiş 'thefuzz' algoritmalarıyla kontrol eder.
-        Kural 1: Eğer bir isim diğerinin içinde birebir geçiyorsa (partial_ratio == 100), direkt kabul et.
-        Kural 2: Eğer Kural 1 sağlanmıyorsa, 4 farklı algoritmanın ortalama skorunun
-                 belirlenen eşik değerinden (avg_threshold) yüksek olup olmadığını kontrol et.
-        """
-        if not name1 or not name2:
-            return False
+        if not name1 or not name2: return False
+        n1, n2 = name1.lower(), name2.lower()
+        if fuzz.partial_ratio(n1, n2) == 100: return True
+        scores = [fuzz.ratio(n1, n2), fuzz.token_sort_ratio(n1, n2), fuzz.token_set_ratio(n1, n2)]
+        return (sum(scores) / len(scores)) > avg_threshold
 
-        n1_lower = name1.lower()
-        n2_lower = name2.lower()
+    def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any] or None:
+        if self.search_cancelled.is_set(): return None
+        s_name, s_num, s_brand, s_key, cas = (
+            sigma_product.get('product_name_sigma'), sigma_product.get('product_number'),
+            sigma_product.get('brand'), sigma_product.get('product_key'), sigma_product.get('cas_number', 'N/A')
+        )
+        if not all([s_name, s_num, s_brand, s_key]): return None
 
-        # Kural 1: Birebir içinde geçme durumu (en güçlü eşleşme)
-        # "Gold nanoparticles" ifadesinin "GOLD NANOPARTICLES, 20 NM..." içinde geçmesi gibi.
-        partial_score = fuzz.partial_ratio(n1_lower, n2_lower)
-        if partial_score == 100:
-            return True
-
-        # Kural 2: Farklı algoritmaların ortalaması
-        # Zaten hesapladığımız partial_score'u da dahil edelim.
-        ratio_score = fuzz.ratio(n1_lower, n2_lower)
-        token_sort_score = fuzz.token_sort_ratio(n1_lower, n2_lower)
-        token_set_score = fuzz.token_set_ratio(n1_lower, n2_lower)
-
-        # Tüm skorların ortalamasını al
-        average_score = (partial_score + ratio_score + token_sort_score + token_set_score) / 4
-
-        # Ortalamanın eşik değerini geçip geçmediğini kontrol et
-        return average_score > avg_threshold
-
-
-    def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
-        """ Sigma ürününü işler ve Netflex ile karşılaştırır. """
+        sigma_variations = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key, self.search_cancelled)
         if self.search_cancelled.is_set(): return None
 
-        sigma_p_name = sigma_product.get('product_name_sigma')
-        sigma_p_num = sigma_product.get('product_number')
-        sigma_brand = sigma_product.get('brand')
-        sigma_p_key = sigma_product.get('product_key')
-        cas_number = sigma_product.get('cas_number', 'N/A')
+        cleaned_sigma_name = self._clean_html(s_name)
 
-        if not all([sigma_p_name, sigma_p_num, sigma_brand, sigma_p_key]): return None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_by_name = executor.submit(self.netflex_api.search_products, cleaned_sigma_name,
+                                             self.search_cancelled)
+            future_by_code = executor.submit(self.netflex_api.search_products, s_num, self.search_cancelled)
+            netflex_by_name = future_by_name.result() or []
+            netflex_by_code = future_by_code.result() or []
 
-        sigma_variations_by_country = self.sigma_api.get_all_product_prices(sigma_p_num, sigma_brand, sigma_p_key,
-                                                                            self.search_cancelled)
         if self.search_cancelled.is_set(): return None
 
-        cleaned_sigma_name = self._clean_html(sigma_p_name)
-        netflex_matches_by_name = self.netflex_api.search_products(cleaned_sigma_name, self.search_cancelled)
-        if self.search_cancelled.is_set(): return None
-        netflex_matches_by_code = self.netflex_api.search_products(sigma_p_num, self.search_cancelled)
-        if self.search_cancelled.is_set(): return None
+        all_matches = {p['product_code']: p for p in netflex_by_name if p.get('product_code')}
+        all_matches.update({p['product_code']: p for p in netflex_by_code if p.get('product_code')})
 
-        all_netflex_matches_dict = {p['product_code']: p for p in netflex_matches_by_name if p.get('product_code')}
-        for p in netflex_matches_by_code:
-            if p.get('product_code') and p['product_code'] not in all_netflex_matches_dict:
-                all_netflex_matches_dict[p['product_code']] = p
+        filtered_matches = [
+            p for p in all_matches.values()
+            if self._are_names_similar(cleaned_sigma_name, p.get('product_name', '')) and s_num in p.get('product_code',
+                                                                                                         '')
+        ]
 
-        all_netflex_matches = list(all_netflex_matches_dict.values())
-        filtered_netflex_matches = []
-        for p in all_netflex_matches:
-            netflex_name = p.get('product_name', '')
-            netflex_code = p.get('product_code', '')
-            name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name) # <-- Yeni metod burada kullanılıyor
-            code_contains = sigma_p_num in netflex_code
-            if name_similar and code_contains:
-                if p.get('price_numeric') == float('inf'): p['price_numeric'] = None
-                filtered_netflex_matches.append(p)
+        for match in filtered_matches:
+            if match.get('price_numeric') == float('inf'):
+                match['price_numeric'] = None
 
-        cheapest_netflex_name = "Bulunamadı"
-        cheapest_netflex_price_str = "N/A"
-        cheapest_netflex_stock = "N/A"
-        netflex_with_prices = [p for p in filtered_netflex_matches if p.get('price_numeric') is not None]
-        if netflex_with_prices:
-            cheapest_product = min(netflex_with_prices, key=lambda x: x['price_numeric'])
-            cheapest_netflex_name = cheapest_product.get('product_name', 'İsimsiz')
-            cheapest_netflex_price_str = cheapest_product.get('price_str', 'Fiyat Yok')
-            cheapest_netflex_stock = cheapest_product.get('stock', 'N/A')
+        cheapest_name, cheapest_price, cheapest_stock = "Bulunamadı", "N/A", "N/A"
+        if priced_matches := [p for p in filtered_matches if p.get('price_numeric') is not None]:
+            cheapest = min(priced_matches, key=lambda x: x['price_numeric'])
+            cheapest_name, cheapest_price, cheapest_stock = (
+                cheapest.get('product_name'), cheapest.get('price_str'), cheapest.get('stock')
+            )
 
         return {
-            "product_name": sigma_p_name, "product_number": sigma_p_num, "cas_number": cas_number,
-            "brand": f"Sigma ({sigma_brand})", "sigma_variations": sigma_variations_by_country,
-            "netflex_matches": filtered_netflex_matches, "cheapest_netflex_name": cheapest_netflex_name,
-            "cheapest_netflex_price_str": cheapest_netflex_price_str, "cheapest_netflex_stock": cheapest_netflex_stock
+            "product_name": s_name, "product_number": s_num, "cas_number": cas, "brand": f"Sigma ({s_brand})",
+            "sigma_variations": sigma_variations, "netflex_matches": filtered_matches,
+            "cheapest_netflex_name": cheapest_name, "cheapest_netflex_price_str": cheapest_price,
+            "cheapest_netflex_stock": cheapest_stock
         }
 
     def _process_tci_product(self, tci_product: tci.Product) -> Dict[str, Any]:
-        """ TCI ürününü işler, en ucuz çarpılmış fiyatı bulur ve arayüze uygun formata getirir. """
-        processed_variations = []
-        min_calculated_price = float('inf')
-        cheapest_calculated_price_str = "N/A"
-
-        for variation in tci_product.variations:
-            original_price_str = variation.get('price', 'N/A')
-            calculated_price_str = "N/A"
-            calculated_price_float = None
-
+        processed_vars, min_price, cheapest_price_str = [], float('inf'), "N/A"
+        for var in tci_product.variations:
+            price_str, calc_price_str, calc_price_float = var.get('price', 'N/A'), "N/A", None
             try:
-                price_str_cleaned = re.sub(r'[^\d,.]', '', original_price_str)
-                price_standardized = ""
-                last_comma = price_str_cleaned.rfind(',')
-                last_dot = price_str_cleaned.rfind('.')
-
-                if last_comma > last_dot:
-                    price_standardized = price_str_cleaned.replace('.', '').replace(',', '.')
-                elif last_dot > last_comma:
-                    price_standardized = price_str_cleaned.replace(',', '')
-                else:
-                    price_standardized = price_str_cleaned.replace(',', '.')
-
-                if price_standardized:
-                    price_float = float(price_standardized)
-                    calculated_price = price_float * 1.4
-                    calculated_price_float = calculated_price
-                    calculated_price_str = f"€{calculated_price:,.2f}".replace(",", "X").replace(".", ",").replace("X",
-                                                                                                                   ".")
-            except (ValueError, TypeError) as e:
-                logging.warning(f"TCI fiyatı parse edilemedi: '{original_price_str}'. Hata: {e}")
-
-            processed_variations.append({
-                "unit": variation.get('unit'),
-                "original_price": original_price_str,
-                "calculated_price": calculated_price_str
-            })
-
-            if calculated_price_float is not None and calculated_price_float < min_calculated_price:
-                min_calculated_price = calculated_price_float
-                cheapest_calculated_price_str = calculated_price_str
-
+                price_cleaned = re.sub(r'[^\d,.]', '', price_str).replace('.', '').replace(',', '.')
+                price_float = float(price_cleaned) * 1.4
+                calc_price_float = price_float
+                calc_price_str = f"€{price_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            except (ValueError, TypeError):
+                pass
+            processed_vars.append(
+                {"unit": var.get('unit'), "original_price": price_str, "calculated_price": calc_price_str})
+            if calc_price_float is not None and calc_price_float < min_price:
+                min_price, cheapest_price_str = calc_price_float, calc_price_str
         return {
-            "product_name": tci_product.name, "product_number": tci_product.code,
-            "cas_number": tci_product.cas_number, "brand": "TCI", "sigma_variations": {},
-            "netflex_matches": [], "cheapest_netflex_price_str": cheapest_calculated_price_str,
-            "cheapest_netflex_stock": "-", "tci_variations": processed_variations
+            "product_name": tci_product.name, "product_number": tci_product.code, "cas_number": tci_product.cas_number,
+            "brand": "TCI", "sigma_variations": {}, "netflex_matches": [],
+            "cheapest_netflex_price_str": cheapest_price_str, "cheapest_netflex_stock": "-",
+            "tci_variations": processed_vars
         }
 
-    def search_and_compare(self, search_term: str):
-        """ Sigma/Netflex ve TCI aramalarını paralel olarak başlatır ve sonuçları arayüze gönderir. """
+    def search_and_compare(self, search_term: str, driver_init_events: Dict[str, threading.Event]):
         self.search_cancelled.clear()
         start_time = time.monotonic()
         logging.info(f"===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '{search_term}' =====")
 
-        def _search_sigma_and_netflex():
-            """
-            Sigma'dan ürünleri sayfa sayfa çeker, her sayfayı anında işler ve
-            sonuçları arayüze gönderir. Bu, kullanıcı deneyimini iyileştirir.
-            """
+        for source, event in driver_init_events.items():
+            if not event.is_set():
+                logging.info(f"'{source}' tarayıcısının hazır olması bekleniyor...")
+                event.wait()
+                logging.info(f"'{source}' tarayıcısı hazır.")
+
+        def _search_and_process(source_name: str, search_func, process_func):
+            logging.info(f"'{source_name}' arama ve işleme görevi başladı.")
             if self.search_cancelled.is_set(): return 0
-            if not self.sigma_api.drivers:
-                logging.warning("Sigma Selenium Driver(lar) aktif değil. Sigma araması atlanıyor.")
-                return 0
-
             found_count = 0
-            product_pages_generator = self.sigma_api.search_products(search_term, self.search_cancelled)
-
-            for product_page in product_pages_generator:
-                if self.search_cancelled.is_set():
-                    logging.info("Arama iptal edildi, Sigma sayfa işleme durduruluyor.")
-                    break
-
-                with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="Sigma-Processor") as executor:
-                    future_to_product = {executor.submit(self._process_sigma_product, p): p for p in product_page}
-
-                    while future_to_product:
-                        if self.search_cancelled.is_set():
-                            for f in future_to_product: f.cancel()
-                            break
-
-                        done, not_done = wait(future_to_product, timeout=1.0, return_when=FIRST_COMPLETED)
-
-                        for future in done:
-                            try:
-                                result = future.result()
-                                if result:
-                                    found_count += 1
-                                    if not self.search_cancelled.is_set():
-                                        send_to_frontend("product_found", result)
-                            except Exception as exc:
-                                if not self.search_cancelled.is_set():
-                                    p_name = future_to_product[future].get('product_name_sigma', 'Bilinmeyen')
-                                    logging.error(f"Sigma ürünü '{p_name}' işlenirken hata: {exc}", exc_info=True)
-                            del future_to_product[future]
-            return found_count
-
-        def _search_tci():
-            """
-            TCI'dan ürünleri sayfa sayfa çeker ve sonuçları anında işleyip arayüze gönderir.
-            """
-            if self.search_cancelled.is_set(): return 0
-            if not self.tci_api.driver:
-                logging.warning("TCI Selenium Driver aktif değil. TCI araması atlanıyor.")
-                return 0
-
-            found_count = 0
-            product_pages_generator = self.tci_api.get_products(search_term, self.search_cancelled)
-
-            for product_page in product_pages_generator:
-                if self.search_cancelled.is_set():
-                    logging.info("Arama iptal edildi, TCI sayfa işleme durduruluyor.")
-                    break
-
-                for product in product_page:
+            pages_yielded = 0
+            try:
+                product_pages_gen = search_func(search_term, self.search_cancelled)
+                for product_page in product_pages_gen:
+                    pages_yielded += 1
                     if self.search_cancelled.is_set(): break
-                    try:
-                        processed_product = self._process_tci_product(product)
-                        if not self.search_cancelled.is_set():
-                            send_to_frontend("product_found", processed_product)
-                        found_count += 1
-                    except Exception as e:
-                        if not self.search_cancelled.is_set():
-                            logging.error(f"TCI ürünü '{product.name}' işlenirken hata: {e}", exc_info=True)
+                    with ThreadPoolExecutor(max_workers=self.max_workers,
+                                            thread_name_prefix=f"{source_name}-Processor") as executor:
+                        futures = {executor.submit(process_func, p) for p in product_page}
+                        for future in as_completed(futures):
+                            if self.search_cancelled.is_set(): break
+                            if result := future.result():
+                                send_to_frontend("product_found", result)
+                                found_count += 1
+            except Exception as e:
+                if not self.search_cancelled.is_set():
+                    logging.error(f"{source_name} araması sırasında hata: {e}", exc_info=True)
+
+            # HATA TESPİTİ: Eğer ürün bulunduğu loglandığı halde hiç ürün sayfası işlenmediyse, bir uyarı ver.
+            if pages_yielded == 0 and not self.search_cancelled.is_set():
+                logging.warning(
+                    f"'{source_name}' arama fonksiyonu hiç ürün sayfası döndürmedi (yield). Bu durum, kaynak sitede ürün bulunamadığında normal olabilir, ancak loglarda ürün bulunduğu belirtiliyorsa scraper'da (örn: tci.py) bir sorun olabilir.")
+
+            logging.info(f"'{source_name}' arama ve işleme görevi bitti. Bulunan: {found_count}")
             return found_count
 
         total_found = 0
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Search-Source") as executor:
-            future_tasks = {
-                executor.submit(_search_sigma_and_netflex),
-                executor.submit(_search_tci)
+            tasks = {
+                executor.submit(_search_and_process, "Sigma", self.sigma_api.search_products,
+                                self._process_sigma_product),
+                executor.submit(_search_and_process, "TCI", self.tci_api.get_products, self._process_tci_product)
             }
-            while future_tasks:
-                if self.search_cancelled.is_set():
-                    break
-
-                done, future_tasks = wait(future_tasks, timeout=1.0, return_when=FIRST_COMPLETED)
-
-                for future in done:
-                    try:
-                        total_found += future.result()
-                    except Exception as e:
-                        if not self.search_cancelled.is_set():
-                            logging.error(f"Arama görevi çalıştırılırken hata oluştu: {e}", exc_info=True)
+            for future in as_completed(tasks):
+                total_found += future.result()
 
         elapsed_time = time.monotonic() - start_time
-        status_message = "cancelled" if self.search_cancelled.is_set() else "complete"
         if not self.search_cancelled.is_set():
-            send_to_frontend("complete", {"status": status_message, "total_found": total_found,
+            send_to_frontend("complete", {"status": "complete", "total_found": total_found,
                                           "execution_time": round(elapsed_time, 2)})
 
     def force_cancel(self):
-        """Arama iptal event'ini ayarlar ve tüm webdriver işlemlerini zorla sonlandırır."""
         if not self.search_cancelled.is_set():
             logging.info("Zorunlu iptal talebi alındı. Tüm sürücüler sonlandırılıyor.")
             self.search_cancelled.set()
-            # İptal durumunda 'complete' mesajı göndererek arayüzü bilgilendir
             send_to_frontend("complete", {"status": "cancelled", "total_found": 0, "execution_time": 0})
-            try:
-                self.sigma_api.kill_drivers()
-            except Exception as e:
-                logging.error(f"Sigma sürücülerini sonlandırırken hata: {e}")
-            try:
-                self.tci_api.kill_driver()
-            except Exception as e:
-                logging.error(f"TCI sürücüsünü sonlandırırken hata: {e}")
+            with ThreadPoolExecutor(max_workers=2) as killer:
+                killer.submit(self.sigma_api.kill_drivers)
+                killer.submit(self.tci_api.kill_driver)
             logging.info("Tüm sürücü sonlandırma komutları gönderildi.")
 
 
 def main():
-    logging.info("========================================")
-    logging.info("      Python Arka Plan Servisi Başlatıldı")
-    logging.info("========================================")
-
-    sigma_api = None
-    netflex_api = None
-    tci_api = None
-    comparison_engine = None
+    logging.info("=" * 40 + "\n      Python Arka Plan Servisi Başlatıldı\n" + "=" * 40)
     try:
-        logging.info("Uygulama oturumları başlatılıyor...")
         env_path = get_resource_path("config/.env")
         load_dotenv(dotenv_path=env_path)
-        netflex_user = os.getenv("KULLANICI")
-        netflex_pass = os.getenv("SIFRE")
+        netflex_user, netflex_pass = os.getenv("KULLANICI"), os.getenv("SIFRE")
+
         netflex_api = netflex.NetflexAPI(username=netflex_user, password=netflex_pass)
         sigma_api = sigma.SigmaAldrichAPI()
         tci_api = tci.TciScraper()
-        comparison_engine = ComparisonEngine(sigma_api, netflex_api, tci_api)
-        netflex_token = netflex_api.get_token()
-        if not netflex_token:
+        engine = ComparisonEngine(sigma_api, netflex_api, tci_api)
+
+        if not netflex_api.get_token():
             logging.error("KRİTİK: Netflex oturumu başlatılamadı.")
         else:
             logging.info("Netflex oturumu başarıyla başlatıldı.")
@@ -425,58 +263,65 @@ def main():
         atexit.register(sigma_api.stop_drivers)
         atexit.register(tci_api.close_driver)
 
+        driver_init_events = {"Sigma": threading.Event(), "TCI": threading.Event()}
+
+        def start_sigma():
+            sigma_api.start_drivers()
+            driver_init_events["Sigma"].set()
+
+        def start_tci():
+            tci_api.reinit_driver()
+            driver_init_events["TCI"].set()
+
+        threading.Thread(target=start_sigma, name="Sigma-Initializer", daemon=True).start()
+        threading.Thread(target=start_tci, name="TCI-Initializer", daemon=True).start()
+
+        def wait_for_services_and_signal():
+            for event in driver_init_events.values():
+                event.wait()
+            while not netflex_api.token:
+                time.sleep(0.1)
+            logging.info("Tüm servisler (Sigma, TCI, Netflex) hazır. Arayüze sinyal gönderiliyor.")
+            send_to_frontend("services_ready", True)
+
+        threading.Thread(target=wait_for_services_and_signal, name="Service-Ready-Waiter", daemon=True).start()
+        logging.info("Servis başlatma işlemleri tetiklendi. Hazır olmaları bekleniyor...")
+
     except Exception as e:
         logging.critical(f"Oturumlar başlatılırken kritik hata: {e}", exc_info=True)
-        if sigma_api: atexit.register(sigma_api.stop_drivers)
-        if tci_api: atexit.register(tci_api.close_driver)
-
-    send_to_frontend("services_ready", True)
-    logging.info("Servis hazır. Arayüzden komutlar bekleniyor...")
+        send_to_frontend("error", "Kritik başlatma hatası, servisler aktif değil.")
+        return
 
     search_thread = None
     for line in sys.stdin:
-        line = line.strip()
-        if not line: continue
         try:
-            request = json.loads(line)
-            action = request.get("action")
-            data = request.get("data")
+            request = json.loads(line.strip())
+            action, data = request.get("action"), request.get("data")
 
-            if action == "search":
-                search_term = data
-                if not search_term: continue
-                if not comparison_engine:
-                    send_to_frontend("error", "Arama motoru başlatılamadı.")
-                    continue
-
-                # Önceki arama thread'i hala çalışıyorsa, yeni bir tane başlatma
+            if action == "search" and data:
                 if search_thread and search_thread.is_alive():
-                    logging.warning("Devam eden bir arama varken yeni arama isteği geldi. Önceki iptal ediliyor.")
-                    comparison_engine.force_cancel()
-                    search_thread.join(timeout=2.0)  # Eski thread'in bitmesini bekle
+                    logging.warning("Önceki arama iptal ediliyor...")
+                    engine.force_cancel()
+                    search_thread.join(5.0)
 
-                if not sigma_api.drivers: sigma_api.start_drivers()
-                if not tci_api.driver: tci_api.reinit_driver()
-
-                search_thread = threading.Thread(target=comparison_engine.search_and_compare, args=(search_term,),
+                search_thread = threading.Thread(target=engine.search_and_compare, args=(data, driver_init_events),
                                                  name="Search-Coordinator")
                 search_thread.start()
 
             elif action == "cancel_search":
-                if comparison_engine:
-                    logging.info("Arayüzden arama iptal talebi alındı.")
-                    comparison_engine.force_cancel()
+                logging.info("Arayüzden arama iptal talebi alındı.")
+                engine.force_cancel()
 
             elif action == "export":
-                result = export_to_excel(data)
-                send_to_frontend("export_result", result)
+                send_to_frontend("export_result", export_to_excel(data))
 
         except json.JSONDecodeError:
-            logging.error(f"Geçersiz JSON formatı alındı: {line}")
+            logging.error(f"Geçersiz JSON formatı: {line}")
         except Exception as e:
             logging.critical(f"Ana döngüde beklenmedik hata: {e}", exc_info=True)
-            send_to_frontend("error", f"Beklenmedik bir sunucu hatası oluştu: {str(e)}")
+            send_to_frontend("error", f"Beklenmedik bir sunucu hatası: {str(e)}")
 
 
 if __name__ == '__main__':
     main()
+

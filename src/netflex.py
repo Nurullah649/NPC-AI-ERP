@@ -4,71 +4,10 @@ import json
 import logging
 import threading
 from typing import Dict, Any, List
-from queue import Queue, Empty
 
 import requests
 from requests.adapters import HTTPAdapter
 import os
-
-
-def make_cancellable_request(session, url, headers, cancel_event: threading.Event):
-    """
-    Bir `requests` GET isteğini kendi thread'inde çalıştırarak iptal edilebilir hale getirir.
-    Ana thread'i bloklamaz ve periyodik olarak iptal sinyalini kontrol eder.
-
-    Args:
-        session: Kullanılacak requests.Session objesi.
-        url: İstek atılacak URL.
-        headers: İstek için kullanılacak başlıklar.
-        cancel_event: İptal durumunu kontrol etmek için threading.Event.
-
-    Returns:
-        İstek başarılı olursa response objesi, iptal edilirse veya hata olursa None.
-    """
-    result_queue = Queue()
-
-    def request_worker():
-        """Ağ isteğini yapan ve sonucu kuyruğa koyan işçi fonksiyonu."""
-        try:
-            # Gerçek ağ isteği burada yapılır. Timeout hala bir güvenlik ağı olarak kalabilir.
-            response = session.get(url, headers=headers, timeout=20)
-            result_queue.put(response)
-        except Exception as e:
-            result_queue.put(e)
-
-    # İşçi thread'ini başlat
-    worker_thread = threading.Thread(target=request_worker)
-    worker_thread.daemon = True
-    worker_thread.start()
-
-    # İşçi thread'i çalışırken, sonucu periyodik olarak kontrol et
-    while worker_thread.is_alive():
-        # Dışarıdan bir iptal sinyali gelip gelmediğini kontrol et
-        if cancel_event.is_set():
-            logging.info(f"Ağ isteği ({url[:50]}...) dış sinyal ile iptal edildi.")
-            return None
-
-        try:
-            # Kısa bir süre sonucu beklemeye çalış. Bu, döngünün sürekli CPU kullanmasını engeller.
-            # Ve ana thread'i uzun süre bloklamaz.
-            result = result_queue.get(timeout=0.1)
-
-            # Sonuç bir istisna ise, onu logla ve None dön
-            if isinstance(result, Exception):
-                if not cancel_event.is_set():
-                    if isinstance(result, requests.exceptions.Timeout):
-                        logging.warning(f"Netflex ağ isteği zaman aşımına uğradı.")
-                    else:
-                        logging.error(f"Netflex ağ isteğinde hata: {result}")
-                return None
-
-            # Başarılı sonuç geldiyse, response'u dön
-            return result
-        except Empty:
-            # Kuyruk boşsa (işçi hala çalışıyor), döngüye devam et
-            continue
-
-    return None
 
 
 class NetflexAPI:
@@ -83,6 +22,10 @@ class NetflexAPI:
 
         self.credentials = {"adi": username, "sifre": password}
         self.session = requests.Session()
+        # HIZ OPTİMİZASYONU: Bağlantı Havuzu (Connection Pooling)
+        # Bu adaptör, Netflex sunucusuna yapılan istekler için kurulan ağ bağlantılarının
+        # yeniden kullanılmasını sağlar. Bu, her istek için zaman alan TCP el sıkışma
+        # sürecini ortadan kaldırır ve veri alımını önemli ölçüde hızlandırır.
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
         self.session.mount('https://', adapter)
         self.token = None
@@ -95,6 +38,7 @@ class NetflexAPI:
         Thread-safe (aynı anda birden fazla iş parçacığı tarafından güvenle çağrılabilir).
         """
         with self.token_lock:
+            # Token geçerliyse (yaklaşık 1 saat), yenisini istemeden mevcut olanı döndür.
             if self.token and (time.time() - self.token_last_updated < 3540):
                 return self.token
 
@@ -102,8 +46,9 @@ class NetflexAPI:
             login_url = "https://netflex-api.interlab.com.tr/Users/authenticate/"
             headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
             try:
+                # Timeout, isteğin sunucuda takılı kalması durumunda programın beklemesini engeller.
                 response = self.session.post(login_url, headers=headers, json=self.credentials, timeout=20)
-                response.raise_for_status()
+                response.raise_for_status()  # HTTP 4xx veya 5xx hatası varsa istisna fırlat.
                 token_data = response.json()
                 if token_data and 'accessToken' in token_data:
                     self.token = token_data['accessToken']
@@ -132,25 +77,25 @@ class NetflexAPI:
         headers = {'Authorization': f'Bearer {token}', 'User-Agent': 'Mozilla/5.0'}
 
         try:
-            # Artık bloklayıcı olmayan, iptal edilebilir isteği kullan
-            response = make_cancellable_request(self.session, search_url, headers, cancel_event)
+            # HIZ OPTİMİZASYONU: Doğrudan Ağ İsteği
+            # Her istek için yeni bir thread oluşturan karmaşık ve yavaş 'make_cancellable_request'
+            # fonksiyonu kaldırıldı. İstek artık doğrudan, en az gecikmeyle gönderiliyor.
+            # Bu, istemci tarafındaki bekleme süresini sıfıra indirerek veriye en hızlı erişimi sağlar.
+            response = self.session.get(search_url, headers=headers, timeout=20)
 
-            # İstek iptal edildiyse veya başarısız olduysa, response None olacaktır
-            if response is None:
-                if not cancel_event.is_set():
-                    logging.error(f"Netflex Arama ('{search_term}') isteği başarısız oldu veya zaman aşımına uğradı.")
-                return []
-
-            response.raise_for_status()
+            # Ağ isteği yapıldıktan sonra iptal durumu tekrar kontrol edilir.
             if cancel_event.is_set(): return []
 
+            response.raise_for_status()
             products = response.json()
-            found_products = []
+
             if not isinstance(products, list):
                 logging.warning(f"Netflex: Beklenen ürün listesi gelmedi. Gelen yanıt: {products}")
                 return []
 
+            found_products = []
             for product in products:
+                # Yanıt işlenirken iptal durumu kontrol edilerek gereksiz işlem yapılması önlenir.
                 if cancel_event.is_set():
                     logging.info("Netflex araması ürün işlenirken iptal edildi.")
                     break
@@ -178,9 +123,6 @@ class NetflexAPI:
                     "stock": stock_info
                 })
 
-            if cancel_event.is_set():
-                return []
-
             return found_products
 
         except requests.exceptions.RequestException as e:
@@ -189,8 +131,7 @@ class NetflexAPI:
         except json.JSONDecodeError as e:
             if not cancel_event.is_set():
                 logging.error(f"Netflex Arama HATA ('{search_term}'): Yanıt JSON olarak ayrıştırılamadı - {e}")
-                response_text = response.text if 'response' in locals() and hasattr(response,
-                                                                                    'text') else 'Yanıt alınamadı'
+                response_text = response.text if 'response' in locals() else 'Yanıt alınamadı'
                 logging.error(f"Hatalı yanıt içeriği: {response_text[:500]}...")
 
         return []

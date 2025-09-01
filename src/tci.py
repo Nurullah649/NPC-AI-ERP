@@ -45,13 +45,23 @@ class TciScraper:
         try:
             logging.info("TCI Selenium WebDriver başlatılıyor...")
             options = webdriver.ChromeOptions()
-            # Chrome'un arka planda çalışması için headless modu aktif et
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--start-maximized")
             options.add_argument(
                 "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+            # HIZ OPTİMİZASYONU: Resimlerin ve CSS'in yüklenmesini engelleme.
+            # Bu ayarlar, tarayıcının veri çekmek için gereksiz olan resim ve stil
+            # dosyalarını indirmesini önler. Bu, sayfa yükleme süresini dramatik
+            # bir şekilde azaltarak verilere çok daha hızlı ulaşılmasını sağlar.
+            prefs = {
+                "profile.managed_default_content_settings.images": 2,
+                "profile.managed_default_content_settings.stylesheets": 2,
+            }
+            options.add_experimental_option("prefs", prefs)
+
             service = ChromeService(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=options)
             logging.info("TCI WebDriver başarıyla (yeniden) başlatıldı.")
@@ -61,8 +71,7 @@ class TciScraper:
 
     def kill_driver(self):
         """WebDriver işlemini zorla sonlandırır."""
-        if not self.driver:
-            return
+        if not self.driver: return
         logging.warning("TCI WebDriver işlemi zorla sonlandırılıyor...")
         try:
             pid = self.driver.service.process.pid
@@ -78,7 +87,7 @@ class TciScraper:
 
     def get_products(self, search_query, cancellation_token) -> Generator[List[Product], None, None]:
         """
-        Kullanıcının sağladığı eski mantıkla ürünleri çeker ancak sonuçları sayfa sayfa akıtır (yield).
+        Ürünleri çeker ve sonuçları sayfa sayfa akıtır (yield).
         """
         if not self.driver or cancellation_token.is_set():
             return
@@ -95,10 +104,9 @@ class TciScraper:
                 wait = WebDriverWait(self.driver, 15)
 
                 try:
-                    wait.until(EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "#product-basic-wrap > div.prductlist.selectProduct")))
-                    product_cards = self.driver.find_elements(By.CSS_SELECTOR,
-                                                              "#product-basic-wrap > div.prductlist.selectProduct")
+                    product_list_selector = "#product-basic-wrap > div.prductlist.selectProduct"
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, product_list_selector)))
+                    product_cards = self.driver.find_elements(By.CSS_SELECTOR, product_list_selector)
                     logging.info(f"{len(product_cards)} adet ürün kartı bulundu.")
                 except TimeoutException:
                     logging.info("Bu sayfada ürün kartı bulunamadı veya sayfa yüklenemedi.")
@@ -107,59 +115,56 @@ class TciScraper:
                 page_products = []
                 for card in product_cards:
                     if cancellation_token.is_set(): break
-
                     try:
-                        # Senin sağladığın eski veri çekme mantığı
                         name = card.find_element(By.CSS_SELECTOR, "a.name.product-title").text.strip()
                         code = card.get_attribute("data-product-code1").strip()
                         cas_number = card.get_attribute("data-casNo").strip()
-
                         variations = []
                         try:
-                            pricing_table = card.find_element(By.ID, "PricingTable")
-                            rows = pricing_table.find_elements(By.TAG_NAME, "tr")
-                            for row in rows[1:]:
+                            rows = card.find_elements(By.CSS_SELECTOR, "#PricingTable tr")
+                            for row in rows[1:]:  # Başlık satırını atla
                                 cols = row.find_elements(By.TAG_NAME, "td")
                                 if len(cols) >= 2:
                                     unit = cols[0].text.strip()
-                                    price = "Fiyat Yok"
-                                    try:
-                                        price_element = cols[1].find_element(By.CSS_SELECTOR, "div.listPriceNoStrike")
-                                        price = price_element.text.strip()
-                                    except NoSuchElementException:
-                                        price = cols[1].text.strip()
+                                    price = cols[1].text.strip().replace('\n', ' ')
                                     variations.append({'unit': unit, 'price': price})
                         except NoSuchElementException:
                             logging.warning(f"TCI ürünü '{name}' ({code}) için fiyat tablosu bulunamadı.")
 
-                        product = Product(name, code, variations, brand="TCI", cas_number=cas_number)
-                        page_products.append(product)
-
+                        page_products.append(Product(name, code, variations, brand="TCI", cas_number=cas_number))
                     except Exception as e:
                         logging.error(f"Bir TCI ürün kartı işlenirken hata oluştu: {e}", exc_info=False)
-                        continue
 
-                # Sayfadaki ürünler bittikten sonra, eğer varsa, ana programa gönder (yield)
                 if page_products:
-                    logging.info(f"{len(page_products)} ürün ana programa akıtılıyor...")
                     yield page_products
 
                 try:
-                    # Sonraki sayfa mantığı
                     next_button = self.driver.find_element(By.CSS_SELECTOR, "li.pagination-next a")
                     if next_button.is_displayed() and next_button.is_enabled():
+
+                        # HIZ OPTİMİZASYONU: Sabit bekleme yerine dinamik bekleme.
+                        # 'time.sleep(3)' kaldırıldı. Bunun yerine, butona tıkladıktan sonra
+                        # yeni sayfadaki ürün listesinin ID'sinin değişmesini bekliyoruz.
+                        # Bu, sayfa ne kadar hızlı yüklenirse programın o kadar hızlı devam etmesini
+                        # sağlar ve gereksiz beklemeyi ortadan kaldırır.
+                        current_product_list_id = self.driver.find_element(By.ID, "product-basic-wrap").id
                         self.driver.execute_script("arguments[0].click();", next_button)
+
+                        # Yeni sayfanın yüklendiğini anlamak için, eski elementin "bayatladığını" (stale) bekle.
+                        wait.until(EC.staleness_of(self.driver.find_element(By.ID, current_product_list_id)))
                         page_count += 1
-                        time.sleep(3)
                     else:
                         logging.info("TCI'da sonraki sayfa butonu tıklanabilir değil. Tarama tamamlandı.")
                         break
                 except NoSuchElementException:
                     logging.info("TCI'da sonraki sayfa butonu bulunamadı. Tarama tamamlandı.")
                     break
+                except TimeoutException:
+                    logging.info("TCI'da sonraki sayfaya geçilemedi veya sayfa zaman aşımına uğradı.")
+                    break
 
         except (WebDriverException, InvalidSessionIdException) as e:
-            logging.error(f"TCI WebDriver ile iletişim kesildi, muhtemelen sonlandırıldı: {e}")
+            logging.error(f"TCI WebDriver ile iletişim kesildi: {e}")
         except Exception as e:
             if not cancellation_token.is_set():
                 logging.error(f"TCI taraması sırasında beklenmedik bir hata oluştu: {e}", exc_info=True)
@@ -174,32 +179,3 @@ class TciScraper:
                 logging.warning("TCI WebDriver kapatılırken zaten ulaşılamaz durumdaydı.")
             finally:
                 self.driver = None
-
-# if __name__ == "__main__":
-#     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-#     scraper = TciScraper()
-
-#     try:
-#         scraper.reinit_driver()
-
-#         search_term = "Melatonin"
-
-#         cancel_token = threading.Event()
-
-#         total_products_found = 0
-#         # Jeneratörden gelen her sayfayı döngüyle al
-#         for product_page in scraper.get_products(search_term, cancel_token):
-#             if product_page:
-#                 logging.info(f"--- {len(product_page)} adet ürün işleniyor ---")
-#                 total_products_found += len(product_page)
-#                 for p in product_page:
-#                     print(p)
-
-#         logging.info(f"\n---> Toplam {total_products_found} TCI ürünü bulundu.")
-
-#     except Exception as e:
-#          logging.error(f"Program çalışırken ana bir hata oluştu: {e}", exc_info=True)
-#     finally:
-#          scraper.close_driver()
-
