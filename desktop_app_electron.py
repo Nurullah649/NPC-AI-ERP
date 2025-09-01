@@ -11,13 +11,18 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from typing import Dict, Any, List
 from pathlib import Path
-from difflib import SequenceMatcher
 import openpyxl
 from dotenv import load_dotenv
-
-# Bu kodlar sizin projenizden, o yüzden src importu çalışacaktır.
-from src import sigma, netflex, tci
-
+from thefuzz import fuzz  # <-- YENİ İMPORT
+import io
+from src import sigma,netflex,tci
+# --- BAŞLANGIÇTA KODLAMAYI AYARLA ---
+# Windows'ta terminal karakter sorunlarını önlemek için stdout ve stderr'i UTF-8'e zorla
+if sys.platform == "win32":
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # --- PAKETLEME İÇİN DOSYA YOLU FONKSİYONU ---
 def get_resource_path(relative_path: str) -> str:
@@ -135,10 +140,37 @@ class ComparisonEngine:
         if not raw_html: return ""
         return re.sub(re.compile('<.*?>'), '', raw_html)
 
-    def _are_names_similar(self, name1: str, name2: str, threshold: float = 0.4) -> bool:
-        if not name1 or not name2: return False
-        similarity = SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
-        return similarity >= threshold
+    def _are_names_similar(self, name1: str, name2: str, avg_threshold: int = 50) -> bool:
+        """
+        İki ürün isminin benzerliğini gelişmiş 'thefuzz' algoritmalarıyla kontrol eder.
+        Kural 1: Eğer bir isim diğerinin içinde birebir geçiyorsa (partial_ratio == 100), direkt kabul et.
+        Kural 2: Eğer Kural 1 sağlanmıyorsa, 4 farklı algoritmanın ortalama skorunun
+                 belirlenen eşik değerinden (avg_threshold) yüksek olup olmadığını kontrol et.
+        """
+        if not name1 or not name2:
+            return False
+
+        n1_lower = name1.lower()
+        n2_lower = name2.lower()
+
+        # Kural 1: Birebir içinde geçme durumu (en güçlü eşleşme)
+        # "Gold nanoparticles" ifadesinin "GOLD NANOPARTICLES, 20 NM..." içinde geçmesi gibi.
+        partial_score = fuzz.partial_ratio(n1_lower, n2_lower)
+        if partial_score == 100:
+            return True
+
+        # Kural 2: Farklı algoritmaların ortalaması
+        # Zaten hesapladığımız partial_score'u da dahil edelim.
+        ratio_score = fuzz.ratio(n1_lower, n2_lower)
+        token_sort_score = fuzz.token_sort_ratio(n1_lower, n2_lower)
+        token_set_score = fuzz.token_set_ratio(n1_lower, n2_lower)
+
+        # Tüm skorların ortalamasını al
+        average_score = (partial_score + ratio_score + token_sort_score + token_set_score) / 4
+
+        # Ortalamanın eşik değerini geçip geçmediğini kontrol et
+        return average_score > avg_threshold
+
 
     def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any]:
         """ Sigma ürününü işler ve Netflex ile karşılaştırır. """
@@ -172,7 +204,7 @@ class ComparisonEngine:
         for p in all_netflex_matches:
             netflex_name = p.get('product_name', '')
             netflex_code = p.get('product_code', '')
-            name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name)
+            name_similar = self._are_names_similar(cleaned_sigma_name, netflex_name) # <-- Yeni metod burada kullanılıyor
             code_contains = sigma_p_num in netflex_code
             if name_similar and code_contains:
                 if p.get('price_numeric') == float('inf'): p['price_numeric'] = None
@@ -448,4 +480,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
