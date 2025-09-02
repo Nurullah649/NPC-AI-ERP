@@ -1,10 +1,10 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "1.0.0",
+  "version": "V1.1.2",
   "description": "NPC-AI ERP Electron Uygulaması",
   "main": "main.js",
   "homepage": "./",
-  "author": "Adınız veya Şirketiniz",
+  "author": "Nurullah Kurnaz",
   "license": "ISC",
   "scripts": {
     "postinstall": "cd medical-chemical-sales && npm install --legacy-peer-deps",
@@ -26,8 +26,8 @@
   "build": {
     "appId": "com.npc-ai-erp.app",
     "productName": "NPC-AI ERP",
-    "copyright": "Copyright © 2025 Şirketiniz",
-    "asar": false,
+    "copyright": "NPC-AI",
+    "asar": true,
     "win": {
       "target": "nsis",
       "icon": "icon.png"

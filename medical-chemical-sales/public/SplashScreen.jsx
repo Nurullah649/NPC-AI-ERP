@@ -7,41 +7,51 @@ import React, { useState, useEffect } from "react";
 // 'props' aracılığıyla SplashScreen bileşeninden alır.
 function AnimatedLogo({ logoData }) {
   // SVG konteyneri için animasyon varyantları.
+  // Animasyonun aşamalarını kontrol eder: önce görünür olur, sonra yollar çizilir.
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1,
+        staggerChildren: 0.1, // Logo parçalarının birbiri ardına canlanması için gecikme
+        delayChildren: 0.2,   // Animasyonun başlaması için küçük bir bekleme
       },
     },
   };
 
-  // Arka plan için basit bir belirme animasyonu.
-  const fadeInVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { duration: 0.4 },
+  // Logo yollarının (path) çizim animasyonu için varyantlar.
+  // "pathLength" özelliği, yolun ne kadarının çizileceğini kontrol eder.
+  const pathVariants = {
+    hidden: {
+      pathLength: 0,
+      opacity: 0,
+      fillOpacity: 0, // Başlangıçta dolgu rengi görünmez
     },
-  };
-
-  // Logonun tamamını (arka plan hariç) tek bir grup olarak canlandırıyoruz.
-  const logoGroupVariants = {
-    hidden: { opacity: 0, y: 10, scale: 0.98 },
     visible: {
+      pathLength: 1,
       opacity: 1,
-      y: 0,
-      scale: 1,
+      fillOpacity: 1, // Animasyon sonunda dolgu rengi görünür olur
       transition: {
-        duration: 0.4,
-        ease: "easeOut",
+        pathLength: { duration: 1.5, ease: "easeInOut" },
+        opacity: { duration: 0.01 }, // Anında görünür yap
+        fillOpacity: { duration: 0.8, delay: 1.2 } // Çizim bittikten sonra yavaşça doldur
       },
     },
+  };
+
+  // Arka plan için daha yumuşak bir giriş efekti
+  const backgroundVariants = {
+      hidden: { opacity: 0, scale: 0.8 },
+      visible: {
+          opacity: 1,
+          scale: 1,
+          transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } // Yumuşak bir ease efekti
+      }
   };
 
   return (
     <div className="flex flex-col items-center justify-center">
+      {/* Logo ve genel animasyon konteyneri */}
       <motion.svg
         width="200"
         height="200"
@@ -49,28 +59,36 @@ function AnimatedLogo({ logoData }) {
         initial="hidden"
         animate="visible"
         variants={containerVariants}
+        className="drop-shadow-lg" // Logoya derinlik katmak için gölge
       >
-        <motion.path
-          d={logoData.background.d}
-          fill={logoData.background.fill}
-          variants={fadeInVariants}
-        />
-        <motion.g variants={logoGroupVariants}>
-          {logoData.elements.map((path, index) => (
-            <path
-              key={index}
-              d={path.d}
-              fill={path.fill}
-              opacity={path.opacity || 1}
+        {/* Arka planı ayrı ve daha etkileyici bir animasyonla canlandırıyoruz */}
+        {logoData?.background && (
+            <motion.path
+                d={logoData.background.d}
+                fill={logoData.background.fill}
+                variants={backgroundVariants}
             />
-          ))}
-        </motion.g>
+        )}
+
+        {/* Logo elementleri (yolları) burada tek tek canlandırılıyor */}
+        {logoData?.elements?.map((path, index) => (
+          <motion.path
+            key={index}
+            d={path.d}
+            fill={path.fill}
+            stroke="#FFFFFF" // Çizim efektini belirginleştirmek için beyaz bir çizgi ekleyebiliriz
+            strokeWidth="2"
+            opacity={path.opacity || 1}
+            variants={pathVariants}
+          />
+        ))}
       </motion.svg>
+      {/* Yükleme metni için animasyon */}
       <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5, duration: 0.4 }}
-        className="mt-4 text-lg text-gray-600" // Metin rengi güncellendi.
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.8, duration: 0.5 }} // Animasyonların bitimine doğru metin belirir
+        className="mt-6 text-lg text-gray-700 font-light"
       >
         Servisler başlatılıyor...
       </motion.p>
@@ -82,11 +100,9 @@ function AnimatedLogo({ logoData }) {
 function SplashScreen({ logoData }) {
   return (
     <motion.div
-      className="flex items-center justify-center h-screen bg-white absolute top-0 left-0 w-full" // Arka plan beyaz yapıldı.
-      initial={{ opacity: 1 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.5 }}
+      className="flex items-center justify-center h-screen bg-gray-50 absolute top-0 left-0 w-full z-50" // Arka planı hafif gri yaptım ve z-index ekledim
+      initial={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.4, ease: "easeIn" } }} // Çıkış animasyonu: Küçülerek kaybolma
     >
       <AnimatedLogo logoData={logoData} />
     </motion.div>
@@ -98,6 +114,8 @@ export default function AppContainer() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Bu kısım, bir Electron uygulamasının servislerinin hazır olmasını beklemek için
+    // veya bir zamanlayıcı ile açılış ekranını gizlemek için kullanılır.
     if (window.electronAPI && window.electronAPI.onServicesReady) {
       const removeListener = window.electronAPI.onServicesReady(() => {
         console.log("Services are ready, hiding splash screen.");
@@ -110,12 +128,13 @@ export default function AppContainer() {
       console.warn("Electron API not found, falling back to timer.");
       const timer = setTimeout(() => {
         setIsLoading(false);
-      }, 4000);
+      }, 4000); // Animasyonun tamamlanması için süre artırıldı.
       return () => clearTimeout(timer);
     }
   }, []);
 
   // Python betiğiniz bu LOGO_DATA nesnesini bulup güncelleyecektir.
+  // İsteğiniz üzerine bu kısmı boş bıraktım.
   const LOGO_DATA = {
   'background': {
     'fill': '#0c2942',
@@ -2621,7 +2640,6 @@ export default function AppContainer() {
 
       {/* Yükleme tamamlandığında bu kısım görünecektir. */}
       {!isLoading && (
-        // DÜZENLEME: Yükleme sonrası ekran da beyaz temalı yapıldı.
         <div className="flex items-center justify-center h-screen bg-white">
           <h1 className="text-3xl font-bold text-gray-800">Uygulama Yüklendi!</h1>
         </div>
@@ -2629,4 +2647,3 @@ export default function AppContainer() {
     </div>
   );
 }
-

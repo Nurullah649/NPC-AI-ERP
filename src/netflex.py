@@ -22,7 +22,7 @@ class NetflexAPI:
 
         self.credentials = {"adi": username, "sifre": password}
         self.session = requests.Session()
-        # HIZ OPTİMİZASYONU: Bağlantı Havuzu (Connection Pooling)
+        # HIZ OPTİMİZasyonu: Bağlantı Havuzu (Connection Pooling)
         # Bu adaptör, Netflex sunucusuna yapılan istekler için kurulan ağ bağlantılarının
         # yeniden kullanılmasını sağlar. Bu, her istek için zaman alan TCP el sıkışma
         # sürecini ortadan kaldırır ve veri alımını önemli ölçüde hızlandırır.
@@ -102,7 +102,11 @@ class NetflexAPI:
 
                 price_value = product.get('urn_Fiyat')
                 currency = product.get('urn_FiyatDovizi', '')
-                price_numeric = float('inf')
+                # --- DÜZELTME BAŞLANGICI ---
+                # 'float('inf')' JSON standardında geçersizdir. Bunun yerine 'None' kullanıyoruz.
+                # 'None', JSON'a çevrildiğinde geçerli bir değer olan 'null' olur.
+                price_numeric = None
+                # --- DÜZELTME SONU ---
                 price_str = "Fiyat Bilgisi Yok"
 
                 if isinstance(price_value, (int, float)) and price_value > 0:
@@ -135,4 +139,3 @@ class NetflexAPI:
                 logging.error(f"Hatalı yanıt içeriği: {response_text[:500]}...")
 
         return []
-

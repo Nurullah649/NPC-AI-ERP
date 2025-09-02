@@ -142,16 +142,16 @@ class TciScraper:
                     next_button = self.driver.find_element(By.CSS_SELECTOR, "li.pagination-next a")
                     if next_button.is_displayed() and next_button.is_enabled():
 
-                        # HIZ OPTİMİZASYONU: Sabit bekleme yerine dinamik bekleme.
-                        # 'time.sleep(3)' kaldırıldı. Bunun yerine, butona tıkladıktan sonra
-                        # yeni sayfadaki ürün listesinin ID'sinin değişmesini bekliyoruz.
-                        # Bu, sayfa ne kadar hızlı yüklenirse programın o kadar hızlı devam etmesini
-                        # sağlar ve gereksiz beklemeyi ortadan kaldırır.
-                        current_product_list_id = self.driver.find_element(By.ID, "product-basic-wrap").id
-                        self.driver.execute_script("arguments[0].click();", next_button)
+                        # PERFORMANS OPTİMİZASYONU: Güvenilir ve Hızlı Sayfa Geçişi Beklemesi
+                        # 'staleness_of' metodunun doğru kullanımı, sayfa geçişlerinin mümkün olan
+                        # en kısa sürede ve en güvenilir şekilde tespit edilmesini sağlar.
+                        # Butona tıklamadan önce eski elementin referansı alınır.
+                        product_container_element = self.driver.find_element(By.ID, "product-basic-wrap")
 
-                        # Yeni sayfanın yüklendiğini anlamak için, eski elementin "bayatladığını" (stale) bekle.
-                        wait.until(EC.staleness_of(self.driver.find_element(By.ID, current_product_list_id)))
+                        # Butona tıklandıktan sonra, bu eski referansın "bayatlaması" (stale) beklenir.
+                        # Bu, sayfanın başarılı bir şekilde değiştiğini garanti eder ve gereksiz bekleme süresini ortadan kaldırır.
+                        self.driver.execute_script("arguments[0].click();", next_button)
+                        wait.until(EC.staleness_of(product_container_element))
                         page_count += 1
                     else:
                         logging.info("TCI'da sonraki sayfa butonu tıklanabilir değil. Tarama tamamlandı.")

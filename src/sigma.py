@@ -10,7 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as
 from typing import Dict, Any, List, Generator
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException
+from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException, \
+    ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -66,11 +67,26 @@ class SigmaAldrichAPI:
 
             try:
                 cookie_wait = WebDriverWait(driver, 15)
-                accept_button = cookie_wait.until(EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler")))
+                accept_button = cookie_wait.until(
+                    EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
+                )
+
+                # Önce normal tıklamayı deneyin
                 accept_button.click()
-                logging.info(f"({country_code}) Çerez onayı tıklandı.")
+
+                logging.info(f"({country_code}) Çerez onayı standart metotla tıklandı.")
+
+            except ElementClickInterceptedException:
+                # Eğer normal tıklama engellenirse, JavaScript ile zorlayın
+                logging.warning(f"({country_code}) Standart tıklama engellendi. JavaScript ile deneniyor...")
+                try:
+                    driver.execute_script("arguments[0].click();", accept_button)
+                    logging.info(f"({country_code}) Çerez onayı JavaScript ile başarıyla tıklandı.")
+                except Exception as e:
+                    logging.error(f"({country_code}) JavaScript tıklaması da başarısız oldu: {e}")
+
             except TimeoutException:
-                logging.debug(f"({country_code}) Çerez onayı butonu bulunamadı veya zaman aşımı.")
+                logging.debug(f"({country_code}) Çerez onayı butonu 15 saniye içinde bulunamadı.")
 
             session = requests.Session()
             session.mount('https://', self.adapter)

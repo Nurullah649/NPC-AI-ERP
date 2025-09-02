@@ -3,32 +3,28 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn, exec } = require('child_process');
-// const isDev = require('electron-is-dev'); // Kullanıcının isteği üzerine kaldırıldı.
 
 let win;
 let pythonProcess = null;
 
 function startPythonService() {
-  let pythonExecutable;
-
-  // GÜNCELLEME: 'electron-is-dev' yerine Electron'un kendi 'app.isPackaged' özelliği kullanıldı.
-  // app.isPackaged, uygulama paketlendiğinde 'true', geliştirme ortamında 'false' döner.
+  // Geliştirme ve paketlenmiş uygulama yollarını belirle
   if (!app.isPackaged) {
     const scriptPath = path.join(__dirname, 'desktop_app_electron.py');
     pythonProcess = spawn('python', ['-u', scriptPath]);
   } else {
-    // process.resourcesPath, uygulamanın kök klasöründeki resources dizinini gösterir.
     const exePath = path.join(process.resourcesPath, 'bin', 'desktop_app.exe');
     pythonProcess = spawn(exePath);
   }
 
   console.log(`Python arka plan servisi başlatıldı. PID: ${pythonProcess.pid}`);
 
+  // Python'dan gelen standart hata (stderr) akışını dinle
   pythonProcess.stderr.on('data', (data) => {
-    // stderr'den gelen logları "HATA" olarak etiketleyelim ki daha net görünsün.
     console.error(`[PYTHON HATA]: ${data.toString()}`);
   });
 
+  // Python'dan gelen standart çıktı (stdout) akışını dinle
   let buffer = '';
   pythonProcess.stdout.on('data', (data) => {
     buffer += data.toString();
@@ -43,10 +39,14 @@ function startPythonService() {
           if (message && typeof message === 'object' && message.type) {
             const { type, data } = message;
             if (win && !win.isDestroyed()) {
-                if (type === 'services_ready' && data === true) {
-                    console.log('Python servisleri hazır, React tarafına sinyal gönderiliyor.');
-                    win.webContents.send('services-ready');
-                    return; // "continue" yerine "return" daha güvenli olabilir.
+                if (type === 'python_services_ready') {
+                    if(data){
+                        console.log('Python servisleri hazır, React tarafına sinyal gönderiliyor.');
+                    } else {
+                        console.error('Python servisleri BAŞLATILAMADI, React tarafına sinyal gönderiliyor.');
+                    }
+                    win.webContents.send('services-ready', data);
+                    return;
                 }
 
                 const channelMap = {
@@ -81,7 +81,6 @@ function startPythonService() {
   });
 }
 
-
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
@@ -97,21 +96,12 @@ function createWindow() {
 
   win.setMenu(null);
 
-  // GÜNCELLEME: 'isDev' yerine '!app.isPackaged' kullanıldı.
   if (!app.isPackaged) {
     win.loadURL('http://localhost:3000');
   } else {
     win.loadFile(path.join(__dirname, 'medical-chemical-sales', 'out', 'index.html'));
   }
-
-  // YENİ: Paket uygulamasında hata ayıklamayı kolaylaştırmak için
-  // Geliştirici Araçları'nı otomatik olarak açıyoruz.
-  win.webContents.on('did-finish-load', () => {
-    // GÜNCELLEME: '!isDev' yerine 'app.isPackaged' kullanıldı.
-
-  });
 }
-
 
 app.whenReady().then(() => {
   createWindow();
@@ -119,27 +109,57 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on('window-all-closed', () => {
-  if (pythonProcess) {
-    if (process.platform === "win32") {
-      exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
-    } else {
-      process.kill(-pythonProcess.pid, 'SIGINT');
+// --- DÜZELTME BAŞLANGICI: Düzgün Kapatma Mantığı ---
+let isQuitting = false;
+
+app.on('before-quit', (event) => {
+    if (isQuitting) {
+        return;
     }
-  }
+    event.preventDefault(); // Uygulamanın hemen kapanmasını engelle
+    isQuitting = true;
+    console.log('Uygulama kapanıyor, Python servisine kapatma komutu gönderiliyor...');
+
+    if (pythonProcess && !pythonProcess.killed) {
+        // Python işleminin kapanmasını dinle
+        pythonProcess.on('close', () => {
+            console.log('Python servisi kapandı. Uygulama sonlandırılıyor.');
+            app.quit(); // Şimdi uygulamayı güvenle kapat
+        });
+
+        // Python'a kapatma komutunu gönder
+        sendCommandToPython({ action: 'shutdown' });
+
+        // Python'un yanıt vermemesi ihtimaline karşı bir zaman aşımı ayarla
+        setTimeout(() => {
+            console.log('Python servisi zamanında kapanmadı, zorla sonlandırılıyor.');
+            if (pythonProcess && !pythonProcess.killed) {
+                // taskkill komutu ile tüm alt süreçleri (chrome.exe) de sonlandır
+                exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
+            }
+            // Zaman aşımı sonrası uygulamayı her durumda kapat
+            app.quit();
+        }, 3000); // 3 saniye bekle
+    } else {
+        // Python süreci zaten yoksa, doğrudan çık
+        app.quit();
+    }
+});
+
+app.on('window-all-closed', () => {
+  // macOS dışında, tüm pencereler kapandığında uygulamayı kapatma sürecini başlat
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
+// --- DÜZELTME SONU ---
 
 function sendCommandToPython(command) {
     if (pythonProcess && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
         const commandString = JSON.stringify(command);
         pythonProcess.stdin.write(`${commandString}\n`);
     } else {
-        if (win && !win.isDestroyed()) {
-            win.webContents.send('search-error', 'Python servisi hazır değil.');
-        }
+        console.error('Python servisi hazır değil veya zaten kapatılmış.');
     }
 }
 

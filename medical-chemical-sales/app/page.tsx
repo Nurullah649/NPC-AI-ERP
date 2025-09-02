@@ -44,7 +44,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Toaster, toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -54,7 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-// --- YER TUTUCU SPLASH SCREEN ---
+// --- SplashScreen Bileşeni ---
 import SplashScreen from "@/public/SplashScreen"
 
 
@@ -88,7 +87,7 @@ interface ProductResult {
   product_name: string
   product_number: string
   cas_number: string
-  brand: string // "Sigma (Marka)" veya "TCI" olabilir
+  brand: string
   sigma_variations: {
     tr?: SigmaVariation[]
     us?: SigmaVariation[]
@@ -108,7 +107,7 @@ interface AssignmentItem {
   cas_number: string
   price_numeric: number | null
   price_str: string
-  source: string // Marka ve detay (örn: "Sigma (TR)", "TCI", "Netflex")
+  source: string
   cheapest_netflex_stock?: number | string
 }
 
@@ -126,10 +125,14 @@ declare global {
 const ThemeProviderContext = createContext({ theme: "system", setTheme: (theme: string) => {} })
 const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-ui-theme" }) => {
   const [theme, setTheme] = useState(defaultTheme)
+
   useEffect(() => {
+    // Bu hook artık sadece client'ta çalışacak
     const storedTheme = localStorage.getItem(storageKey) || defaultTheme
     setTheme(storedTheme)
-  }, [])
+  }, [storageKey, defaultTheme])
+
+
   useEffect(() => {
     const root = window.document.documentElement
     root.classList.remove("light", "dark")
@@ -140,6 +143,7 @@ const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-u
     }
     root.classList.add(theme)
   }, [theme])
+
   const value = {
     theme,
     setTheme: (newTheme: string) => {
@@ -430,9 +434,70 @@ const CustomersPage = ({ customers, setCustomers, assignments, setAssignments })
 }
 
 // --------------------------------------------------------------------------------
+// Ürün Atama Dialog Bileşeni
+// --------------------------------------------------------------------------------
+const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfirm }) => {
+    const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
+    const [selectedCustomer, setSelectedCustomer] = useState(null)
+
+    const handleConfirmClick = () => {
+      if (!selectedCustomer) {
+        toast.error("Lütfen bir müşteri seçin.")
+        return
+      }
+      handleAssignConfirm(selectedCustomer, selectedForAssignment)
+      setIsAssignDialogOpen(false)
+      setSelectedCustomer(null)
+    }
+
+    if (selectedForAssignment.length === 0) {
+        return null
+    }
+
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="shadow-lg">
+              <UserPlus className="mr-2 h-4 w-4" />
+              {selectedForAssignment.length} Ürünü Müşteriye Ata
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Müşteriye Ata</DialogTitle>
+              <DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Select onValueChange={setSelectedCustomer}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Bir müşteri seçin..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={customer.id.toString()}>
+                      {customer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleConfirmClick} className="w-full">
+                Atamayı Onayla
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+}
+
+
+// --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, customers, onAssignProducts }) => {
+const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, onAssignProducts }) => {
   const [searchTerm, setSearchTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState({
@@ -445,12 +510,6 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
   const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
 
   const onSearchClick = () => handleSearch(searchTerm)
-  const handleCancelSearch = () => {
-    if (window.electronAPI) {
-        window.electronAPI.cancelSearch();
-        toast.warning("Arama iptal ediliyor...");
-    }
-  }
 
   const toggleProductExpansion = (productNumber: string) => {
     setExpandedProducts((prev) => {
@@ -545,60 +604,6 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
     setSelectedForAssignment([])
   }
 
-  const AssignmentDialog = () => {
-    const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
-    const [selectedCustomer, setSelectedCustomer] = useState(null)
-
-    const handleConfirmAssignment = () => {
-      if (!selectedCustomer) {
-        toast.error("Lütfen bir müşteri seçin.")
-        return
-      }
-      handleAssignConfirm(selectedCustomer, selectedForAssignment)
-      setIsAssignDialogOpen(false)
-    }
-
-    if (selectedForAssignment.length === 0) return null
-
-    return (
-      <div className="fixed bottom-4 right-4 z-50">
-        <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="shadow-lg">
-              <UserPlus className="mr-2 h-4 w-4" />
-              {selectedForAssignment.length} Ürünü Müşteriye Ata
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Müşteriye Ata</DialogTitle>
-              <DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Select onValueChange={setSelectedCustomer}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Bir müşteri seçin..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id.toString()}>
-                      {customer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleConfirmAssignment} className="w-full">
-                Atamayı Onayla
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    )
-  }
-
     const handleFilterChange = (type, key, value) => {
         setFilters(prev => ({
             ...prev,
@@ -629,15 +634,31 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
           onKeyDown={(e) => e.key === "Enter" && onSearchClick()}
           disabled={isLoading}
         />
-        <Button onClick={onSearchClick} disabled={isLoading} className="w-28">
-          {isLoading ? <LoaderCircle className="animate-spin" /> : "Ara"}
+        <Button
+            onClick={onSearchClick}
+            disabled={isLoading}
+            className="relative w-32 overflow-hidden transition-all duration-300"
+        >
+            <span className="relative z-10 flex items-center justify-center gap-2">
+                {isLoading ? (
+                    <>
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                        <span>Aranıyor...</span>
+                    </>
+                ) : (
+                    "Ara"
+                )}
+            </span>
+            {isLoading && (
+                <motion.div
+                    className="absolute bottom-0 left-0 top-0 bg-primary-foreground/20"
+                    initial={{ width: '0%' }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 1.5, ease: 'easeInOut', repeat: Infinity, repeatType: 'mirror' }}
+                />
+            )}
         </Button>
-        {/* {isLoading && (
-            <Button variant="destructive" onClick={handleCancelSearch} className="w-28">
-              <XCircle className="mr-2 h-4 w-4" />
-              İptal Et
-            </Button>
-        )} */}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline">
@@ -674,12 +695,6 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
         </DropdownMenu>
       </div>
 
-      {isLoading && (
-        <div className="my-4 flex items-center justify-center gap-3 text-muted-foreground">
-          <LoaderCircle className="h-5 w-5 animate-spin" />
-          <p className="text-sm font-medium">Ürünler aranıyor, lütfen bekleyin...</p>
-        </div>
-      )}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -863,14 +878,18 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
         </Card>
       )}
 
-      {!isLoading && filteredResults.length === 0 && progress.status === "complete" && (
+      {!isLoading && filteredResults.length === 0 && (
         <div className="text-center py-10">
           <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="mt-4 text-muted-foreground">Bu arama için sonuç bulunamadı.</p>
+          <p className="mt-4 text-muted-foreground">Arama yapmak için yukarıdaki alanı kullanın.</p>
         </div>
       )}
 
-      <AssignmentDialog />
+      <AssignmentDialog
+        selectedForAssignment={selectedForAssignment}
+        customers={customers}
+        handleAssignConfirm={handleAssignConfirm}
+      />
     </div>
   )
 }
@@ -879,100 +898,103 @@ const SearchPage = ({ searchResults, isLoading, error, progress, handleSearch, c
 // Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
 function MainApplication() {
-  const [page, setPage] = useState("search")
-  const [customers, setCustomers] = useState(() => {
+  const [page, setPage] = useState("search");
+  const [customers, setCustomers] = useState([]);
+  const [assignments, setAssignments] = useState({});
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // Verinin yüklendiğini takip eden yeni state
+
+  // Veriyi SADECE bir kez, component yüklendiğinde oku
+  useEffect(() => {
     try {
-      const savedCustomers = localStorage.getItem("customers")
-      return savedCustomers ? JSON.parse(savedCustomers) : []
+      const savedCustomers = localStorage.getItem("customers");
+      if (savedCustomers) {
+        setCustomers(JSON.parse(savedCustomers));
+      }
+      const savedAssignments = localStorage.getItem("assignments");
+      if (savedAssignments) {
+        setAssignments(JSON.parse(savedAssignments));
+      }
     } catch (error) {
-      console.error("Müşteri verileri yüklenirken hata oluştu:", error)
-      return []
+      console.error("localStorage'dan veri yüklenirken hata:", error);
+      toast.error("Kaydedilmiş veriler yüklenemedi.");
+    } finally {
+      // Okuma işlemi bittikten sonra, kaydetmenin aktifleşmesi için sinyal ver
+      setIsDataLoaded(true);
     }
-  })
-  const [assignments, setAssignments] = useState(() => {
-    try {
-      const savedAssignments = localStorage.getItem("assignments")
-      return savedAssignments ? JSON.parse(savedAssignments) : {}
-    } catch (error) {
-      console.error("Atama verileri yüklenirken hata oluştu:", error)
-      return {}
+  }, []); // Boş dependency array, bu hook'un SADECE bir kez çalışmasını sağlar.
+
+
+  // Müşteri verileri her değiştiğinde kaydet
+  useEffect(() => {
+    // SADECE ilk yükleme tamamlandıktan SONRA kaydetme işlemini yap
+    if (isDataLoaded) {
+      try {
+        localStorage.setItem("customers", JSON.stringify(customers));
+      } catch (error) {
+        console.error("Müşteri verileri kaydedilirken hata:", error);
+      }
     }
-  })
+  }, [customers, isDataLoaded]);
+
+  // Atama verileri her değiştiğinde kaydet
+  useEffect(() => {
+    // SADECE ilk yükleme tamamlandıktan SONRA kaydetme işlemini yap
+    if (isDataLoaded) {
+      try {
+        localStorage.setItem("assignments", JSON.stringify(assignments));
+      } catch (error) {
+        console.error("Atama verileri kaydedilirken hata:", error);
+      }
+    }
+  }, [assignments, isDataLoaded]);
+
 
   const [dashboardStats, setDashboardStats] = useState({
     customerCount: 0,
     totalUniqueProducts: 0,
     activeOrders: 0,
-  })
+  });
 
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [searchResults, setSearchResults] = useState<ProductResult[]>([])
-  const [progress, setProgress] = useState({ source: "", status: "idle", total: 0, processed: 0, message: "" })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("customers", JSON.stringify(customers))
-    } catch (error) {
-      console.error("Müşteri verileri kaydedilirken hata oluştu:", error)
-    }
-  }, [customers])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("assignments", JSON.stringify(assignments))
-    } catch (error) {
-      console.error("Atama verileri kaydedilirken hata oluştu:", error)
-    }
-  }, [assignments])
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
 
-    const cleanupProductFound = window.electronAPI.onProductFound((product) => {
-      setSearchResults((prev) => {
-        const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
-        if (!isProductAlreadyInList) {
-          return [...prev, product]
-        }
-        return prev
-      })
-    })
-
-    const cleanupProgress = window.electronAPI.onSearchProgress((progressData) => {
-      setProgress(progressData)
-    })
-
-    const cleanupComplete = window.electronAPI.onSearchComplete((summary) => {
-      setIsLoading(false)
-      setProgress((prev) => ({ ...prev, status: "complete" }))
-      if (summary.status === 'cancelled') {
-         toast.info("Arama başarıyla iptal edildi.")
-      } else {
-         toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
-      }
-    })
-
-    const cleanupError = window.electronAPI.onSearchError((errorMessage) => {
-      setError(errorMessage)
-      setIsLoading(false)
-      setProgress({ source:"", status: "error", total: 0, processed: 0, message: "" })
-    })
-
-    const cleanupExport = window.electronAPI.onExportResult((result) => {
-      if (result.status === "success") {
-        toast.success(`Excel dosyası kaydedildi: ${result.path}`)
-      } else {
-        toast.error(`Excel hatası: ${result.message}`)
-      }
-    })
+    const cleanups = [
+        window.electronAPI.onProductFound((product) => {
+            setSearchResults((prev) => {
+                const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
+                if (!isProductAlreadyInList) {
+                    return [...prev, product]
+                }
+                return prev
+            })
+        }),
+        window.electronAPI.onSearchComplete((summary) => {
+            setIsLoading(false)
+            if (summary.status === 'cancelled') {
+                toast.warning("Arama iptal edildi.")
+            } else {
+                toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+            }
+        }),
+        window.electronAPI.onSearchError((errorMessage) => {
+            setError(errorMessage)
+            setIsLoading(false)
+        }),
+        window.electronAPI.onExportResult((result) => {
+            if (result.status === "success") {
+                toast.success(`Excel dosyası kaydedildi: ${result.path}`)
+            } else {
+                toast.error(`Excel hatası: ${result.message}`)
+            }
+        }),
+    ];
 
     return () => {
-        cleanupProductFound();
-        cleanupProgress();
-        cleanupComplete();
-        cleanupError();
-        cleanupExport();
+        cleanups.forEach(cleanup => cleanup());
     }
   }, [])
 
@@ -1007,8 +1029,12 @@ function MainApplication() {
     setIsLoading(true)
     setSearchResults([])
     setError(null)
-    setProgress({ source: "", status: "searching", total: 0, processed: 0, message: "Arama başlatılıyor..." })
-    window.electronAPI.performSearch(searchTerm)
+    if (window.electronAPI) {
+        window.electronAPI.performSearch(searchTerm)
+    } else {
+        console.error("Electron API bulunamadı, arama yapılamıyor.")
+        setIsLoading(false)
+    }
   }
 
   const renderPage = () => {
@@ -1019,7 +1045,6 @@ function MainApplication() {
             searchResults={searchResults}
             isLoading={isLoading}
             error={error}
-            progress={progress}
             handleSearch={handleSearch}
             customers={customers}
             onAssignProducts={handleAssignProducts}
@@ -1057,28 +1082,45 @@ function MainApplication() {
 // Ana Uygulama Yönlendiricisi
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [isAppLoading, setIsAppLoading] = useState(true)
+  const [isMounted, setIsMounted] = useState(false);
+  const [areServicesReady, setAreServicesReady] = useState(false);
+  const [initializationError, setInitializationError] = useState(false);
 
   useEffect(() => {
-    if (window.electronAPI && typeof window.electronAPI.onPythonReady === "function") {
-      const cleanup = window.electronAPI.onPythonReady(() => {
-        console.log("Python'dan 'hazır' sinyali alındı. Arayüz yükleniyor.")
-        setIsAppLoading(false)
-      })
-      return () => cleanup()
+    setIsMounted(true);
+
+    if (window.electronAPI) {
+      const cleanup = window.electronAPI.onServicesReady((isReady) => {
+          console.log(`Python servisleri hazır sinyali alındı: ${isReady}`);
+          if (isReady) {
+              setAreServicesReady(true);
+          } else {
+              setInitializationError(true);
+              toast.error("Arka plan servisleri başlatılamadı. Lütfen uygulamayı yeniden başlatın.");
+          }
+      });
+
+      return () => cleanup();
     } else {
-      console.warn("Electron API bulunamadı. Geliştirme ortamı varsayılıyor, 2 saniye sonra devam edilecek.")
-      const timer = setTimeout(() => setIsAppLoading(false), 2000)
-      return () => clearTimeout(timer)
+      console.warn("Electron API bulunamadı. Geliştirme modu varsayılıyor.");
+      // Geliştirme modunda servislerin hazır olduğunu varsay
+      const timer = setTimeout(() => setAreServicesReady(true), 1500);
+      return () => clearTimeout(timer);
     }
-  }, [])
+  }, []);
+
+
+  // UYGULAMAYI GÖSTERME KOŞULU:
+  // 1. Arayüz component'i tarayıcıya yüklenmiş OLMALI (isMounted)
+  // 2. Python'dan gelen hazır sinyali alınmış OLMALI (areServicesReady)
+  const showApp = isMounted && areServicesReady;
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <AnimatePresence mode="wait">
-        {isAppLoading ? (
+        {!showApp ? (
           <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-            <SplashScreen />
+            <SplashScreen hasError={initializationError} />
           </motion.div>
         ) : (
           <motion.div key="main_app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
@@ -1086,6 +1128,8 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Toaster position="bottom-right" />
     </ThemeProvider>
   )
 }
+
