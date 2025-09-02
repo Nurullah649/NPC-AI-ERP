@@ -1,6 +1,6 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "V1.1.2",
+  "version": "1.1.2",
   "description": "NPC-AI ERP Electron Uygulaması",
   "main": "main.js",
   "homepage": "./",
