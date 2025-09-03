@@ -14,31 +14,33 @@ class NetflexAPI:
     def __init__(self, username: str, password: str, max_workers: int = 10):
         """
         NetflexAPI sınıfı, başlatılırken kullanıcı adı ve şifre alır.
-        .env dosyasını okuma sorumluluğu bu sınıftan kaldırılmıştır.
         """
-        if not username or not password:
-            logging.critical("Netflex HATA: Başlatma sırasında KULLANICI adı veya SIFRE sağlanmadı!")
-            raise ValueError("NetflexAPI için KULLANICI adı ve SIFRE gereklidir.")
-
         self.credentials = {"adi": username, "sifre": password}
         self.session = requests.Session()
-        # HIZ OPTİMİZasyonu: Bağlantı Havuzu (Connection Pooling)
-        # Bu adaptör, Netflex sunucusuna yapılan istekler için kurulan ağ bağlantılarının
-        # yeniden kullanılmasını sağlar. Bu, her istek için zaman alan TCP el sıkışma
-        # sürecini ortadan kaldırır ve veri alımını önemli ölçüde hızlandırır.
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
         self.session.mount('https://', adapter)
         self.token = None
         self.token_last_updated = 0
         self.token_lock = threading.Lock()
 
+    # --- YENİ: Ayarlar değiştiğinde kimlik bilgilerini güncellemek için fonksiyon ---
+    def update_credentials(self, username: str, password: str):
+        """Kullanıcı adı ve şifreyi günceller ve token'ı sıfırlar."""
+        with self.token_lock:
+            logging.info("Netflex kimlik bilgileri güncelleniyor.")
+            self.credentials = {"adi": username, "sifre": password}
+            self.token = None # Token'ı geçersiz kıl, bir sonraki istekte yenisi alınsın
+            self.token_last_updated = 0
+
     def get_token(self) -> str or None:
         """
         API için geçerli bir token alır. Token eskiyse yenisini talep eder.
-        Thread-safe (aynı anda birden fazla iş parçacığı tarafından güvenle çağrılabilir).
         """
         with self.token_lock:
-            # Token geçerliyse (yaklaşık 1 saat), yenisini istemeden mevcut olanı döndür.
+            if not self.credentials.get("adi") or not self.credentials.get("sifre"):
+                logging.error("Netflex HATA: Token alınamaz, kullanıcı adı veya şifre eksik.")
+                return None
+
             if self.token and (time.time() - self.token_last_updated < 3540):
                 return self.token
 
@@ -46,9 +48,8 @@ class NetflexAPI:
             login_url = "https://netflex-api.interlab.com.tr/Users/authenticate/"
             headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
             try:
-                # Timeout, isteğin sunucuda takılı kalması durumunda programın beklemesini engeller.
                 response = self.session.post(login_url, headers=headers, json=self.credentials, timeout=20)
-                response.raise_for_status()  # HTTP 4xx veya 5xx hatası varsa istisna fırlat.
+                response.raise_for_status()
                 token_data = response.json()
                 if token_data and 'accessToken' in token_data:
                     self.token = token_data['accessToken']
@@ -62,7 +63,7 @@ class NetflexAPI:
 
     def search_products(self, search_term: str, cancel_event: threading.Event) -> List[Dict[str, Any]]:
         """
-        Verilen arama terimi için Netflex'te ürün arar. İstek, dışarıdan gelen sinyallerle iptal edilebilir.
+        Verilen arama terimi için Netflex'te ürün arar.
         """
         if cancel_event.is_set():
             return []
@@ -77,15 +78,8 @@ class NetflexAPI:
         headers = {'Authorization': f'Bearer {token}', 'User-Agent': 'Mozilla/5.0'}
 
         try:
-            # HIZ OPTİMİZASYONU: Doğrudan Ağ İsteği
-            # Her istek için yeni bir thread oluşturan karmaşık ve yavaş 'make_cancellable_request'
-            # fonksiyonu kaldırıldı. İstek artık doğrudan, en az gecikmeyle gönderiliyor.
-            # Bu, istemci tarafındaki bekleme süresini sıfıra indirerek veriye en hızlı erişimi sağlar.
             response = self.session.get(search_url, headers=headers, timeout=20)
-
-            # Ağ isteği yapıldıktan sonra iptal durumu tekrar kontrol edilir.
             if cancel_event.is_set(): return []
-
             response.raise_for_status()
             products = response.json()
 
@@ -95,18 +89,13 @@ class NetflexAPI:
 
             found_products = []
             for product in products:
-                # Yanıt işlenirken iptal durumu kontrol edilerek gereksiz işlem yapılması önlenir.
                 if cancel_event.is_set():
                     logging.info("Netflex araması ürün işlenirken iptal edildi.")
                     break
 
                 price_value = product.get('urn_Fiyat')
                 currency = product.get('urn_FiyatDovizi', '')
-                # --- DÜZELTME BAŞLANGICI ---
-                # 'float('inf')' JSON standardında geçersizdir. Bunun yerine 'None' kullanıyoruz.
-                # 'None', JSON'a çevrildiğinde geçerli bir değer olan 'null' olur.
                 price_numeric = None
-                # --- DÜZELTME SONU ---
                 price_str = "Fiyat Bilgisi Yok"
 
                 if isinstance(price_value, (int, float)) and price_value > 0:
@@ -126,9 +115,7 @@ class NetflexAPI:
                     "price_str": price_str,
                     "stock": stock_info
                 })
-
             return found_products
-
         except requests.exceptions.RequestException as e:
             if not cancel_event.is_set():
                 logging.error(f"Netflex Arama HATA ('{search_term}'): Ağ hatası - {e}")
@@ -137,5 +124,4 @@ class NetflexAPI:
                 logging.error(f"Netflex Arama HATA ('{search_term}'): Yanıt JSON olarak ayrıştırılamadı - {e}")
                 response_text = response.text if 'response' in locals() else 'Yanıt alınamadı'
                 logging.error(f"Hatalı yanıt içeriği: {response_text[:500]}...")
-
         return []

@@ -1,0 +1,522 @@
+2025-09-03 19:20:31,971 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 19:20:31,971 - [WARNING] - (MainThread) - Ayarlar dosyası bulunamadı. Arayüzden ilk kurulum bekleniyor.
+2025-09-03 19:20:40,106 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 19:20:40,112 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 19:46:47,962 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 19:46:47,962 - [WARNING] - (MainThread) - Ayarlar dosyası bulunamadı. Arayüzden ilk kurulum bekleniyor.
+2025-09-03 19:47:14,940 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 19:47:14,942 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 19:51:55,170 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 19:51:55,171 - [WARNING] - (MainThread) - Ayarlar dosyası bulunamadı. Arayüzden ilk kurulum bekleniyor.
+2025-09-03 19:52:17,724 - [INFO] - (MainThread) - Ayarlar başarıyla kaydedildi: C:\Users\nurul\Desktop\Tales_Job\TalesJob_Veri\settings.json
+2025-09-03 19:52:17,724 - [INFO] - (MainThread) - İlk kurulum ayarları kaydedildi. Uygulamanın yeniden başlatılması için sinyal gönderiliyor.
+2025-09-03 19:52:17,758 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 19:52:17,758 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 19:52:19,246 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 19:52:19,246 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 19:52:19,246 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 19:52:19,246 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 19:52:19,439 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 19:52:19,439 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 19:52:31,944 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 19:52:31,944 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 19:52:31,944 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 19:52:47,882 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 19:52:47,882 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 19:52:47,882 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 19:52:47,884 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 19:52:48,036 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 19:52:48,036 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 19:53:00,601 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-03 19:53:00,601 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-03 19:53:00,601 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-03 19:53:00,601 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-03 19:53:02,655 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-03 19:53:02,655 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-03 19:53:03,121 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-03 19:53:04,021 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-03 19:53:06,690 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-03 19:53:06,865 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-03 19:53:07,566 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-03 19:53:08,923 - [WARNING] - (Driver-Starter_1) - (US) Standart tıklama engellendi. JavaScript ile deneniyor...
+2025-09-03 19:53:09,005 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı JavaScript ile başarıyla tıklandı.
+2025-09-03 19:53:09,013 - [INFO] - (Search-Coordinator) - TR sürücüsü ve oturumu hazır.
+2025-09-03 19:53:09,013 - [INFO] - (Search-Coordinator) - US sürücüsü ve oturumu hazır.
+2025-09-03 19:53:09,013 - [INFO] - (Search-Coordinator) - DE sürücüsü ve oturumu hazır.
+2025-09-03 19:53:09,013 - [INFO] - (Search-Coordinator) - GB sürücüsü ve oturumu hazır.
+2025-09-03 19:53:09,014 - [INFO] - (Search-Coordinator) - TCI Selenium WebDriver başlatılıyor...
+2025-09-03 19:53:09,014 - [INFO] - (Search-Coordinator) - ====== WebDriver manager ======
+2025-09-03 19:53:10,395 - [INFO] - (Search-Coordinator) - Get LATEST chromedriver version for google-chrome
+2025-09-03 19:53:10,579 - [INFO] - (Search-Coordinator) - Get LATEST chromedriver version for google-chrome
+2025-09-03 19:53:10,779 - [INFO] - (Search-Coordinator) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver.exe] found in cache
+2025-09-03 19:53:12,584 - [INFO] - (Search-Coordinator) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-03 19:53:12,584 - [INFO] - (Search-Coordinator) - ===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '100' =====
+2025-09-03 19:53:12,584 - [INFO] - (Search-Source_0) - Sigma (TR): '100' için arama yapılıyor...
+2025-09-03 19:53:16,563 - [INFO] - (Search-Source_0) - Sigma: 83 ürün 1. sayfada bulundu. Arayüze gönderiliyor.
+2025-09-03 19:53:17,695 - [WARNING] - (Price-Fetcher_1) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,721 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,741 - [WARNING] - (Price-Fetcher_3) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,773 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,811 - [WARNING] - (Price-Fetcher_3) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,847 - [WARNING] - (Price-Fetcher_1) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,870 - [WARNING] - (Price-Fetcher_2) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:17,896 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,000 - [WARNING] - (Price-Fetcher_2) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,001 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,014 - [WARNING] - (Price-Fetcher_1) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,114 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,275 - [WARNING] - (Price-Fetcher_1) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,309 - [WARNING] - (Price-Fetcher_1) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,321 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,470 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:18,598 - [INFO] - (Search-Source_1) - '100' için TCI arama sayfası açıldı: https://www.tcichemicals.com/AT/de/search/?text=100
+2025-09-03 19:53:18,599 - [INFO] - (Search-Source_1) - 
+TCI Sayfa 1 taranıyor...
+2025-09-03 19:53:18,625 - [INFO] - (Search-Source_1) - 12 adet ürün kartı bulundu.
+2025-09-03 19:53:19,571 - [INFO] - (Search-Source_1) - TCI'da sonraki sayfa butonu tıklanabilir değil. Tarama tamamlandı.
+2025-09-03 19:53:19,985 - [WARNING] - (Price-Fetcher_0) - Connection pool is full, discarding connection: www.sigmaaldrich.com. Connection pool size: 20
+2025-09-03 19:53:31,535 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 19:53:32,695 - [WARNING] - (Sigma-Sub-Fetcher_1) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 19:53:33,013 - [WARNING] - (Sigma-Sub-Fetcher_2) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 19:53:34,102 - [WARNING] - (Sigma-Sub-Fetcher_1) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 19:53:34,296 - [WARNING] - (Sigma-Sub-Fetcher_1) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 19:53:34,519 - [WARNING] - (Sigma-Sub-Fetcher_2) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 19:53:34,542 - [WARNING] - (Sigma-Sub-Fetcher_2) - Connection pool is full, discarding connection: netflex-api.interlab.com.tr. Connection pool size: 10
+2025-09-03 23:07:45,236 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:07:45,236 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:07:45,236 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:07:45,236 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:07:45,493 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:07:45,495 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:31:36,702 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 23:31:36,702 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 23:31:36,703 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 23:32:04,033 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:32:04,034 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:32:04,035 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:32:04,036 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:32:04,266 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:32:04,266 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:32:20,962 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 23:32:20,962 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 23:32:20,965 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 23:35:44,219 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:35:44,220 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:35:44,220 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:35:44,221 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:35:44,391 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:35:44,392 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:36:17,915 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 23:36:17,917 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 23:36:17,917 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 23:36:53,878 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:36:53,879 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:36:53,879 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:36:53,880 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:36:54,055 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:36:54,055 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:37:00,649 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 23:37:00,649 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 23:37:00,651 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 23:37:19,469 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:37:19,469 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:37:19,470 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:37:19,471 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:37:19,679 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:37:19,679 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:37:27,685 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-03 23:37:27,688 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-03 23:37:27,688 - [INFO] - (MainThread) - Tüm Selenium sürücüleri ve oturumları kapatılıyor.
+2025-09-03 23:43:17,241 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:43:17,241 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:43:17,241 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:43:17,243 - [INFO] - (Netflex-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:43:17,473 - [INFO] - (Netflex-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:43:17,474 - [INFO] - (Netflex-Initializer) - Netflex servisi başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:43:31,985 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-03 23:43:31,985 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-03 23:43:31,985 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-03 23:43:31,985 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-03 23:43:34,147 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-03 23:43:34,213 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-03 23:43:34,330 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-03 23:43:34,468 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-03 23:43:40,033 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:43:40,924 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:43:40,970 - [WARNING] - (Driver-Starter_3) - (GB) Standart tıklama engellendi. JavaScript ile deneniyor...
+2025-09-03 23:43:40,971 - [WARNING] - (Driver-Starter_2) - (DE) Standart tıklama engellendi. JavaScript ile deneniyor...
+2025-09-03 23:43:41,053 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı JavaScript ile başarıyla tıklandı.
+2025-09-03 23:43:41,072 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı JavaScript ile başarıyla tıklandı.
+2025-09-03 23:43:41,223 - [INFO] - (Search-Coordinator) - TR sürücüsü ve oturumu hazır.
+2025-09-03 23:43:41,223 - [INFO] - (Search-Coordinator) - US sürücüsü ve oturumu hazır.
+2025-09-03 23:43:41,223 - [INFO] - (Search-Coordinator) - DE sürücüsü ve oturumu hazır.
+2025-09-03 23:43:41,223 - [INFO] - (Search-Coordinator) - GB sürücüsü ve oturumu hazır.
+2025-09-03 23:43:41,224 - [INFO] - (Search-Coordinator) - TCI Selenium WebDriver başlatılıyor...
+2025-09-03 23:43:41,224 - [INFO] - (Search-Coordinator) - ====== WebDriver manager ======
+2025-09-03 23:43:42,972 - [INFO] - (Search-Coordinator) - Get LATEST chromedriver version for google-chrome
+2025-09-03 23:43:43,145 - [INFO] - (Search-Coordinator) - Get LATEST chromedriver version for google-chrome
+2025-09-03 23:43:43,298 - [INFO] - (Search-Coordinator) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver.exe] found in cache
+2025-09-03 23:43:44,467 - [INFO] - (Search-Coordinator) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-03 23:43:44,469 - [INFO] - (Search-Coordinator) - ===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '100' =====
+2025-09-03 23:43:44,471 - [INFO] - (Comparison-Worker_0) - Sigma (TR): '100' için arama yapılıyor...
+2025-09-03 23:43:45,805 - [INFO] - (Comparison-Worker_0) - Sigma: 83 ürün 1. sayfada bulundu. Arayüze gönderiliyor.
+2025-09-03 23:43:52,051 - [INFO] - (Comparison-Worker_1) - '100' için TCI arama sayfası açıldı: https://www.tcichemicals.com/AT/de/search/?text=100
+2025-09-03 23:43:52,052 - [INFO] - (Comparison-Worker_1) - 
+TCI Sayfa 1 taranıyor...
+2025-09-03 23:43:52,080 - [INFO] - (Comparison-Worker_1) - 12 adet ürün kartı bulundu.
+2025-09-03 23:47:15,427 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-03 23:47:15,428 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-03 23:47:15,428 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-03 23:47:15,429 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-03 23:47:15,429 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-03 23:47:15,429 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-03 23:47:15,430 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-03 23:47:15,618 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-03 23:47:15,618 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-03 23:47:15,619 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-03 23:47:15,619 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-03 23:47:15,619 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-03 23:47:15,620 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-03 23:47:15,620 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-03 23:47:15,620 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-03 23:47:15,621 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-03 23:47:15,621 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-03 23:47:17,625 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-03 23:47:17,639 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-03 23:47:17,693 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-03 23:47:17,988 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-03 23:47:18,401 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-03 23:47:18,585 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-03 23:47:18,762 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver.exe] found in cache
+2025-09-03 23:47:22,519 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-03 23:47:25,410 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:47:26,508 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:47:26,595 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:47:26,747 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-03 23:47:26,870 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-03 23:47:26,870 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-03 23:47:26,871 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-03 23:47:26,871 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-03 23:47:26,871 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 11.25 saniyede başarıyla başlatıldı.
+2025-09-03 23:47:26,872 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-03 23:47:31,960 - [INFO] - (Search-Coordinator) - ===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '100' =====
+2025-09-03 23:47:31,961 - [INFO] - (Search-Source_0) - Sigma (TR): '100' için arama yapılıyor...
+2025-09-03 23:47:32,868 - [INFO] - (Search-Source_0) - Sigma: 83 ürün 1. sayfada bulundu. Arayüze gönderiliyor.
+2025-09-03 23:47:35,652 - [INFO] - (Search-Source_1) - '100' için TCI arama sayfası açıldı: https://www.tcichemicals.com/AT/de/search/?text=100
+2025-09-03 23:47:35,652 - [INFO] - (Search-Source_1) - 
+TCI Sayfa 1 taranıyor...
+2025-09-03 23:47:35,699 - [INFO] - (Search-Source_1) - 12 adet ürün kartı bulundu.
+2025-09-03 23:47:38,439 - [INFO] - (Search-Source_1) - TCI'da sonraki sayfa butonu tıklanabilir değil. Tarama tamamlandı.
+2025-09-03 23:47:53,031 - [ERROR] - (Sigma-Sub-Fetcher_2) - Netflex Arama HATA ('X100'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:24,664 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Silicone oil'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:40,948 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Acetic acid'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:43,268 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Acetic acid'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:44,831 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Acetic acid'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:45,199 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Acetic acid'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:45,776 - [ERROR] - (Sigma-Sub-Fetcher_1) - Netflex Arama HATA ('Acetic acid'): Ağ hatası - HTTPSConnectionPool(host='netflex-api.interlab.com.tr', port=443): Read timed out. (read timeout=20)
+2025-09-03 23:48:58,388 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-04 00:04:42,909 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:04:42,910 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:04:42,912 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:04:42,912 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:04:42,912 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:04:42,912 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:04:42,912 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:04:43,122 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:04:43,122 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:04:43,122 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:04:43,122 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:04:43,127 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:04:45,242 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:04:45,460 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:04:45,523 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:04:45,706 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:04:46,561 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:04:46,740 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:04:46,919 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:04:47,378 - [INFO] - (Heavy-Driver-Starter_1) - WebDriver version 139.0.7258.154 selected
+2025-09-04 00:04:47,384 - [INFO] - (Heavy-Driver-Starter_1) - Modern chrome version https://storage.googleapis.com/chrome-for-testing-public/139.0.7258.154/win32/chromedriver-win32.zip
+2025-09-04 00:04:47,386 - [INFO] - (Heavy-Driver-Starter_1) - About to download new driver from https://storage.googleapis.com/chrome-for-testing-public/139.0.7258.154/win32/chromedriver-win32.zip
+2025-09-04 00:04:47,552 - [INFO] - (Heavy-Driver-Starter_1) - Driver downloading response is 200
+2025-09-04 00:04:48,131 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:04:48,700 - [INFO] - (Heavy-Driver-Starter_1) - Driver has been saved in cache [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154]
+2025-09-04 00:04:54,542 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:04:54,620 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:04:55,127 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:04:57,076 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:04:57,191 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:04:57,602 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:04:57,603 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:04:57,603 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:04:57,608 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:04:57,610 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 14.49 saniyede başarıyla başlatıldı.
+2025-09-04 00:04:57,611 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:05:02,234 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='shutdown'
+2025-09-04 00:05:02,234 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-04 00:05:02,234 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-04 00:11:40,736 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:11:40,737 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:11:40,737 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:11:40,740 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:11:40,741 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:11:40,741 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:11:40,741 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:11:40,976 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:11:40,977 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:11:40,977 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:11:40,977 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:11:40,988 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:11:40,998 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:11:41,003 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:11:41,004 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:11:41,018 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:11:41,066 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:11:44,822 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:11:45,835 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:11:45,995 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:11:46,468 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:11:57,987 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:11:58,348 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:11:58,429 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:11:59,923 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:12:03,844 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:12:03,845 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:12:03,845 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:12:03,845 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:12:06,162 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:12:06,372 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:12:06,559 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:12:12,924 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:12:12,929 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 31.95 saniyede başarıyla başlatıldı.
+2025-09-04 00:12:12,931 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:12:18,845 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='load_settings'
+2025-09-04 00:12:18,846 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='load_settings'
+2025-09-04 00:12:24,288 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='shutdown'
+2025-09-04 00:12:24,291 - [INFO] - (MainThread) - Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.
+2025-09-04 00:12:24,292 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-04 00:15:48,349 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:15:48,349 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:15:48,354 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:15:48,354 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:15:48,354 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:15:48,354 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:15:48,354 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:15:48,531 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:15:48,531 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:15:48,531 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:15:48,531 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:15:48,532 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:15:48,532 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:15:48,532 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:15:48,533 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:15:48,533 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:15:48,534 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:15:49,578 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:15:49,781 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:15:49,965 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:15:50,429 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:15:50,444 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:15:50,474 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:15:50,491 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:15:51,942 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:15:56,695 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:15:56,747 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:15:56,885 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:15:57,494 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:15:57,618 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:15:57,618 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:15:57,619 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:15:57,619 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:15:57,619 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 9.09 saniyede başarıyla başlatıldı.
+2025-09-04 00:15:57,620 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:16:18,281 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='load_settings'
+2025-09-04 00:16:18,282 - [INFO] - (MainThread) - Arayüzden komut alındı: Eylem='load_settings'
+2025-09-04 00:19:15,662 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-04 00:20:49,400 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:20:49,400 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:20:49,400 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:20:49,400 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:20:49,400 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:20:49,400 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:20:49,400 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:20:49,613 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:20:49,613 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:20:49,613 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:20:49,613 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:20:49,614 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:20:49,615 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:20:49,615 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:20:49,616 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:20:49,616 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:20:49,617 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:20:51,104 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:20:51,111 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:20:51,203 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:20:51,209 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:20:51,491 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:20:51,655 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:20:51,841 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:20:52,901 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:20:55,690 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:20:55,807 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:20:56,221 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:21:03,717 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:21:03,812 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:21:03,812 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:21:03,812 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:21:03,812 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:21:03,812 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 14.19 saniyede başarıyla başlatıldı.
+2025-09-04 00:21:03,812 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:21:36,791 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-04 00:22:13,021 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:22:13,022 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:22:13,022 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:22:13,023 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:22:13,023 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:22:13,023 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:22:13,023 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:22:13,186 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:22:13,186 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:22:13,186 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:22:13,186 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:22:13,193 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:22:13,195 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:22:13,195 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:22:13,195 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:22:13,197 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:22:13,199 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:22:14,691 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:22:14,693 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:22:14,710 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:22:14,761 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:22:15,087 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:22:15,274 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:22:15,442 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:22:16,503 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:22:19,383 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:22:20,418 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:22:20,731 - [WARNING] - (Driver-Starter_1) - (US) Standart tıklama engellendi. JavaScript ile deneniyor...
+2025-09-04 00:22:20,783 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı JavaScript ile başarıyla tıklandı.
+2025-09-04 00:22:21,029 - [WARNING] - (Driver-Starter_2) - (DE) Standart tıklama engellendi. JavaScript ile deneniyor...
+2025-09-04 00:22:21,083 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı JavaScript ile başarıyla tıklandı.
+2025-09-04 00:22:21,159 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:22:21,159 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:22:21,160 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:22:21,160 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:22:21,161 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 7.98 saniyede başarıyla başlatıldı.
+2025-09-04 00:22:21,161 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:25:29,720 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:25:29,721 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:25:29,733 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:25:29,734 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:25:29,735 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:25:29,735 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:25:29,735 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:25:29,925 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:25:29,926 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:25:29,926 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:25:29,926 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:25:29,927 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:25:29,927 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:25:29,927 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:25:29,928 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:25:29,928 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:25:29,930 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:25:32,692 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:25:32,877 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:25:32,895 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:25:32,914 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:25:33,877 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:25:34,073 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:25:34,252 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:25:38,757 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:25:39,541 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:25:39,618 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:25:40,075 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:25:40,085 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:25:40,248 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:25:40,248 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:25:40,248 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:25:40,248 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:25:40,250 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 10.31 saniyede başarıyla başlatıldı.
+2025-09-04 00:25:40,250 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:25:43,816 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.
+2025-09-04 00:34:06,631 - [INFO] - (MainThread) - ========================================
+      Python Arka Plan Servisi Başlatıldı
+========================================
+2025-09-04 00:34:06,631 - [INFO] - (MainThread) - Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.
+2025-09-04 00:34:06,631 - [INFO] - (MainThread) - Servisler şu ayarlarla başlatılıyor: {'netflex_username': 'Siparis@tales.com.tr', 'tci_coefficient': 1.4}
+2025-09-04 00:34:06,631 - [INFO] - (Full-Initializer) - Tam servis başlatma süreci başladı.
+2025-09-04 00:34:06,631 - [INFO] - (MainThread) - initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.
+2025-09-04 00:34:06,631 - [INFO] - (Full-Initializer) - 1. Adım: Netflex token'ı alınıyor...
+2025-09-04 00:34:06,640 - [INFO] - (Full-Initializer) - Netflex: Yeni token alınıyor...
+2025-09-04 00:34:06,927 - [INFO] - (Full-Initializer) - Netflex: Giriş başarılı, yeni token alındı.
+2025-09-04 00:34:06,927 - [INFO] - (Full-Initializer) - Netflex servisi başarıyla doğrulandı.
+2025-09-04 00:34:06,927 - [INFO] - (Full-Initializer) - 2. Adım: Selenium sürücüleri başlatılıyor...
+2025-09-04 00:34:06,927 - [INFO] - (Full-Initializer) - Ağır servisler (Selenium sürücüleri) başlatılıyor...
+2025-09-04 00:34:06,928 - [INFO] - (Heavy-Driver-Starter_1) - TCI Selenium WebDriver başlatılıyor...
+2025-09-04 00:34:06,928 - [INFO] - (Heavy-Driver-Starter_1) - ====== WebDriver manager ======
+2025-09-04 00:34:06,928 - [INFO] - (Driver-Starter_0) - Selenium WebDriver 'TR' için başlatılıyor...
+2025-09-04 00:34:06,929 - [INFO] - (Driver-Starter_1) - Selenium WebDriver 'US' için başlatılıyor...
+2025-09-04 00:34:06,930 - [INFO] - (Driver-Starter_2) - Selenium WebDriver 'DE' için başlatılıyor...
+2025-09-04 00:34:06,930 - [INFO] - (Driver-Starter_3) - Selenium WebDriver 'GB' için başlatılıyor...
+2025-09-04 00:34:08,334 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:34:08,438 - [INFO] - (Driver-Starter_2) - Selenium WebDriver ('DE') başarıyla başlatıldı.
+2025-09-04 00:34:08,441 - [INFO] - (Driver-Starter_3) - Selenium WebDriver ('GB') başarıyla başlatıldı.
+2025-09-04 00:34:08,464 - [INFO] - (Driver-Starter_0) - Selenium WebDriver ('TR') başarıyla başlatıldı.
+2025-09-04 00:34:08,595 - [INFO] - (Heavy-Driver-Starter_1) - Get LATEST chromedriver version for google-chrome
+2025-09-04 00:34:08,658 - [INFO] - (Driver-Starter_1) - Selenium WebDriver ('US') başarıyla başlatıldı.
+2025-09-04 00:34:08,777 - [INFO] - (Heavy-Driver-Starter_1) - Driver [C:\Users\nurul\.wdm\drivers\chromedriver\win64\139.0.7258.154\chromedriver-win32/chromedriver.exe] found in cache
+2025-09-04 00:34:09,826 - [INFO] - (Heavy-Driver-Starter_1) - TCI WebDriver başarıyla (yeniden) başlatıldı.
+2025-09-04 00:34:13,254 - [INFO] - (Driver-Starter_3) - (GB) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:34:15,055 - [INFO] - (Driver-Starter_2) - (DE) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:34:15,109 - [INFO] - (Driver-Starter_1) - (US) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:34:15,438 - [INFO] - (Driver-Starter_0) - (TR) Çerez onayı standart metotla tıklandı.
+2025-09-04 00:34:15,488 - [INFO] - (Heavy-Driver-Starter_0) - TR sürücüsü ve oturumu hazır.
+2025-09-04 00:34:15,488 - [INFO] - (Heavy-Driver-Starter_0) - US sürücüsü ve oturumu hazır.
+2025-09-04 00:34:15,488 - [INFO] - (Heavy-Driver-Starter_0) - DE sürücüsü ve oturumu hazır.
+2025-09-04 00:34:15,488 - [INFO] - (Heavy-Driver-Starter_0) - GB sürücüsü ve oturumu hazır.
+2025-09-04 00:34:15,488 - [INFO] - (Full-Initializer) - Tüm Selenium sürücüleri 8.56 saniyede başarıyla başlatıldı.
+2025-09-04 00:34:15,489 - [INFO] - (Full-Initializer) - Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.
+2025-09-04 00:34:17,531 - [INFO] - (MainThread) - Python ana döngüsü sonlandı.

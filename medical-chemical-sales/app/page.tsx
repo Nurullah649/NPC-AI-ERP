@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, createContext, useContext } from "react"
+import { useState, useEffect, createContext, useContext, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Home,
@@ -21,12 +21,18 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  Settings,
+  Save,
+  Wrench,
+  KeyRound,
+  Calculator,
   XCircle,
   Building,
 } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -52,10 +58,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-
-// --- SplashScreen Bileşeni ---
 import SplashScreen from "@/public/SplashScreen"
-
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -127,7 +130,6 @@ const ThemeProvider = ({ children, defaultTheme = "system", storageKey = "vite-u
   const [theme, setTheme] = useState(defaultTheme)
 
   useEffect(() => {
-    // Bu hook artık sadece client'ta çalışacak
     const storedTheme = localStorage.getItem(storageKey) || defaultTheme
     setTheme(storedTheme)
   }, [storageKey, defaultTheme])
@@ -173,6 +175,7 @@ const Sidebar = ({ setPage, currentPage }) => {
     { name: "home", href: "#", icon: Home, label: "Ana Sayfa" },
     { name: "search", href: "#", icon: Search, label: "Ürün Arama" },
     { name: "customers", href: "#", icon: Users, label: "Müşteriler" },
+    { name: "settings", href: "#", icon: Settings, label: "Ayarlar" },
   ]
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
@@ -213,6 +216,129 @@ const Sidebar = ({ setPage, currentPage }) => {
         <ModeToggle />
       </nav>
     </aside>
+  )
+}
+// --------------------------------------------------------------------------------
+// Ayarlar Sayfası ve İlk Kurulum Ekranı
+// --------------------------------------------------------------------------------
+const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false }) => {
+  const [settings, setSettings] = useState(initialSettings)
+  useEffect(() => { setSettings(initialSettings) }, [initialSettings])
+  const handleChange = (key, value) => { setSettings((prev) => ({ ...prev, [key]: value })) }
+  const handleSubmit = (e) => { e.preventDefault(); onSave(settings) }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary"/> Netflex API Bilgileri</CardTitle>
+          <CardDescription>Netflex sisteminden veri çekmek için kullanılacak kullanıcı adı ve şifre.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="netflex_username">Kullanıcı Adı</Label>
+            <Input id="netflex_username" value={settings.netflex_username || ''} onChange={(e) => handleChange('netflex_username', e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="netflex_password">Şifre</Label>
+            <Input id="netflex_password" type="password" value={settings.netflex_password || ''} onChange={(e) => handleChange('netflex_password', e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary"/> TCI Fiyatlandırma</CardTitle>
+          <CardDescription>TCI ürünlerinin orijinal fiyatı ile çarpılacak katsayı.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="tci_coefficient">Fiyat Katsayısı</Label>
+            <Input id="tci_coefficient" type="number" step="0.1" value={settings.tci_coefficient || 1.4} onChange={(e) => handleChange('tci_coefficient', e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+      <div className="flex justify-end">
+        <Button type="submit" disabled={isSaving}>
+          {isSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isInitialSetup ? 'Ayarları Kaydet ve Başlat' : 'Ayarları Kaydet'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+const SettingsPage = ({ authError, onSettingsSaved }) => {
+  const [settings, setSettings] = useState(null)
+  const [isSaving, setIsSaving] = useState(false)
+  useEffect(() => { window.electronAPI.loadSettings() }, [])
+  useEffect(() => {
+    const cleanup = window.electronAPI.onSettingsLoaded(setSettings)
+    return () => cleanup()
+  }, [])
+
+  const handleSave = async (newSettings) => {
+    setIsSaving(true)
+    const cleanup = window.electronAPI.onSettingsSaved((result) => {
+      if (result.status === 'success') {
+        toast.success('Ayarlar başarıyla kaydedildi.')
+        onSettingsSaved()
+      } else {
+        toast.error(`Ayarlar kaydedilemedi: ${result.message}`)
+      }
+      setIsSaving(false)
+      cleanup()
+    })
+    window.electronAPI.saveSettings(newSettings)
+  }
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Uygulama Ayarları</h1>
+      {authError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Kimlik Doğrulama Hatası!</AlertTitle>
+          <AlertDescription>
+            Netflex kullanıcı adı veya şifreniz yanlış. Lütfen bilgilerinizi kontrol edip tekrar kaydedin.
+          </AlertDescription>
+        </Alert>
+      )}
+      {settings ? (
+        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
+      ) : (
+        <div className="flex justify-center items-center h-64">
+          <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
+    </div>
+  )
+}
+const InitialSetupScreen = ({ setAppStatus }) => {
+  const [isSaving, setIsSaving] = useState(false)
+  const onSave = (settings) => {
+    setIsSaving(true)
+    setAppStatus('initializing')
+    window.electronAPI.saveSettings(settings)
+  }
+  return (
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-2xl">
+        <Card className="shadow-2xl">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground"><Wrench className="h-6 w-6"/></div>
+            <CardTitle className="text-2xl">Uygulama Kurulumu</CardTitle>
+            <CardDescription>Devam etmeden önce temel ayarları yapmanız gerekmektedir.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             <SettingsForm
+                initialSettings={{ netflex_username: "", netflex_password: "", tci_coefficient: 1.4 }}
+                onSave={onSave}
+                isSaving={isSaving}
+                isInitialSetup={true}
+            />
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
   )
 }
 
@@ -897,115 +1023,76 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
 // --------------------------------------------------------------------------------
 // Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
-function MainApplication() {
+function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("search");
   const [customers, setCustomers] = useState([]);
   const [assignments, setAssignments] = useState({});
-  const [isDataLoaded, setIsDataLoaded] = useState(false); // Verinin yüklendiğini takip eden yeni state
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // Veriyi SADECE bir kez, component yüklendiğinde oku
   useEffect(() => {
     try {
       const savedCustomers = localStorage.getItem("customers");
-      if (savedCustomers) {
-        setCustomers(JSON.parse(savedCustomers));
-      }
+      if (savedCustomers) { setCustomers(JSON.parse(savedCustomers)); }
       const savedAssignments = localStorage.getItem("assignments");
-      if (savedAssignments) {
-        setAssignments(JSON.parse(savedAssignments));
-      }
+      if (savedAssignments) { setAssignments(JSON.parse(savedAssignments)); }
     } catch (error) {
       console.error("localStorage'dan veri yüklenirken hata:", error);
       toast.error("Kaydedilmiş veriler yüklenemedi.");
     } finally {
-      // Okuma işlemi bittikten sonra, kaydetmenin aktifleşmesi için sinyal ver
       setIsDataLoaded(true);
     }
-  }, []); // Boş dependency array, bu hook'un SADECE bir kez çalışmasını sağlar.
+  }, []);
 
 
-  // Müşteri verileri her değiştiğinde kaydet
+  // Verileri her değiştiğinde kaydet
   useEffect(() => {
-    // SADECE ilk yükleme tamamlandıktan SONRA kaydetme işlemini yap
     if (isDataLoaded) {
       try {
         localStorage.setItem("customers", JSON.stringify(customers));
-      } catch (error) {
-        console.error("Müşteri verileri kaydedilirken hata:", error);
-      }
-    }
-  }, [customers, isDataLoaded]);
-
-  // Atama verileri her değiştiğinde kaydet
-  useEffect(() => {
-    // SADECE ilk yükleme tamamlandıktan SONRA kaydetme işlemini yap
-    if (isDataLoaded) {
-      try {
         localStorage.setItem("assignments", JSON.stringify(assignments));
       } catch (error) {
-        console.error("Atama verileri kaydedilirken hata:", error);
+        console.error("Veriler kaydedilirken hata:", error);
       }
     }
-  }, [assignments, isDataLoaded]);
+  }, [customers, assignments, isDataLoaded]);
 
-
-  const [dashboardStats, setDashboardStats] = useState({
-    customerCount: 0,
-    totalUniqueProducts: 0,
-    activeOrders: 0,
-  });
-
+  const [dashboardStats, setDashboardStats] = useState({ customerCount: 0, totalUniqueProducts: 0, activeOrders: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
-
     const cleanups = [
         window.electronAPI.onProductFound((product) => {
             setSearchResults((prev) => {
                 const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
-                if (!isProductAlreadyInList) {
-                    return [...prev, product]
-                }
+                if (!isProductAlreadyInList) { return [...prev, product] }
                 return prev
             })
         }),
         window.electronAPI.onSearchComplete((summary) => {
             setIsLoading(false)
-            if (summary.status === 'cancelled') {
-                toast.warning("Arama iptal edildi.")
-            } else {
-                toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
-            }
+            if (summary.status === 'cancelled') { toast.warning("Arama iptal edildi.") }
+            else { toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`) }
         }),
-        window.electronAPI.onSearchError((errorMessage) => {
-            setError(errorMessage)
-            setIsLoading(false)
-        }),
+        window.electronAPI.onSearchError((errorMessage) => { setError(errorMessage); setIsLoading(false) }),
         window.electronAPI.onExportResult((result) => {
-            if (result.status === "success") {
-                toast.success(`Excel dosyası kaydedildi: ${result.path}`)
-            } else {
-                toast.error(`Excel hatası: ${result.message}`)
-            }
+            if (result.status === "success") { toast.success(`Excel dosyası kaydedildi: ${result.path}`) }
+            else { toast.error(`Excel hatası: ${result.message}`) }
         }),
+        window.electronAPI.onAuthenticationError(() => { setAppStatus('auth_error') }),
     ];
-
-    return () => {
-        cleanups.forEach(cleanup => cleanup());
-    }
-  }, [])
+    return () => { cleanups.forEach(cleanup => cleanup()); }
+  }, [setAppStatus])
 
   useEffect(() => {
     let productCount = 0
     const uniqueProducts = new Set<string>()
     Object.values(assignments).forEach((productList: AssignmentItem[]) => {
       productCount += productList.length
-      productList.forEach((product) => {
-        uniqueProducts.add(product.product_code)
-      })
+      productList.forEach((product) => { uniqueProducts.add(product.product_code) })
     })
     setDashboardStats({
       customerCount: customers.length,
@@ -1037,28 +1124,28 @@ function MainApplication() {
     }
   }
 
+  const handleSettingsSaved = () => {
+    // Ayarlar başarıyla kaydedildiğinde, durumu 'hazır' olarak güncelleyerek
+    // ana uygulamaya geri dönülmesini sağla.
+    setAppStatus('ready');
+    // Sayfayı da arama sayfasına yönlendir.
+    setPage('search');
+  };
+
+
   const renderPage = () => {
+    // Eğer kimlik doğrulama hatası varsa, doğrudan ayarlar sayfasını göster.
+    if (appStatus === 'auth_error') {
+      return <SettingsPage authError={true} onSettingsSaved={handleSettingsSaved} />;
+    }
+
     switch (page) {
       case "search":
-        return (
-          <SearchPage
-            searchResults={searchResults}
-            isLoading={isLoading}
-            error={error}
-            handleSearch={handleSearch}
-            customers={customers}
-            onAssignProducts={handleAssignProducts}
-          />
-        )
+        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} customers={customers} onAssignProducts={handleAssignProducts} /> )
       case "customers":
-        return (
-          <CustomersPage
-            customers={customers}
-            setCustomers={setCustomers}
-            assignments={assignments}
-            setAssignments={setAssignments}
-          />
-        )
+        return ( <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} setAssignments={setAssignments} /> )
+      case "settings":
+        return <SettingsPage authError={false} onSettingsSaved={handleSettingsSaved} />;
       case "home":
       default:
         return <HomePage stats={dashboardStats} />
@@ -1082,51 +1169,61 @@ function MainApplication() {
 // Ana Uygulama Yönlendiricisi
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [isMounted, setIsMounted] = useState(false);
-  const [areServicesReady, setAreServicesReady] = useState(false);
-  const [initializationError, setInitializationError] = useState(false);
+  const [appStatus, setAppStatus] = useState('initializing') // 'initializing', 'setup_required', 'auth_error', 'ready', 'error'
 
   useEffect(() => {
-    setIsMounted(true);
-
-    if (window.electronAPI) {
-      const cleanup = window.electronAPI.onServicesReady((isReady) => {
-          console.log(`Python servisleri hazır sinyali alındı: ${isReady}`);
-          if (isReady) {
-              setAreServicesReady(true);
-          } else {
-              setInitializationError(true);
-              toast.error("Arka plan servisleri başlatılamadı. Lütfen uygulamayı yeniden başlatın.");
-          }
-      });
-
-      return () => cleanup();
-    } else {
+    if (!window.electronAPI) {
       console.warn("Electron API bulunamadı. Geliştirme modu varsayılıyor.");
-      // Geliştirme modunda servislerin hazır olduğunu varsay
-      const timer = setTimeout(() => setAreServicesReady(true), 1500);
+      const timer = setTimeout(() => setAppStatus('ready'), 2500); // Geliştirme için gecikme
       return () => clearTimeout(timer);
     }
+
+    const cleanups = [
+        window.electronAPI.onServicesReady((isReady) => {
+            setAppStatus(isReady ? 'ready' : 'error')
+            if (!isReady) toast.error("Arka plan servisleri başlatılamadı.")
+        }),
+        window.electronAPI.onInitialSetupRequired(() => setAppStatus('setup_required')),
+        window.electronAPI.onAuthenticationError(() => setAppStatus('auth_error')),
+        window.electronAPI.onPythonCrashed(() => {
+            setAppStatus('error')
+            toast.error("Kritik hata: Arka plan servisi çöktü.")
+        })
+    ];
+
+    // Tüm dinleyiciler kurulduktan sonra, ana sürece hazır olduğumuzu bildiriyoruz.
+    window.electronAPI.rendererReady();
+
+    return () => cleanups.forEach(c => c())
   }, []);
 
-
-  // UYGULAMAYI GÖSTERME KOŞULU:
-  // 1. Arayüz component'i tarayıcıya yüklenmiş OLMALI (isMounted)
-  // 2. Python'dan gelen hazır sinyali alınmış OLMALI (areServicesReady)
-  const showApp = isMounted && areServicesReady;
+  const renderContent = () => {
+    switch (appStatus) {
+      case 'initializing':
+        return <SplashScreen key="splash" hasError={false} />;
+      case 'setup_required':
+        return <InitialSetupScreen key="setup" setAppStatus={setAppStatus} />;
+      case 'ready':
+      case 'auth_error': // auth_error durumunu MainApplication yönetecek
+        return <MainApplication key="main_app" appStatus={appStatus} setAppStatus={setAppStatus} />;
+      case 'error':
+        return <SplashScreen key="splash-error" hasError={true} />;
+      default:
+        return <SplashScreen key="splash-default" hasError={false} />;
+    }
+  }
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <AnimatePresence mode="wait">
-        {!showApp ? (
-          <motion.div key="splash" exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-            <SplashScreen hasError={initializationError} />
-          </motion.div>
-        ) : (
-          <motion.div key="main_app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-            <MainApplication />
-          </motion.div>
-        )}
+         <motion.div
+            key={appStatus} // Durum değiştikçe animasyonun yeniden tetiklenmesini sağlar
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}>
+          {renderContent()}
+        </motion.div>
       </AnimatePresence>
       <Toaster position="bottom-right" />
     </ThemeProvider>

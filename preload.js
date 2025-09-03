@@ -2,37 +2,33 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Listener'ları yönetmek için bir yardımcı fonksiyon.
-// Bu, her 'on...' fonksiyonu için tekrar eden kodu azaltır ve listener temizleme özelliği ekler.
+// Tekrarlayan listener oluşturma kodunu basitleştiren bir yardımcı fonksiyon
 const createListener = (channel) => (callback) => {
-  // Electron'dan gelen 'event' argümanını atlayıp sadece asıl veriyi ('...args') callback'e iletiyoruz.
   const subscription = (_event, ...args) => callback(...args);
   ipcRenderer.on(channel, subscription);
-
-  // React'in useEffect cleanup'ı için bir kaldırma fonksiyonu döndürüyoruz.
-  // Bu, component kaldırıldığında listener'ın da bellekten silinmesini sağlar.
+  // Temizlik fonksiyonu: Component unmount olduğunda listener'ı kaldırmak için
   return () => {
     ipcRenderer.removeListener(channel, subscription);
   };
 };
 
-// Güvenli bir şekilde ana işlem (main.js) ile arayüz (renderer)
-// arasında iletişim kuracak bir API oluştur
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Main process'e komut göndermek için fonksiyonlar
+  // --- Komut Gönderme (Renderer -> Main) ---
+  rendererReady: () => ipcRenderer.send('renderer-ready'),
   performSearch: (searchTerm) => ipcRenderer.send('perform-search', searchTerm),
   exportToExcel: (data) => ipcRenderer.send('export-to-excel', data),
+  loadSettings: () => ipcRenderer.send('load-settings'),
+  saveSettings: (settings) => ipcRenderer.send('save-settings', settings),
 
-  // Gelen verileri dinlemek için kanallar
-  // YENİ: Servislerin hazır olduğunu bildiren kanal
+  // --- Dinleyiciler (Main -> Renderer) ---
   onServicesReady: createListener('services-ready'),
-
-  // Mevcut kanallarınız
-  onDatabaseResults: createListener('database-results'),
+  onInitialSetupRequired: createListener('initial-setup-required'),
   onProductFound: createListener('search-product-found'),
-  onSearchProgress: createListener('search-progress'),
   onSearchComplete: createListener('search-complete'),
   onExportResult: createListener('export-result'),
   onSearchError: createListener('search-error'),
+  onSettingsLoaded: createListener('settings-loaded'),
+  onSettingsSaved: createListener('settings-saved'),
+  onAuthenticationError: createListener('authentication-error'),
+  onPythonCrashed: createListener('python-crashed'),
 });
-

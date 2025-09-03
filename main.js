@@ -6,25 +6,47 @@ const { spawn, exec } = require('child_process');
 
 let win;
 let pythonProcess = null;
+let initialPythonStateMessage = null;
+let handshakeComplete = false;
+
+// UYGULAMANIN PAKETLENMİŞ OLUP OLMADIĞINI KONTROL EDEN DEĞİŞKEN
+const isDev = !app.isPackaged;
 
 function startPythonService() {
-  // Geliştirme ve paketlenmiş uygulama yollarını belirle
-  if (!app.isPackaged) {
-    const scriptPath = path.join(__dirname, 'desktop_app_electron.py');
+  if (pythonProcess) {
+    console.log('Python servisi zaten çalışıyor.');
+    return;
+  }
+
+  // Python betiğinin yolunu dinamik olarak belirle
+  let scriptPath;
+  if (isDev) {
+    // Geliştirme ortamında, script ana dizinde
+    scriptPath = path.join(__dirname, 'desktop_app_electron.py');
     pythonProcess = spawn('python', ['-u', scriptPath]);
   } else {
-    const exePath = path.join(process.resourcesPath, 'bin', 'desktop_app.exe');
-    pythonProcess = spawn(exePath);
+    // Paketlenmiş uygulamada, Python .exe'si 'resources' klasörünün içindeki 'bin' klasöründedir.
+    // process.resourcesPath, 'resources' klasörünün yolunu verir.
+    scriptPath = path.join(process.resourcesPath, 'bin', 'desktop_app.exe');
+    pythonProcess = spawn(scriptPath);
   }
+
+  console.log(`Python arka plan servisi başlatılıyor: ${scriptPath}`);
+
+  pythonProcess.on('error', (err) => {
+    console.error('Python servisi başlatılamadı:', err);
+    // Hata durumunda kullanıcıya bilgi vermek için bir pencere gösterilebilir.
+    if (win && !win.isDestroyed()) {
+        win.webContents.send('python-crashed', `Python başlatılamadı: ${err.message}`);
+    }
+  });
 
   console.log(`Python arka plan servisi başlatıldı. PID: ${pythonProcess.pid}`);
 
-  // Python'dan gelen standart hata (stderr) akışını dinle
   pythonProcess.stderr.on('data', (data) => {
     console.error(`[PYTHON HATA]: ${data.toString()}`);
   });
 
-  // Python'dan gelen standart çıktı (stdout) akışını dinle
   let buffer = '';
   pythonProcess.stdout.on('data', (data) => {
     buffer += data.toString();
@@ -38,33 +60,40 @@ function startPythonService() {
           const message = JSON.parse(completeJsonString);
           if (message && typeof message === 'object' && message.type) {
             const { type, data } = message;
-            if (win && !win.isDestroyed()) {
-                if (type === 'python_services_ready') {
-                    if(data){
-                        console.log('Python servisleri hazır, React tarafına sinyal gönderiliyor.');
-                    } else {
-                        console.error('Python servisleri BAŞLATILAMADI, React tarafına sinyal gönderiliyor.');
-                    }
-                    win.webContents.send('services-ready', data);
-                    return;
-                }
 
-                const channelMap = {
-                    database_results: 'database-results',
-                    product_found: 'search-product-found',
-                    progress: 'search-progress',
-                    complete: 'search-complete',
-                    export_result: 'export-result',
-                    error: 'search-error'
-                };
-                const channel = channelMap[type];
-                if (channel) {
+            if (type === 'initiate_restart') {
+              app.relaunch();
+              app.quit();
+              return;
+            }
+
+            const channels = {
+              python_services_ready: 'services-ready',
+              initial_setup_required: 'initial-setup-required',
+              authentication_error: 'authentication-error',
+              product_found: 'search-product-found',
+              search_complete: 'search-complete',
+              export_result: 'export-result',
+              error: 'search-error',
+              settings_loaded: 'settings-loaded',
+              settings_saved: 'settings-saved',
+            };
+            const channel = channels[type];
+
+            const isStartupMessage = ['initial_setup_required', 'python_services_ready', 'authentication_error'].includes(type);
+
+            if (isStartupMessage) {
+                initialPythonStateMessage = { channel, data };
+                if (handshakeComplete && win && !win.isDestroyed()) {
                     win.webContents.send(channel, data);
                 }
             }
+            else if (win && !win.isDestroyed() && channel) {
+              win.webContents.send(channel, data);
+            }
           }
         } catch (error) {
-            console.error('Python\'dan gelen JSON parse edilemedi:', completeJsonString, error);
+          console.error('Python\'dan gelen JSON parse edilemedi:', completeJsonString, error);
         }
       }
       boundary = buffer.indexOf('\n');
@@ -73,19 +102,30 @@ function startPythonService() {
 
   pythonProcess.on('close', (code) => {
     console.error(`Python servisi ${code} koduyla sonlandı.`);
+    if (win && !win.isDestroyed() && code !== 0) {
+        initialPythonStateMessage = { channel: 'python-crashed', data: null };
+        if (win.webContents) {
+            win.webContents.send('python-crashed');
+        }
+    }
     pythonProcess = null;
   });
-
-  pythonProcess.on('error', (err) => {
-    console.error('Python servisi başlatılamadı:', err);
-  });
 }
+
+const loadDevUrlWithRetry = () => {
+  win.loadURL('http://localhost:3000')
+    .catch((err) => {
+      console.log('Geliştirme sunucusu henüz hazır değil, 2 saniye sonra tekrar denenecek...');
+      setTimeout(loadDevUrlWithRetry, 2000);
+    });
+};
 
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
     backgroundColor: '#FFFFFF',
+    show: false,
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -94,80 +134,66 @@ function createWindow() {
     },
   });
 
+  win.once('ready-to-show', () => {
+    win.show();
+    startPythonService();
+  });
+
   win.setMenu(null);
 
-  if (!app.isPackaged) {
-    win.loadURL('http://localhost:3000');
+  if (isDev) {
+    loadDevUrlWithRetry();
   } else {
-    win.loadFile(path.join(__dirname, 'medical-chemical-sales', 'out', 'index.html'));
+    // Paketlenmiş uygulamada, 'out' klasörünün içindeki 'index.html' dosyasını yükle
+    // __dirname, paketlendiğinde 'resources/app.asar' klasörünü gösterir.
+    // 'out' klasörü bu dizinin içinde oluşturulacaktır.
+    win.loadFile(path.join(__dirname,  'out', 'index.html'));
   }
 }
 
 app.whenReady().then(() => {
+  ipcMain.once('renderer-ready', () => {
+    console.log('Arayüz hazır. Saklanan ilk durum mesajı gönderiliyor (varsa).');
+    handshakeComplete = true;
+    if (win && !win.isDestroyed() && initialPythonStateMessage) {
+        win.webContents.send(initialPythonStateMessage.channel, initialPythonStateMessage.data);
+    }
+  });
+
   createWindow();
-  startPythonService();
+
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-// --- DÜZELTME BAŞLANGICI: Düzgün Kapatma Mantığı ---
-let isQuitting = false;
-
-app.on('before-quit', (event) => {
-    if (isQuitting) {
-        return;
-    }
-    event.preventDefault(); // Uygulamanın hemen kapanmasını engelle
-    isQuitting = true;
-    console.log('Uygulama kapanıyor, Python servisine kapatma komutu gönderiliyor...');
-
-    if (pythonProcess && !pythonProcess.killed) {
-        // Python işleminin kapanmasını dinle
-        pythonProcess.on('close', () => {
-            console.log('Python servisi kapandı. Uygulama sonlandırılıyor.');
-            app.quit(); // Şimdi uygulamayı güvenle kapat
-        });
-
-        // Python'a kapatma komutunu gönder
-        sendCommandToPython({ action: 'shutdown' });
-
-        // Python'un yanıt vermemesi ihtimaline karşı bir zaman aşımı ayarla
-        setTimeout(() => {
-            console.log('Python servisi zamanında kapanmadı, zorla sonlandırılıyor.');
-            if (pythonProcess && !pythonProcess.killed) {
-                // taskkill komutu ile tüm alt süreçleri (chrome.exe) de sonlandır
-                exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
-            }
-            // Zaman aşımı sonrası uygulamayı her durumda kapat
-            app.quit();
-        }, 3000); // 3 saniye bekle
+app.on('before-quit', () => {
+  console.log('Uygulama kapanıyor, Python servisi ve alt işlemleri sonlandırılıyor...');
+  if (pythonProcess && !pythonProcess.killed) {
+    if (process.platform === "win32") {
+      exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
     } else {
-        // Python süreci zaten yoksa, doğrudan çık
-        app.quit();
+      pythonProcess.kill('SIGKILL');
     }
+    pythonProcess = null;
+  }
 });
 
 app.on('window-all-closed', () => {
-  // macOS dışında, tüm pencereler kapandığında uygulamayı kapatma sürecini başlat
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
-// --- DÜZELTME SONU ---
 
 function sendCommandToPython(command) {
-    if (pythonProcess && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
-        const commandString = JSON.stringify(command);
-        pythonProcess.stdin.write(`${commandString}\n`);
-    } else {
-        console.error('Python servisi hazır değil veya zaten kapatılmış.');
-    }
+  if (pythonProcess && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
+    const commandString = JSON.stringify(command);
+    pythonProcess.stdin.write(`${commandString}\n`);
+  } else {
+    console.error('Python servisi hazır değil veya zaten kapatılmış.');
+  }
 }
 
-ipcMain.on('perform-search', (event, searchTerm) => {
-  sendCommandToPython({ action: 'search', data: searchTerm });
-});
-
-ipcMain.on('export-to-excel', (event, data) => {
-  sendCommandToPython({ action: 'export', data: data });
-});
+ipcMain.on('perform-search', (event, searchTerm) => sendCommandToPython({ action: 'search', data: searchTerm }));
+ipcMain.on('export-to-excel', (event, data) => sendCommandToPython({ action: 'export', data: data }));
+ipcMain.on('load-settings', () => sendCommandToPython({ action: 'load_settings' }));
+ipcMain.on('save-settings', (event, settings) => sendCommandToPython({ action: 'save_settings', data: settings }));
 

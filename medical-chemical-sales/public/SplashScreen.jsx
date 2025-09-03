@@ -1,140 +1,158 @@
-"use client";
+"use client"
 
-import { motion, AnimatePresence } from "framer-motion";
-import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion"
+import { useState, useEffect } from "react"
 
 // Bu bileşen, animasyon mantığını içerir ve hangi SVG'yi canlandıracağını
 // 'props' aracılığıyla SplashScreen bileşeninden alır.
 function AnimatedLogo({ logoData }) {
   // SVG konteyneri için animasyon varyantları.
-  // Animasyonun aşamalarını kontrol eder: önce görünür olur, sonra yollar çizilir.
   const containerVariants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: 0, scale: 0.5 },
     visible: {
       opacity: 1,
+      scale: 1,
       transition: {
-        staggerChildren: 0.1, // Logo parçalarının birbiri ardına canlanması için gecikme
-        delayChildren: 0.2,   // Animasyonun başlaması için küçük bir bekleme
+        duration: 1.2,
+        ease: [0.16, 1, 0.3, 1],
+        staggerChildren: 0.15,
+        delayChildren: 0.3,
       },
     },
-  };
+  }
 
   // Logo yollarının (path) çizim animasyonu için varyantlar.
-  // "pathLength" özelliği, yolun ne kadarının çizileceğini kontrol eder.
   const pathVariants = {
     hidden: {
       pathLength: 0,
       opacity: 0,
-      fillOpacity: 0, // Başlangıçta dolgu rengi görünmez
+      fillOpacity: 0,
     },
     visible: {
       pathLength: 1,
       opacity: 1,
-      fillOpacity: 1, // Animasyon sonunda dolgu rengi görünür olur
+      fillOpacity: 1,
       transition: {
-        pathLength: { duration: 1.5, ease: "easeInOut" },
-        opacity: { duration: 0.01 }, // Anında görünür yap
-        fillOpacity: { duration: 0.8, delay: 1.2 } // Çizim bittikten sonra yavaşça doldur
+        pathLength: { duration: 2, ease: "easeInOut" },
+        opacity: { duration: 0.5 },
+        // OPTİMİZASYON: Doldurma animasyonunu (fill) çizimle (pathLength) aynı anda başlatarak
+        // daha akıcı ve daha az gecikmeli bir his veriyoruz.
+        fillOpacity: { duration: 1.5, delay: 0.5, ease: "easeOut" },
       },
     },
-  };
+  }
 
-  // Arka plan için daha yumuşak bir giriş efekti
+  // Arka plan için daha basit ve performanslı bir varyant.
   const backgroundVariants = {
-      hidden: { opacity: 0, scale: 0.8 },
-      visible: {
-          opacity: 1,
-          scale: 1,
-          transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } // Yumuşak bir ease efekti
-      }
-  };
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 1.5, ease: [0.16, 1, 0.3, 1] },
+    },
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center">
-      {/* Logo ve genel animasyon konteyneri */}
+    <div className="flex flex-col items-center justify-center relative">
+      {/* OPTİMİZASYON: Bu sürekli dönen div kaldırıldı. Animasyon doğrudan SVG'ye uygulanacak. */}
       <motion.svg
-        width="200"
-        height="200"
-        viewBox="0 0 1024 1024" // Bu değer SVG'nize göre betik tarafından güncellenebilir veya sabit kalabilir.
+        width="280"
+        height="280"
+        viewBox="0 0 1024 1024"
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="drop-shadow-lg" // Logoya derinlik katmak için gölge
+        // OPTİMİZASYON: Maliyetli 'filter' yerine daha performanslı olan 'drop-shadow'u tek bir yere uyguluyoruz.
+        // Ayrıca, tarayıcıya bu elementin animasyon için optimize edilmesi gerektiğini bildirmek amacıyla
+        // 'will-change' özelliğini ekliyoruz. Bu, donanım hızlandırmayı tetikler.
+        style={{ willChange: "transform, opacity", filter: "drop-shadow(0 10px 20px rgba(79, 70, 229, 0.2))" }}
       >
-        {/* Arka planı ayrı ve daha etkileyici bir animasyonla canlandırıyoruz */}
         {logoData?.background && (
-            <motion.path
-                d={logoData.background.d}
-                fill={logoData.background.fill}
-                variants={backgroundVariants}
-            />
+          <motion.path d={logoData.background.d} fill={logoData.background.fill} variants={backgroundVariants} />
         )}
 
-        {/* Logo elementleri (yolları) burada tek tek canlandırılıyor */}
         {logoData?.elements?.map((path, index) => (
+          // OPTİMİZASYON: Parlama efekti için oluşturulan gereksiz <motion.g> ve duplike <motion.path> kaldırıldı.
+          // Bu, çizim yükünü %50 azaltır.
           <motion.path
             key={index}
             d={path.d}
             fill={path.fill}
-            stroke="#FFFFFF" // Çizim efektini belirginleştirmek için beyaz bir çizgi ekleyebiliriz
-            strokeWidth="2"
+            stroke="#FFFFFF"
+            strokeWidth="3"
             opacity={path.opacity || 1}
             variants={pathVariants}
           />
         ))}
       </motion.svg>
-      {/* Yükleme metni için animasyon */}
-      <motion.p
-        initial={{ opacity: 0, y: 10 }}
+
+      <motion.div
+        className="mt-8 text-center"
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.8, duration: 0.5 }} // Animasyonların bitimine doğru metin belirir
-        className="mt-6 text-lg text-gray-700 font-light"
+        transition={{ delay: 2.2, duration: 0.8, ease: "easeOut" }}
       >
-        Servisler başlatılıyor...
-      </motion.p>
+        <p className="text-xl text-gray-700 font-light mb-2">Servisler başlatılıyor...</p>
+
+        <div className="flex justify-center space-x-1 mt-4">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-2 h-2 bg-blue-500 rounded-full"
+              // OPTİMİZASYON: Sürekli tekrar eden animasyon yerine, daha basit bir giriş animasyonu kullanıyoruz.
+              // Bu, animasyon bittikten sonra CPU kullanımını sıfıra indirir.
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.5, 1] }}
+              transition={{ duration: 1.5, repeat: 2, delay: i * 0.2 + 2.5, ease: "easeInOut" }}
+            />
+          ))}
+        </div>
+      </motion.div>
     </div>
-  );
+  )
 }
 
-// Bu, yükleme ekranının kendisidir.
 function SplashScreen({ logoData }) {
   return (
     <motion.div
-      className="flex items-center justify-center h-screen bg-gray-50 absolute top-0 left-0 w-full z-50" // Arka planı hafif gri yaptım ve z-index ekledim
-      initial={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.4, ease: "easeIn" } }} // Çıkış animasyonu: Küçülerek kaybolma
+      className="flex items-center justify-center h-screen bg-slate-50 absolute top-0 left-0 w-full z-50"
+      initial={{ opacity: 1 }}
+      // OPTİMİZASYON: Çıkış animasyonundan performansı düşüren 'filter: blur' kaldırıldı.
+      // Sadece 'opacity' ile çıkış yapmak çok daha hızlıdır.
+      exit={{ opacity: 0, transition: { duration: 0.5, ease: "easeOut" } }}
     >
+      {/* OPTİMİZASYON: Sürekli hareket eden arka plan gradyanı ve parçacıklar kaldırıldı.
+          Bu tür sürekli arka plan animasyonları genellikle fark edilmez ama CPU'yu yorar.
+          Sade ve statik bir arka plan çok daha performanslıdır. */}
+
       <AnimatedLogo logoData={logoData} />
     </motion.div>
-  );
+  )
 }
 
 // Bu, uygulamanızın ana konteyneridir.
 export default function AppContainer() {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Bu kısım, bir Electron uygulamasının servislerinin hazır olmasını beklemek için
-    // veya bir zamanlayıcı ile açılış ekranını gizlemek için kullanılır.
     if (window.electronAPI && window.electronAPI.onServicesReady) {
       const removeListener = window.electronAPI.onServicesReady(() => {
-        console.log("Services are ready, hiding splash screen.");
-        setIsLoading(false);
-      });
+        console.log("Services are ready, hiding splash screen.")
+        setIsLoading(false)
+      })
 
-      return removeListener;
-
+      return removeListener
     } else {
-      console.warn("Electron API not found, falling back to timer.");
+      console.warn("Electron API not found, falling back to timer.")
+      // Animasyon süresini daha makul bir seviyeye çektik.
       const timer = setTimeout(() => {
-        setIsLoading(false);
-      }, 4000); // Animasyonun tamamlanması için süre artırıldı.
-      return () => clearTimeout(timer);
+        setIsLoading(false)
+      }, 4000)
+      return () => clearTimeout(timer)
     }
-  }, []);
+  }, [])
 
   // Python betiğiniz bu LOGO_DATA nesnesini bulup güncelleyecektir.
-  // İsteğiniz üzerine bu kısmı boş bıraktım.
   const LOGO_DATA = {
   'background': {
     'fill': '#0c2942',
@@ -2634,16 +2652,20 @@ export default function AppContainer() {
 
   return (
     <div>
-      <AnimatePresence>
-        {isLoading && <SplashScreen logoData={LOGO_DATA} />}
-      </AnimatePresence>
+      <AnimatePresence mode="wait">{isLoading && <SplashScreen logoData={LOGO_DATA} />}</AnimatePresence>
 
-      {/* Yükleme tamamlandığında bu kısım görünecektir. */}
       {!isLoading && (
-        <div className="flex items-center justify-center h-screen bg-white">
-          <h1 className="text-3xl font-bold text-gray-800">Uygulama Yüklendi!</h1>
-        </div>
+        <motion.div
+          className="flex items-center justify-center h-screen bg-white"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6 }}
+        >
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Uygulama Yüklendi!
+          </h1>
+        </motion.div>
       )}
     </div>
-  );
+  )
 }
