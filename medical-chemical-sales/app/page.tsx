@@ -83,7 +83,7 @@ interface NetflexResult {
 interface TciVariation {
   unit: string
   original_price: string
-  calculated_price: string
+  original_price_numeric: number | null
 }
 
 interface ProductResult {
@@ -114,6 +114,12 @@ interface AssignmentItem {
   cheapest_netflex_stock?: number | string
 }
 
+interface AppSettings {
+    netflex_username: string;
+    netflex_password: string;
+    tci_coefficient: number;
+}
+
 
 // Global Electron API tanımı
 declare global {
@@ -121,6 +127,16 @@ declare global {
     electronAPI: any
   }
 }
+
+// --------------------------------------------------------------------------------
+// Yardımcı Fonksiyonlar
+// --------------------------------------------------------------------------------
+const formatCurrency = (value: number | null, currency = "EUR") => {
+    if (value === null || isNaN(value)) return "N/A"
+    const currencySymbol = currency === "EUR" ? "€" : currency
+    return `${currencySymbol}${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 
 // --------------------------------------------------------------------------------
 // Tema Yönetimi
@@ -266,21 +282,15 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
     </form>
   )
 }
-const SettingsPage = ({ authError, onSettingsSaved }) => {
-  const [settings, setSettings] = useState(null)
+const SettingsPage = ({ authError, settings, onSaveSettings }) => {
   const [isSaving, setIsSaving] = useState(false)
-  useEffect(() => { window.electronAPI.loadSettings() }, [])
-  useEffect(() => {
-    const cleanup = window.electronAPI.onSettingsLoaded(setSettings)
-    return () => cleanup()
-  }, [])
 
-  const handleSave = async (newSettings) => {
+  const handleSave = async (newSettings: AppSettings) => {
     setIsSaving(true)
     const cleanup = window.electronAPI.onSettingsSaved((result) => {
       if (result.status === 'success') {
         toast.success('Ayarlar başarıyla kaydedildi.')
-        onSettingsSaved()
+        onSaveSettings(newSettings) // Ana uygulama state'ini güncelle
       } else {
         toast.error(`Ayarlar kaydedilemedi: ${result.message}`)
       }
@@ -623,7 +633,7 @@ const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfir
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, onAssignProducts }) => {
+const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, onAssignProducts, settings }) => {
   const [searchTerm, setSearchTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState({
@@ -710,12 +720,16 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
   }
 
   const handleSelectTCI = (product: ProductResult, variation: TciVariation) => {
+    const calculatedPrice = variation.original_price_numeric
+        ? variation.original_price_numeric * settings.tci_coefficient
+        : null;
+
     const assignmentItem: AssignmentItem = {
       product_name: product.product_name,
       product_code: `${product.product_number}-${variation.unit}`,
       cas_number: product.cas_number,
-      price_numeric: parseFloat(variation.calculated_price.replace(/[€.]/g, '').replace(',', '.')) || null,
-      price_str: variation.calculated_price,
+      price_numeric: calculatedPrice,
+      price_str: formatCurrency(calculatedPrice),
       source: 'TCI',
       cheapest_netflex_stock: ''
     };
@@ -852,7 +866,8 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                       <div>{product.product_number}</div>
                       <div>{product.cas_number}</div>
                       <div>{product.cheapest_netflex_price_str}</div>
-                      <div>{product.cheapest_netflex_stock}</div>
+                      {/* DEĞİŞİKLİK: TCI ürünleri için stok bilgisi gizlendi */}
+                      <div>{product.brand.toLowerCase().includes('tci') ? '' : product.cheapest_netflex_stock}</div>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)}>
                       {expandedProducts.has(product.product_number) ? (
@@ -971,7 +986,8 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                                  <TableHead className="w-[50px]"></TableHead>
                                  <TableHead>Birim</TableHead>
                                  <TableHead>Orijinal Fiyat</TableHead>
-                                 <TableHead>Hesaplanmış Fiyat (x1.4)</TableHead>
+                                 {/* DEĞİŞİKLİK: Katsayı artık ayarlardan dinamik olarak geliyor */}
+                                 <TableHead>Hesaplanmış Fiyat (x{settings.tci_coefficient})</TableHead>
                                </TableRow>
                              </TableHeader>
                              <TableBody>
@@ -988,7 +1004,13 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                                    </TableCell>
                                    <TableCell>{variation.unit}</TableCell>
                                    <TableCell>{variation.original_price}</TableCell>
-                                   <TableCell className="font-semibold">{variation.calculated_price}</TableCell>
+                                   {/* DEĞİŞİKLİK: Fiyat anlık olarak hesaplanıp formatlanıyor */}
+                                   <TableCell className="font-semibold">
+                                     {formatCurrency(variation.original_price_numeric
+                                         ? variation.original_price_numeric * settings.tci_coefficient
+                                         : null
+                                     )}
+                                   </TableCell>
                                  </TableRow>
                                ))}
                              </TableBody>
@@ -1028,6 +1050,8 @@ function MainApplication({ appStatus, setAppStatus }) {
   const [customers, setCustomers] = useState([]);
   const [assignments, setAssignments] = useState({});
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
 
   // Veriyi SADECE bir kez, component yüklendiğinde oku
   useEffect(() => {
@@ -1041,6 +1065,17 @@ function MainApplication({ appStatus, setAppStatus }) {
       toast.error("Kaydedilmiş veriler yüklenemedi.");
     } finally {
       setIsDataLoaded(true);
+    }
+  }, []);
+
+  // Ayarları Yükle
+  useEffect(() => {
+    if (window.electronAPI) {
+        window.electronAPI.loadSettings();
+        const cleanup = window.electronAPI.onSettingsLoaded((loadedSettings) => {
+            setSettings(loadedSettings);
+        });
+        return () => cleanup();
     }
   }, []);
 
@@ -1124,28 +1159,29 @@ function MainApplication({ appStatus, setAppStatus }) {
     }
   }
 
-  const handleSettingsSaved = () => {
-    // Ayarlar başarıyla kaydedildiğinde, durumu 'hazır' olarak güncelleyerek
-    // ana uygulamaya geri dönülmesini sağla.
-    setAppStatus('ready');
-    // Sayfayı da arama sayfasına yönlendir.
-    setPage('search');
+  const handleSaveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    // Eğer kimlik doğrulama hatası nedeniyle bu sayfadaysak,
+    // kullanıcıyı arama sayfasına geri yönlendir.
+    if (appStatus === 'auth_error') {
+        setAppStatus('ready');
+        setPage('search');
+    }
   };
 
 
   const renderPage = () => {
-    // Eğer kimlik doğrulama hatası varsa, doğrudan ayarlar sayfasını göster.
     if (appStatus === 'auth_error') {
-      return <SettingsPage authError={true} onSettingsSaved={handleSettingsSaved} />;
+      return <SettingsPage authError={true} settings={settings} onSaveSettings={handleSaveSettings} />;
     }
 
     switch (page) {
       case "search":
-        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} customers={customers} onAssignProducts={handleAssignProducts} /> )
+        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} customers={customers} onAssignProducts={handleAssignProducts} settings={settings}/> )
       case "customers":
         return ( <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} setAssignments={setAssignments} /> )
       case "settings":
-        return <SettingsPage authError={false} onSettingsSaved={handleSettingsSaved} />;
+        return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} />;
       case "home":
       default:
         return <HomePage stats={dashboardStats} />

@@ -15,6 +15,7 @@ import openpyxl
 from dotenv import load_dotenv
 from thefuzz import fuzz
 import io
+import queue
 
 # Optimize edilmiş modülleri import et
 from src import sigma, netflex, tci
@@ -151,7 +152,6 @@ def export_to_excel(data: Dict[str, Any]):
         workbook.save(filepath)
         logging.info(f"Excel dosyası oluşturuldu: {filepath}")
 
-        # Admin logları güncellendi
         admin_logger.info(f"Müşteri Ataması ve Rapor: Müşteri='{customer_name}', Atanan Ürün Sayısı={len(products)}")
         for product in products:
             p_name = re.sub(re.compile('<.*?>'), '', product.get("product_name", "N/A"))
@@ -168,7 +168,7 @@ def export_to_excel(data: Dict[str, Any]):
 # --- Karşılaştırma Motoru ---
 class ComparisonEngine:
     def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI, tci_api: tci.TciScraper,
-                 initial_settings: Dict[str, Any], max_workers=5):
+                 initial_settings: Dict[str, Any], max_workers=10):
         self.sigma_api = sigma_api
         self.netflex_api = netflex_api
         self.tci_api = tci_api
@@ -177,17 +177,14 @@ class ComparisonEngine:
         self.settings = initial_settings
 
     def initialize_drivers(self):
-        """Uygulama başlangıcında tüm Selenium sürücülerini paralel olarak başlatır."""
         logging.info("Ağır servisler (Selenium sürücüleri) başlatılıyor...")
         start_time = time.monotonic()
         try:
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Heavy-Driver-Starter") as executor:
                 future_sigma = executor.submit(self.sigma_api.start_drivers)
                 future_tci = executor.submit(self.tci_api.reinit_driver)
-
                 future_sigma.result()
                 future_tci.result()
-
             elapsed = time.monotonic() - start_time
             logging.info(f"Tüm Selenium sürücüleri {elapsed:.2f} saniyede başarıyla başlatıldı.")
         except Exception as e:
@@ -212,7 +209,6 @@ class ComparisonEngine:
         )
         if not all([s_name, s_num, s_brand, s_key]): return None
         cleaned_sigma_name = self._clean_html(s_name)
-        logging.info(f"İşleniyor: Sigma Ürünü - Ad='{cleaned_sigma_name}', Kod='{s_num}'")
 
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="Sigma-Sub-Fetcher") as executor:
             future_prices = executor.submit(self.sigma_api.get_all_product_prices, s_num, s_brand, s_key,
@@ -223,47 +219,46 @@ class ComparisonEngine:
             sigma_variations = future_prices.result()
             netflex_by_name = future_netflex_name.result() or []
             netflex_by_code = future_netflex_code.result() or []
-
-        logging.info(
-            f"'{s_num}' için API sonuçları: Sigma Fiyatları({len(sigma_variations)} var.), Netflex Ad Arama({len(netflex_by_name)} sonuç), Netflex Kod Arama({len(netflex_by_code)} sonuç)")
-
         if self.search_cancelled.is_set(): return None
 
-        all_matches = {p['product_code']: p for p in netflex_by_name if p.get('product_code')}
-        all_matches.update({p['product_code']: p for p in netflex_by_code if p.get('product_code')})
-        logging.info(f"'{s_num}' için toplam {len(all_matches)} benzersiz Netflex eşleşmesi bulundu.")
+        all_netflex_products_map = {p['product_code']: p for p in netflex_by_name if p.get('product_code')}
+        all_netflex_products_map.update({p['product_code']: p for p in netflex_by_code if p.get('product_code')})
+        all_netflex_products = list(all_netflex_products_map.values())
 
-        filtered_matches = [
-            p for p in all_matches.values()
-            if self._are_names_similar(cleaned_sigma_name, p.get('product_name', '')) and s_num in p.get('product_code',
-                                                                                                         '')
-        ]
-        logging.info(
-            f"'{s_num}' için isim ve kod benzerliğine göre filtrelenmiş {len(filtered_matches)} Netflex eşleşmesi kaldı.")
+        netflex_matches = []
+        processed_codes = set()
+        for p in all_netflex_products:
+            if p.get('product_code') not in processed_codes:
+                if self._are_names_similar(cleaned_sigma_name, p.get('product_name', '')):
+                    netflex_matches.append(p)
+                    processed_codes.add(p.get('product_code'))
+        for p in all_netflex_products:
+            if p.get('product_code') not in processed_codes:
+                if s_num in p.get('product_code', '') and fuzz.partial_ratio(cleaned_sigma_name.lower(),
+                                                                             p.get('product_name', '').lower()) > 80:
+                    netflex_matches.append(p)
+                    processed_codes.add(p.get('product_code'))
 
         cheapest_name, cheapest_price, cheapest_stock = "Bulunamadı", "N/A", "N/A"
-        if priced_matches := [p for p in filtered_matches if
-                              p.get('price_numeric') is not None and p.get('price_numeric') != float('inf')]:
+        if priced_matches := [p for p in netflex_matches if p.get('price_numeric') is not None]:
             cheapest = min(priced_matches, key=lambda x: x['price_numeric'])
             cheapest_name, cheapest_price, cheapest_stock = (cheapest.get('product_name'), cheapest.get('price_str'),
                                                              cheapest.get('stock'))
 
         return {
-            "product_name": s_name, "product_number": s_num, "cas_number": cas, "brand": f"Sigma ({s_brand})",
-            "sigma_variations": sigma_variations, "netflex_matches": filtered_matches,
+            "source": "Sigma", "product_name": s_name, "product_number": s_num, "cas_number": cas,
+            "brand": f"Sigma ({s_brand})", "sigma_variations": sigma_variations, "netflex_matches": netflex_matches,
             "cheapest_netflex_name": cheapest_name, "cheapest_netflex_price_str": cheapest_price,
             "cheapest_netflex_stock": cheapest_stock
         }
 
     def _process_tci_product(self, tci_product: tci.Product) -> Dict[str, Any]:
-        logging.info(f"İşleniyor: TCI Ürünü - Ad='{tci_product.name}', Kod='{tci_product.code}'")
         processed_variations = []
-        min_calculated_price = float('inf')
-        cheapest_calculated_price_str = "N/A"
-        tci_coefficient = self.settings.get('tci_coefficient', 1.4)
+        min_original_price = float('inf')
+
         for variation in tci_product.variations:
-            original_price_str, calculated_price_str, calculated_price_float = variation.get('price',
-                                                                                             'N/A'), "N/A", None
+            original_price_str = variation.get('price', 'N/A')
+            price_float = None
             try:
                 price_str_cleaned = re.sub(r'[^\d,.]', '', original_price_str)
                 price_standardized = ""
@@ -276,23 +271,33 @@ class ComparisonEngine:
                     price_standardized = price_str_cleaned.replace(',', '.')
                 if price_standardized:
                     price_float = float(price_standardized)
-                    calculated_price = price_float * tci_coefficient
-                    calculated_price_float = calculated_price
-                    calculated_price_str = f"€{calculated_price:,.2f}".replace(",", "X").replace(".", ",").replace("X",
-                                                                                                                   ".")
-                    logging.info(
-                        f"  -> TCI Fiyat Hesabı: '{original_price_str}' -> {price_float} * {tci_coefficient} = {calculated_price}")
-            except (ValueError, TypeError) as e:
-                logging.warning(f"TCI fiyatı parse edilemedi: '{original_price_str}'. Hata: {e}")
-            processed_variations.append({"unit": variation.get('unit'), "original_price": original_price_str,
-                                         "calculated_price": calculated_price_str})
-            if calculated_price_float is not None and calculated_price_float < min_calculated_price:
-                min_calculated_price, cheapest_calculated_price_str = calculated_price_float, calculated_price_str
+            except (ValueError, TypeError):
+                pass
+
+            processed_variations.append({
+                "unit": variation.get('unit'),
+                "original_price": original_price_str,
+                "original_price_numeric": price_float
+            })
+
+            if price_float is not None and price_float < min_original_price:
+                min_original_price = price_float
+
+        cheapest_price_to_show = None
+        if min_original_price != float('inf'):
+            tci_coefficient = self.settings.get('tci_coefficient', 1.4)
+            calculated_cheapest = min_original_price * tci_coefficient
+            cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",
+                                                                                                                ".")
+        else:
+            cheapest_price_to_show = "N/A"
+
         return {
-            "product_name": tci_product.name, "product_number": tci_product.code, "cas_number": tci_product.cas_number,
-            "brand": "TCI", "sigma_variations": {}, "netflex_matches": [],
-            "cheapest_netflex_price_str": cheapest_calculated_price_str, "cheapest_netflex_stock": "-",
-            "tci_variations": processed_variations
+            "source": "TCI", "product_name": tci_product.name, "product_number": tci_product.code,
+            "cas_number": tci_product.cas_number, "brand": "TCI",
+            "cheapest_netflex_price_str": cheapest_price_to_show,
+            "cheapest_netflex_stock": "",
+            "tci_variations": processed_variations, "sigma_variations": {}, "netflex_matches": []
         }
 
     def search_and_compare(self, search_term: str):
@@ -301,40 +306,70 @@ class ComparisonEngine:
         logging.info(f"===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '{search_term}' =====")
         admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
 
-        def _search_and_process(source_name: str, search_func, process_func):
-            if self.search_cancelled.is_set(): return 0
+        def _search_and_process_source(source_name, page_generator, product_processor):
+            page_queue = queue.Queue(maxsize=2)
             found_count = 0
-            try:
-                for product_page in search_func(search_term, self.search_cancelled):
-                    if self.search_cancelled.is_set(): break
-                    with ThreadPoolExecutor(max_workers=self.max_workers,
-                                            thread_name_prefix=f"{source_name}-Processor") as executor:
-                        futures = {executor.submit(process_func, p) for p in product_page}
-                        for future in as_completed(futures):
-                            if self.search_cancelled.is_set(): break
-                            if result := future.result():
-                                send_to_frontend("product_found", result)
-                                found_count += 1
-            except netflex.AuthenticationError as auth_error:
-                logging.error(f"Arama sırasında Netflex kimlik doğrulama hatası: {auth_error}")
-                send_to_frontend("authentication_error", True)
-            except Exception as e:
-                if not self.search_cancelled.is_set(): logging.error(f"{source_name} araması sırasında hata: {e}",
-                                                                     exc_info=True)
+
+            def producer():
+                try:
+                    for product_page in page_generator(search_term, self.search_cancelled):
+                        if self.search_cancelled.is_set(): break
+                        page_queue.put(product_page)
+                finally:
+                    page_queue.put(None)
+
+            def consumer():
+                nonlocal found_count
+                with ThreadPoolExecutor(max_workers=self.max_workers,
+                                        thread_name_prefix=f"{source_name}-Page-Processor") as executor:
+                    while not self.search_cancelled.is_set():
+                        try:
+                            product_page = page_queue.get(timeout=0.2)
+                            if product_page is None: break
+
+                            futures = {executor.submit(product_processor, p) for p in product_page}
+                            for future in as_completed(futures):
+                                if self.search_cancelled.is_set(): break
+                                if result := future.result():
+                                    send_to_frontend("product_found", result)
+                                    found_count += 1
+                        except queue.Empty:
+                            continue
+
+            producer_thread = threading.Thread(target=producer, name=f"{source_name}-Producer", daemon=True)
+            consumer_thread = threading.Thread(target=consumer, name=f"{source_name}-Consumer", daemon=True)
+            producer_thread.start()
+            consumer_thread.start()
+            producer_thread.join()
+            consumer_thread.join()
             return found_count
 
         total_found = 0
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Search-Source") as executor:
-            tasks = {
-                executor.submit(_search_and_process, "Sigma", self.sigma_api.search_products,
-                                self._process_sigma_product),
-                executor.submit(_search_and_process, "TCI", self.tci_api.get_products, self._process_tci_product)
-            }
-            for future in as_completed(tasks): total_found += future.result()
+        try:
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Search-Source") as executor:
+                tasks = {
+                    executor.submit(_search_and_process_source, "Sigma", self.sigma_api.search_products,
+                                    self._process_sigma_product),
+                    executor.submit(_search_and_process_source, "TCI", self.tci_api.get_products,
+                                    self._process_tci_product)
+                }
+                for future in as_completed(tasks):
+                    try:
+                        total_found += future.result()
+                    except Exception as exc:
+                        logging.error(f"Arama kaynağı işlenirken hata oluştu: {exc}", exc_info=True)
+        except netflex.AuthenticationError as e:
+            logging.error(f"Netflex kimlik doğrulama hatası: {e}", exc_info=False)
+            send_to_frontend("authentication_error", True)
+        except Exception as e:
+            if not self.search_cancelled.is_set():
+                logging.error(f"Arama sırasında genel bir hata oluştu: {e}", exc_info=True)
+                send_to_frontend("search_error", f"Arama sırasında hata: {e}")
+
         elapsed_time = time.monotonic() - start_time
         if not self.search_cancelled.is_set():
             logging.info(
-                f"Arama Tamamlandı: Terim='{search_term}', Bulunan={total_found}, Süre={elapsed_time:.2f}s")
+                f"Arama Tamamlandı: Terim='{search_term}', Toplam Bulunan={total_found}, Süre={elapsed_time:.2f}s")
             send_to_frontend("search_complete", {"status": "complete", "total_found": total_found,
                                                  "execution_time": round(elapsed_time, 2)})
         else:
@@ -350,52 +385,35 @@ class ComparisonEngine:
 # --- Ana Fonksiyon ---
 def main():
     logging.info("=" * 40 + "\n      Python Arka Plan Servisi Başlatıldı\n" + "=" * 40)
-
     services_initialized = threading.Event()
-
     sigma_api = sigma.SigmaAldrichAPI()
     tci_api = tci.TciScraper()
+    # DEĞİŞİKLİK: Uygulama kapanırken Selenium sürücülerinin düzgün kapatılması için
+    # atexit modülü ile fonksiyonlar kaydedildi. Bu, arkada kalan işlemleri önler.
     atexit.register(sigma_api.stop_drivers)
     atexit.register(tci_api.close_driver)
-
     netflex_api = None
     engine = None
 
     def initialize_services(settings_data: Dict[str, Any]):
         nonlocal netflex_api, engine
-
         log_safe_settings = {k: v for k, v in settings_data.items() if 'password' not in k}
         logging.info(f"Servisler şu ayarlarla başlatılıyor: {log_safe_settings}")
-
-        netflex_user = settings_data.get("netflex_username")
-        netflex_pass = settings_data.get("netflex_password")
-
-        if not netflex_user or not netflex_pass:
-            logging.error("Netflex kullanıcı adı veya şifresi boş. Servisler başlatılamıyor.")
-            send_to_frontend("python_services_ready", False)
-            return
-
-        netflex_api = netflex.NetflexAPI(username=netflex_user, password=netflex_pass)
+        netflex_api = netflex.NetflexAPI(username=settings_data.get("netflex_username"),
+                                         password=settings_data.get("netflex_password"))
         engine = ComparisonEngine(sigma_api, netflex_api, tci_api, initial_settings=settings_data)
 
         def full_initialization_service():
-            """Netflex token'ını ve ardından ağır Selenium sürücülerini sırayla başlatır."""
             logging.info("Tam servis başlatma süreci başladı.")
             try:
-                # 1. Adım: Netflex token'ını al
                 logging.info("1. Adım: Netflex token'ı alınıyor...")
-                netflex_api.get_token()  # Başarısız olursa AuthenticationError fırlatır
+                netflex_api.get_token()
                 logging.info("Netflex servisi başarıyla doğrulandı.")
-
-                # 2. Adım: Selenium sürücülerini başlat
                 logging.info("2. Adım: Selenium sürücüleri başlatılıyor...")
-                engine.initialize_drivers()  # Başarısız olursa Exception fırlatır
-
-                # 3. Adım: Her şey hazır
+                engine.initialize_drivers()
                 logging.info("Tüm arka plan servisleri başarıyla başlatıldı ve HAZIR.")
                 send_to_frontend("python_services_ready", True)
                 services_initialized.set()
-
             except netflex.AuthenticationError as e:
                 logging.error(f"Netflex kimlik doğrulama hatası: {e}", exc_info=False)
                 send_to_frontend("authentication_error", True)
@@ -404,10 +422,8 @@ def main():
                 send_to_frontend("python_services_ready", False)
 
         threading.Thread(target=full_initialization_service, name="Full-Initializer", daemon=True).start()
-        logging.info("initialize_services fonksiyonu tamamlandı, tam başlatma thread'i başlatıldı.")
 
     if SETTINGS_FILE_PATH.exists():
-        logging.info("Mevcut ayarlar dosyası bulundu, servisler başlatılıyor.")
         current_settings = load_settings()
         initialize_services(current_settings)
     else:
@@ -423,24 +439,22 @@ def main():
 
             if action == "load_settings":
                 send_to_frontend("settings_loaded", load_settings())
-
             elif action == "save_settings" and isinstance(data, dict):
                 save_settings(data)
-                # DEĞİŞİKLİK: Eğer bu ilk kurulumsa (servisler daha önce başlatılmamışsa)
-                # uygulamayı yeniden başlatmak yerine servisleri doğrudan başlat.
                 if not services_initialized.is_set():
-                    logging.info(
-                        "İlk kurulum ayarları kaydedildi. Arka plan servisleri şimdi başlatılıyor.")
+                    logging.info("İlk kurulum ayarları kaydedildi. Arka plan servisleri şimdi başlatılıyor.")
                     initialize_services(data)
                 else:
                     engine.settings = data
                     engine.netflex_api.update_credentials(data.get("netflex_username"), data.get("netflex_password"))
-                    logging.info("Çalışma zamanı ayarları güncellendi.")
+                    logging.info("Çalışma zamanı ayarları güncellendi. Servisler yeniden başlatılıyor...")
+                    services_initialized.clear()
+                    initialize_services(data)
                     send_to_frontend("settings_saved", {"status": "success"})
-
             elif action == "search" and data:
                 if not services_initialized.is_set():
-                    send_to_frontend("search_error", "Servisler başlatılmadı. Lütfen önce ayarları kaydedin.")
+                    send_to_frontend("search_error",
+                                     "Servisler başlatılmadı. Lütfen önce ayarları kontrol edip kaydedin.")
                     continue
                 if search_thread and search_thread.is_alive():
                     engine.force_cancel()
@@ -448,13 +462,10 @@ def main():
                 search_thread = threading.Thread(target=engine.search_and_compare, args=(data,),
                                                  name="Search-Coordinator")
                 search_thread.start()
-
             elif action == "cancel_search":
                 if engine: engine.force_cancel()
-
             elif action == "export":
                 send_to_frontend("export_result", export_to_excel(data))
-
             elif action == "shutdown":
                 if engine: engine.force_cancel()
                 if search_thread and search_thread.is_alive(): search_thread.join(5.0)
@@ -464,9 +475,9 @@ def main():
         except Exception as e:
             logging.critical(f"Ana döngüde beklenmedik hata: {e}", exc_info=True)
             send_to_frontend("error", f"Beklenmedik bir sunucu hatası: {str(e)}")
-
     logging.info("Python ana döngüsü sonlandı.")
 
 
 if __name__ == '__main__':
     main()
+

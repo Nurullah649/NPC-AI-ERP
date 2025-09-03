@@ -21,10 +21,10 @@ class SigmaAldrichAPI:
     def __init__(self):
         self.drivers: Dict[str, webdriver.Chrome] = {}
         self.sessions: Dict[str, requests.Session] = {}
-        # HIZ OPTİMİZASYONU: Her ülke için ayrı bir bağlantı havuzu.
-        # Bu, her bir Sigma alan adına (TR, US, DE, GB) olan bağlantıların
-        # yeniden kullanılmasını sağlayarak ağ gecikmesini azaltır.
-        self.adapter = HTTPAdapter(pool_connections=4, pool_maxsize=20)
+        # HATA GİDERME ve OPTİMİZASYON: Bağlantı havuzu (pool) boyutu artırıldı ve
+        # 'block=True' parametresi eklendi. Bu sayede havuz dolduğunda program
+        # hata verip isteği iptal etmek yerine, bir bağlantı boşa çıkana kadar bekler.
+        self.adapter = HTTPAdapter(pool_connections=10, pool_maxsize=100, pool_block=True)
 
     def start_drivers(self):
         countries = ['TR', 'US', 'DE', 'GB']
@@ -49,10 +49,6 @@ class SigmaAldrichAPI:
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument("--disable-blink-features=AutomationControlled")
 
-        # HIZ OPTİMİZASYONU: Resimlerin yüklenmesini engelleme.
-        # Bu ayar, Selenium'un sayfayı açarken resimleri indirmesini önler.
-        # Sayfa çok daha hızlı yüklenir ve çerezleri alıp API oturumuna geçme
-        # süresi önemli ölçüde kısalır.
         prefs = {"profile.managed_default_content_settings.images": 2}
         options.add_experimental_option("prefs", prefs)
 
@@ -70,21 +66,16 @@ class SigmaAldrichAPI:
                 accept_button = cookie_wait.until(
                     EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
                 )
-
-                # Önce normal tıklamayı deneyin
                 accept_button.click()
-
                 logging.info(f"({country_code}) Çerez onayı standart metotla tıklandı.")
 
             except ElementClickInterceptedException:
-                # Eğer normal tıklama engellenirse, JavaScript ile zorlayın
                 logging.warning(f"({country_code}) Standart tıklama engellendi. JavaScript ile deneniyor...")
                 try:
                     driver.execute_script("arguments[0].click();", accept_button)
                     logging.info(f"({country_code}) Çerez onayı JavaScript ile başarıyla tıklandı.")
                 except Exception as e:
                     logging.error(f"({country_code}) JavaScript tıklaması da başarısız oldu: {e}")
-
             except TimeoutException:
                 logging.debug(f"({country_code}) Çerez onayı butonu 15 saniye içinde bulunamadı.")
 
@@ -179,7 +170,6 @@ class SigmaAldrichAPI:
         payload = {"operationName": "ProductSearch", "variables": variables, "query": query}
 
         try:
-            # HIZ OPTİMİZASYONU: Yavaş ve gereksiz 'make_cancellable_post_request' kaldırıldı.
             response = session.post("https://www.sigmaaldrich.com/api/graphql", json=payload, timeout=20)
             if cancellation_token.is_set(): return None
             response.raise_for_status()
@@ -203,11 +193,7 @@ class SigmaAldrichAPI:
                     break
 
                 try:
-                    # HIZ OPTİMİZASYONU: Daha duyarlı iptal mekanizması.
-                    # Timeout 3 saniyeden 0.2 saniyeye düşürüldü. Bu, iptal komutunun
-                    # en fazla 0.2 saniye içinde fark edilmesini sağlar.
                     done_iterator = as_completed(future_to_country, timeout=0.2)
-
                     for future in done_iterator:
                         country_code = future_to_country.pop(future)
                         try:
@@ -219,7 +205,6 @@ class SigmaAldrichAPI:
                                 logging.error(f"Fiyat alınırken hata oluştu ({country_code.upper()}): {exc}")
                             results[country_code] = []
                 except FuturesTimeoutError:
-                    # Bu zaman aşımı beklenen bir durumdur, iptal flag'ini kontrol etmek için döngüye devam edilir.
                     continue
         return results
 
@@ -236,7 +221,6 @@ class SigmaAldrichAPI:
         payload = {"operationName": "PricingAndAvailability", "variables": variables, "query": query}
 
         try:
-            # HIZ OPTİMİZASYONU: Doğrudan ağ isteği.
             response = session.post("https://www.sigmaaldrich.com/api?operation=PricingAndAvailability",
                                     json=payload, timeout=20)
             if cancellation_token.is_set(): return None
@@ -263,3 +247,4 @@ class SigmaAldrichAPI:
             if not cancellation_token.is_set():
                 logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
             return []
+

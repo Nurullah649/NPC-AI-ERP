@@ -168,10 +168,17 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   console.log('Uygulama kapanıyor, Python servisi ve alt işlemleri sonlandırılıyor...');
   if (pythonProcess && !pythonProcess.killed) {
+    // DEĞİŞİKLİK: Windows'ta taskkill komutu /T (tree) parametresiyle kullanılarak
+    // Python işlemiyle birlikte başlattığı TÜM ALT İŞLEMLERİ (chromedriver.exe) de sonlandırır.
     if (process.platform === "win32") {
-      exec(`taskkill /PID ${pythonProcess.pid} /T /F`);
+      exec(`taskkill /PID ${pythonProcess.pid} /T /F`, (err, stdout, stderr) => {
+        if (err) console.error(`taskkill hatası: ${err}`);
+      });
     } else {
-      pythonProcess.kill('SIGKILL');
+      // Diğer işletim sistemleri için (Linux, macOS) SIGKILL sinyali genellikle yeterlidir.
+      // Ancak daha sağlam bir yöntem için process group ID (PGID) kullanılabilir.
+      // Şimdilik bu yöntem basitlik için korunmuştur.
+      process.kill(-pythonProcess.pid, 'SIGKILL');
     }
     pythonProcess = null;
   }
@@ -196,4 +203,3 @@ ipcMain.on('perform-search', (event, searchTerm) => sendCommandToPython({ action
 ipcMain.on('export-to-excel', (event, data) => sendCommandToPython({ action: 'export', data: data }));
 ipcMain.on('load-settings', () => sendCommandToPython({ action: 'load_settings' }));
 ipcMain.on('save-settings', (event, settings) => sendCommandToPython({ action: 'save_settings', data: settings }));
-
