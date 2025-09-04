@@ -3,7 +3,7 @@ import sys
 import os
 import time
 import json
-import atexit
+# 'atexit' kaldırıldı, çünkü artık güvenilir bir yöntem olarak kullanılmıyor.
 import logging
 import re
 import threading
@@ -18,6 +18,8 @@ import io
 import queue
 
 # Optimize edilmiş modülleri import et
+# 'src' klasör yapınız olduğunu varsayarak. Eğer yoksa, 'from src import ...' yerine
+# 'import sigma, netflex, tci' kullanın.
 from src import sigma, netflex, tci
 
 # --- BAŞLANGIÇTA KODLAMAYI AYARLA ---
@@ -388,10 +390,12 @@ def main():
     services_initialized = threading.Event()
     sigma_api = sigma.SigmaAldrichAPI()
     tci_api = tci.TciScraper()
-    # DEĞİŞİKLİK: Uygulama kapanırken Selenium sürücülerinin düzgün kapatılması için
-    # atexit modülü ile fonksiyonlar kaydedildi. Bu, arkada kalan işlemleri önler.
-    atexit.register(sigma_api.stop_drivers)
-    atexit.register(tci_api.close_driver)
+
+    # DEĞİŞİKLİK: 'atexit' kayıtları kaldırıldı. Kapatma işlemi artık 'shutdown' komutuyla manuel olarak yönetiliyor.
+    # Bu, işlemlerin zorla kapatıldığında bile kaynakların serbest bırakılmasını sağlamak için daha güvenilirdir.
+    # atexit.register(sigma_api.stop_drivers) <-- KALDIRILDI
+    # atexit.register(tci_api.close_driver)   <-- KALDIRILDI
+
     netflex_api = None
     engine = None
 
@@ -466,10 +470,22 @@ def main():
                 if engine: engine.force_cancel()
             elif action == "export":
                 send_to_frontend("export_result", export_to_excel(data))
+
+            # --- KÖKLÜ DEĞİŞİKLİK: KONTROLLÜ KAPATMA KOMUTU ---
             elif action == "shutdown":
-                if engine: engine.force_cancel()
-                if search_thread and search_thread.is_alive(): search_thread.join(5.0)
-                break
+                logging.info("Kapatma komutu alındı. Selenium sürücüleri temizleniyor...")
+                if engine:
+                    engine.force_cancel()
+                if search_thread and search_thread.is_alive():
+                    search_thread.join(2.0)
+
+                # Bütün Selenium sürücülerini düzgünce kapat
+                sigma_api.stop_drivers()
+                tci_api.close_driver()
+
+                logging.info("Tüm sürücüler durduruldu. Python betiği sonlandırılıyor.")
+                break  # Ana döngüden çıkarak betiğin sonlanmasını sağla
+
         except json.JSONDecodeError:
             logging.error(f"Geçersiz JSON formatı: {line}")
         except Exception as e:
@@ -480,4 +496,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
