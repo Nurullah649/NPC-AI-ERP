@@ -58,7 +58,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import SplashScreen from "@/public/SplashScreen"
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -124,18 +123,43 @@ interface AppSettings {
 // Global Electron API tanımı
 declare global {
   interface Window {
-    electronAPI: any
+    electronAPI: {
+      rendererReady: () => void
+      performSearch: (searchTerm: string) => void
+      cancelSearch: () => void
+      exportToExcel: (data: any) => void
+      loadSettings: () => void
+      saveSettings: (settings: any) => void
+      onServicesReady: (callback: (isReady: boolean) => void) => () => void
+      onInitialSetupRequired: (callback: () => void) => () => void
+      onProductFound: (callback: (product: any) => void) => () => void
+      onSearchComplete: (callback: (summary: any) => void) => () => void
+      onExportResult: (callback: (result: any) => void) => () => void
+      onSearchError: (callback: (error: string) => void) => () => void
+      onSettingsLoaded: (callback: (settings: any) => void) => () => void
+      onSettingsSaved: (callback: (result: any) => void) => () => void
+      onAuthenticationError: (callback: () => void) => () => void
+      onPythonCrashed: (callback: () => void) => () => void
+    }
   }
 }
 
 // --------------------------------------------------------------------------------
-// Yardımcı Fonksiyonlar
+// Yardımcı Fonksiyonlar ve Bileşenler
 // --------------------------------------------------------------------------------
 const formatCurrency = (value: number | null, currency = "EUR") => {
     if (value === null || isNaN(value)) return "N/A"
     const currencySymbol = currency === "EUR" ? "€" : currency
     return `${currencySymbol}${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+const stripHtml = (html: string | null | undefined): string => {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || "";
+};
+
+import SplashScreen from "@/public/SplashScreen"
 
 
 // --------------------------------------------------------------------------------
@@ -633,7 +657,7 @@ const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfir
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, onAssignProducts, settings }) => {
+const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, customers, onAssignProducts, settings }) => {
   const [searchTerm, setSearchTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState({
@@ -641,11 +665,33 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
     countries: { tr: true, us: true, de: true, gb: true },
   })
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
+  const [isHovering, setIsHovering] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  // Arama ilerlemesini hesaplamak için
+  useEffect(() => {
+    if (isLoading) {
+      // Bulunan sonuç sayısına göre logaritmik bir ilerleme. Başta hızlı, sonra yavaşlar.
+      const newProgress = 1 - (1 / (searchResults.length + 1.5));
+      // Tamamlanma payı bırakmak için %95 ile sınırla
+      setProgress(Math.min(newProgress, 0.95));
+    } else {
+      // Arama bitince veya başlamayınca progress'i sıfırla
+      setProgress(0);
+    }
+  }, [searchResults.length, isLoading]);
+
 
   const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
   const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
 
-  const onSearchClick = () => handleSearch(searchTerm)
+  const onSearchOrCancelClick = () => {
+      if (isLoading) {
+          handleCancel();
+      } else {
+          handleSearch(searchTerm);
+      }
+  }
 
   const toggleProductExpansion = (productNumber: string) => {
     setExpandedProducts((prev) => {
@@ -771,30 +817,68 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
           placeholder="Ürün adı, kodu veya CAS..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSearchClick()}
+          onKeyDown={(e) => e.key === "Enter" && !isLoading && handleSearch(searchTerm)}
           disabled={isLoading}
         />
         <Button
-            onClick={onSearchClick}
-            disabled={isLoading}
-            className="relative w-32 overflow-hidden transition-all duration-300"
+            onClick={onSearchOrCancelClick}
+            onMouseEnter={() => { if(isLoading) setIsHovering(true) }}
+            onMouseLeave={() => { if(isLoading) setIsHovering(false) }}
+            className={cn(
+                "relative w-36 overflow-hidden transition-all duration-300 ease-in-out",
+                isLoading && isHovering && "w-44" // İptal durumunda buton genişler
+            )}
+            variant={isLoading && isHovering ? "destructive" : "default"}
         >
-            <span className="relative z-10 flex items-center justify-center gap-2">
-                {isLoading ? (
-                    <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                        <span>Aranıyor...</span>
-                    </>
-                ) : (
-                    "Ara"
-                )}
-            </span>
-            {isLoading && (
+            <div className="relative z-10">
+                <AnimatePresence mode="wait">
+                    {isLoading && isHovering ? (
+                        <motion.span
+                            key="cancel"
+                            className="flex items-center justify-center"
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <XCircle className="mr-2 h-5 w-5" />
+                            Aramayı İptal Et
+                        </motion.span>
+                    ) : isLoading ? (
+                        <motion.span
+                            key="searching"
+                            className="flex items-center justify-center"
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <LoaderCircle className="h-4 w-4 animate-spin mr-2" />
+                            Aranıyor...
+                        </motion.span>
+                    ) : (
+                        <motion.span
+                            key="search"
+                            className="flex items-center justify-center"
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <Search className="mr-2 h-4 w-4" />
+                             Ara
+                        </motion.span>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {isLoading && !isHovering && (
                 <motion.div
-                    className="absolute bottom-0 left-0 top-0 bg-primary-foreground/20"
-                    initial={{ width: '0%' }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 1.5, ease: 'easeInOut', repeat: Infinity, repeatType: 'mirror' }}
+                    className="absolute bottom-0 left-0 right-0 bg-primary/20"
+                    initial={{ height: "0%" }}
+                    animate={{ height: `${progress * 100}%` }}
+                    transition={{ type: 'spring', stiffness: 50, damping: 20 }}
+                    style={{ zIndex: 5 }}
                 />
             )}
         </Button>
@@ -842,31 +926,31 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
       {filteredResults.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Arama Sonuçları ({filteredResults.length})</CardTitle>
           </CardHeader>
           <CardContent>
-             <div className="grid grid-cols-6 gap-4 p-4 border-b bg-muted/30 font-semibold text-sm">
-              <div>Marka</div>
-              <div>Ürün Adı</div>
-              <div>Kodu</div>
-              <div>CAS</div>
-              <div>Fiyat</div>
-              <div>Stok</div>
+             <div className="grid grid-cols-[1.5fr_4fr_2fr_1.5fr_2fr_1fr] gap-x-4 p-4 border-b bg-muted/30 font-semibold text-sm">
+              <div className="truncate">Marka</div>
+              <div className="truncate">Ürün Adı</div>
+              <div className="truncate">Kodu</div>
+              <div className="truncate">CAS</div>
+              <div className="truncate">Fiyat</div>
+              <div className="truncate">Stok</div>
             </div>
             <div className="space-y-2">
               {filteredResults.map((product, index) => (
                 <div key={product.product_number + index} className="border rounded-lg">
                   <div className="flex items-center justify-between p-4 hover:bg-muted/50">
-                    <div className="flex-1 grid grid-cols-6 gap-4 items-center">
-                       <div className="font-semibold flex items-center gap-2"><Building className="h-4 w-4 text-muted-foreground" /> {product.brand}</div>
-                      <div className="font-medium" dangerouslySetInnerHTML={{ __html: product.product_name }} />
-                      <div>{product.product_number}</div>
+                    <div className="flex-1 grid grid-cols-[1.5fr_4fr_2fr_1.5fr_2fr_1fr] gap-x-4 items-center">
+                       <div className="font-semibold flex items-center gap-2 truncate"><Building className="h-4 w-4 text-muted-foreground" /> {product.brand}</div>
+                       <div className="min-w-0 font-medium truncate" title={stripHtml(product.product_name)} dangerouslySetInnerHTML={{ __html: product.product_name }} />
+                      <div className="font-mono">{product.product_number}</div>
                       <div>{product.cas_number}</div>
                       <div>{product.cheapest_netflex_price_str}</div>
-                      {/* DEĞİŞİKLİK: TCI ürünleri için stok bilgisi gizlendi */}
                       <div>{product.brand.toLowerCase().includes('tci') ? '' : product.cheapest_netflex_stock}</div>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)}>
@@ -927,7 +1011,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                                              </div>
                                              <span
                                                className="text-xs text-muted-foreground truncate"
-                                               title={item.netflex.product_name}
+                                               title={stripHtml(item.netflex.product_name)}
                                                dangerouslySetInnerHTML={{ __html: item.netflex.product_name }}
                                              />
                                            </div>
@@ -986,7 +1070,6 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                                  <TableHead className="w-[50px]"></TableHead>
                                  <TableHead>Birim</TableHead>
                                  <TableHead>Orijinal Fiyat</TableHead>
-                                 {/* DEĞİŞİKLİK: Katsayı artık ayarlardan dinamik olarak geliyor */}
                                  <TableHead>Hesaplanmış Fiyat (x{settings.tci_coefficient})</TableHead>
                                </TableRow>
                              </TableHeader>
@@ -1004,7 +1087,6 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
                                    </TableCell>
                                    <TableCell>{variation.unit}</TableCell>
                                    <TableCell>{variation.original_price}</TableCell>
-                                   {/* DEĞİŞİKLİK: Fiyat anlık olarak hesaplanıp formatlanıyor */}
                                    <TableCell className="font-semibold">
                                      {formatCurrency(variation.original_price_numeric
                                          ? variation.original_price_numeric * settings.tci_coefficient
@@ -1026,7 +1108,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
         </Card>
       )}
 
-      {!isLoading && filteredResults.length === 0 && (
+      {!isLoading && searchResults.length === 0 && (
         <div className="text-center py-10">
           <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
           <p className="mt-4 text-muted-foreground">Arama yapmak için yukarıdaki alanı kullanın.</p>
@@ -1047,8 +1129,8 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, customers, 
 // --------------------------------------------------------------------------------
 function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("search");
-  const [customers, setCustomers] = useState([]);
-  const [assignments, setAssignments] = useState({});
+  const [customers, setCustomers] = useState<{id: number, name: string}[]>([]);
+  const [assignments, setAssignments] = useState<{[key: number]: AssignmentItem[]}>({});
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
@@ -1094,7 +1176,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const [dashboardStats, setDashboardStats] = useState({ customerCount: 0, totalUniqueProducts: 0, activeOrders: 0 });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
 
   useEffect(() => {
@@ -1109,7 +1191,9 @@ function MainApplication({ appStatus, setAppStatus }) {
         }),
         window.electronAPI.onSearchComplete((summary) => {
             setIsLoading(false)
-            if (summary.status === 'cancelled') { toast.warning("Arama iptal edildi.") }
+            if (summary.status === 'cancelled') {
+              toast.warning("Arama iptal edildi.")
+            }
             else { toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`) }
         }),
         window.electronAPI.onSearchError((errorMessage) => { setError(errorMessage); setIsLoading(false) }),
@@ -1136,9 +1220,9 @@ function MainApplication({ appStatus, setAppStatus }) {
     })
   }, [assignments, customers])
 
-  const handleAssignProducts = (customerId, products: AssignmentItem[]) => {
+  const handleAssignProducts = (customerId: string, products: AssignmentItem[]) => {
     setAssignments((prev) => {
-      const currentAssigned = prev[customerId] || []
+      const currentAssigned = prev[parseInt(customerId)] || []
       const newProducts = products.filter(
         (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
       )
@@ -1159,10 +1243,15 @@ function MainApplication({ appStatus, setAppStatus }) {
     }
   }
 
+  const handleCancel = () => {
+    if(isLoading && window.electronAPI) {
+        toast.info("Arama iptal ediliyor...");
+        window.electronAPI.cancelSearch();
+    }
+  }
+
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
-    // Eğer kimlik doğrulama hatası nedeniyle bu sayfadaysak,
-    // kullanıcıyı arama sayfasına geri yönlendir.
     if (appStatus === 'auth_error') {
         setAppStatus('ready');
         setPage('search');
@@ -1177,7 +1266,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 
     switch (page) {
       case "search":
-        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} customers={customers} onAssignProducts={handleAssignProducts} settings={settings}/> )
+        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} handleCancel={handleCancel} customers={customers} onAssignProducts={handleAssignProducts} settings={settings}/> )
       case "customers":
         return ( <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} setAssignments={setAssignments} /> )
       case "settings":

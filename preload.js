@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // --- Komut Gönderme (Renderer -> Main) ---
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   performSearch: (searchTerm) => ipcRenderer.send('perform-search', searchTerm),
+  cancelSearch: () => ipcRenderer.send('cancel-search'),
   exportToExcel: (data) => ipcRenderer.send('export-to-excel', data),
   loadSettings: () => ipcRenderer.send('load-settings'),
   saveSettings: (settings) => ipcRenderer.send('save-settings', settings),

@@ -53,9 +53,6 @@ class TciScraper:
                 "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
 
             # HIZ OPTİMİZASYONU: Resimlerin ve CSS'in yüklenmesini engelleme.
-            # Bu ayarlar, tarayıcının veri çekmek için gereksiz olan resim ve stil
-            # dosyalarını indirmesini önler. Bu, sayfa yükleme süresini dramatik
-            # bir şekilde azaltarak verilere çok daha hızlı ulaşılmasını sağlar.
             prefs = {
                 "profile.managed_default_content_settings.images": 2,
                 "profile.managed_default_content_settings.stylesheets": 2,
@@ -104,7 +101,11 @@ class TciScraper:
                 wait = WebDriverWait(self.driver, 15)
 
                 try:
-                    product_list_selector = "#product-basic-wrap > div.prductlist.selectProduct"
+                    # GÜNCELLEME: Seçici, 'prductlist' veya 'selectProduct' sınıflarından
+                    # herhangi birine sahip olan div'leri yakalamak için güncellendi.
+                    # Bu, "melatonin" gibi aramalarda karşılaşılan farklı sayfa yapısıyla
+                    # uyumluluk sağlar.
+                    product_list_selector = "#product-basic-wrap div.prductlist, #product-basic-wrap div.selectProduct"
                     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, product_list_selector)))
                     product_cards = self.driver.find_elements(By.CSS_SELECTOR, product_list_selector)
                     logging.info(f"{len(product_cards)} adet ürün kartı bulundu.")
@@ -141,15 +142,7 @@ class TciScraper:
                 try:
                     next_button = self.driver.find_element(By.CSS_SELECTOR, "li.pagination-next a")
                     if next_button.is_displayed() and next_button.is_enabled():
-
-                        # PERFORMANS OPTİMİZASYONU: Güvenilir ve Hızlı Sayfa Geçişi Beklemesi
-                        # 'staleness_of' metodunun doğru kullanımı, sayfa geçişlerinin mümkün olan
-                        # en kısa sürede ve en güvenilir şekilde tespit edilmesini sağlar.
-                        # Butona tıklamadan önce eski elementin referansı alınır.
                         product_container_element = self.driver.find_element(By.ID, "product-basic-wrap")
-
-                        # Butona tıklandıktan sonra, bu eski referansın "bayatlaması" (stale) beklenir.
-                        # Bu, sayfanın başarılı bir şekilde değiştiğini garanti eder ve gereksiz bekleme süresini ortadan kaldırır.
                         self.driver.execute_script("arguments[0].click();", next_button)
                         wait.until(EC.staleness_of(product_container_element))
                         page_count += 1
