@@ -212,34 +212,81 @@ class ComparisonEngine:
         if not all([s_name, s_num, s_brand, s_key]): return None
         cleaned_sigma_name = self._clean_html(s_name)
 
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="Sigma-Sub-Fetcher") as executor:
+        # DEĞİŞİKLİK: Önce Sigma'dan tüm varyasyonlar (ve materyal numaraları) alınır.
+        # Ardından bu materyal numaraları ile Netflex'te arama yapılır.
+
+        # 1. Sigma'dan fiyat ve varyasyon bilgilerini (materyal numaraları dahil) al
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="Sigma-Variation-Fetcher") as executor:
             future_prices = executor.submit(self.sigma_api.get_all_product_prices, s_num, s_brand, s_key,
                                             self.search_cancelled)
-            future_netflex_name = executor.submit(self.netflex_api.search_products, cleaned_sigma_name,
-                                                  self.search_cancelled)
-            future_netflex_code = executor.submit(self.netflex_api.search_products, s_num, self.search_cancelled)
             sigma_variations = future_prices.result()
-            netflex_by_name = future_netflex_name.result() or []
-            netflex_by_code = future_netflex_code.result() or []
+
         if self.search_cancelled.is_set(): return None
 
-        all_netflex_products_map = {p['product_code']: p for p in netflex_by_name if p.get('product_code')}
-        all_netflex_products_map.update({p['product_code']: p for p in netflex_by_code if p.get('product_code')})
+        # 2. Netflex'te aranacak tüm terimleri topla: ürün adı, ürün kodu ve tüm materyal numaraları
+        netflex_search_terms = {cleaned_sigma_name, s_num}
+        if sigma_variations:
+            for country_variations in sigma_variations.values():
+                for variation in country_variations:
+                    if mat_num := variation.get('material_number'):
+                        netflex_search_terms.add(mat_num)
+
+        # 3. Tüm terimler için Netflex'te eş zamanlı arama yap
+        all_netflex_products_list = []
+        with ThreadPoolExecutor(max_workers=10, thread_name_prefix="Netflex-Searcher") as executor:
+            # Boş terimler için arama yapmayı engelle
+            futures = {executor.submit(self.netflex_api.search_products, term, self.search_cancelled)
+                       for term in netflex_search_terms if term}
+
+            for future in as_completed(futures):
+                if self.search_cancelled.is_set():
+                    # İptal durumunda kalan görevleri de iptal et
+                    for f in futures: f.cancel()
+                    break
+                try:
+                    if results := future.result():
+                        all_netflex_products_list.extend(results)
+                except Exception as e:
+                    logging.warning(f"Netflex arama sırasında bir hata oluştu: {e}")
+
+        if self.search_cancelled.is_set(): return None
+
+        # 4. Netflex sonuçlarını ürün koduna göre tekilleştir
+        all_netflex_products_map = {p['product_code']: p for p in all_netflex_products_list if p.get('product_code')}
         all_netflex_products = list(all_netflex_products_map.values())
 
+        # 5. Eşleşen Netflex ürünlerini bul ve en ucuzunu seç (YENİ, KATI KURALLAR)
         netflex_matches = []
-        processed_codes = set()
+        processed_codes = set()  # Duplike eklemeyi önlemek için
+
+        # Sadece Sigma varyasyonlarının kodlarını (material_number) bir sette toplayalım.
+        sigma_material_numbers = set()
+        if sigma_variations:
+            for country_vars in sigma_variations.values():
+                for var in country_vars:
+                    if mat_num := var.get('material_number'):
+                        sigma_material_numbers.add(mat_num)
+
         for p in all_netflex_products:
-            if p.get('product_code') not in processed_codes:
-                if self._are_names_similar(cleaned_sigma_name, p.get('product_name', '')):
-                    netflex_matches.append(p)
-                    processed_codes.add(p.get('product_code'))
-        for p in all_netflex_products:
-            if p.get('product_code') not in processed_codes:
-                if s_num in p.get('product_code', '') and fuzz.partial_ratio(cleaned_sigma_name.lower(),
-                                                                             p.get('product_name', '').lower()) > 80:
-                    netflex_matches.append(p)
-                    processed_codes.add(p.get('product_code'))
+            netflex_code = p.get('product_code')
+            if not netflex_code or netflex_code in processed_codes:
+                continue
+
+            # Kriter 1: Netflex ürün kodu, bir Sigma 'material_number' ile tam eşleşiyorsa,
+            # bu en güvenilir eşleşmedir ve isim kontrolü GEREKMEZ.
+            if netflex_code in sigma_material_numbers:
+                netflex_matches.append(p)
+                processed_codes.add(netflex_code)
+                continue
+
+            # Kriter 2: Ana ürün kodu (s_num) Netflex kodunun içinde geçiyorsa,
+            # bu daha az kesin bir eşleşme olduğu için isim kontrolü de yapılır.
+            is_code_match = s_num in netflex_code
+            is_name_match = fuzz.partial_ratio(cleaned_sigma_name.lower(), p.get('product_name', '').lower()) > 80
+
+            if is_code_match and is_name_match:
+                netflex_matches.append(p)
+                processed_codes.add(netflex_code)
 
         cheapest_name, cheapest_price, cheapest_stock = "Bulunamadı", "N/A", "N/A"
         if priced_matches := [p for p in netflex_matches if p.get('price_numeric') is not None]:
@@ -496,3 +543,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
