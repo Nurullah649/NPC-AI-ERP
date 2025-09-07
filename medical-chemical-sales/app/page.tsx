@@ -817,6 +817,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                                    checked={selectedForAssignment.some(
                                      (p) => p.product_code === item.material_number && p.source === "Netflex",
                                    )}
+                                   className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
                                  />
                                  <Label
                                    htmlFor={`cb-netflex-${item.material_number}`}
@@ -858,6 +859,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                                              p.product_code === item.material_number &&
                                              p.source === `Sigma (${code.toUpperCase()})`,
                                          )}
+                                         className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
                                        />
                                        <Label
                                          htmlFor={`cb-${code}-${item.material_number}`}
@@ -904,6 +906,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                                 checked={selectedForAssignment.some(
                                     p => p.product_code === `${product.product_number}-${variation.unit}` && p.source === 'TCI'
                                 )}
+                                className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
                               />
                            </TableCell>
                            <TableCell>{variation.unit}</TableCell>
@@ -1503,7 +1506,7 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
 // Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
 function MainApplication({ appStatus, setAppStatus }) {
-  const [page, setPage] = useState("batch-search");
+  const [page, setPage] = useState("home");
   const [customers, setCustomers] = useState<{id: number, name: string}[]>([]);
   const [assignments, setAssignments] = useState<{[key: number]: AssignmentItem[]}>({});
   const [isDataLoaded, setIsDataLoaded] = useState(false);
