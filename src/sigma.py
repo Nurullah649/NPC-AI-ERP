@@ -3,6 +3,7 @@ import logging
 import signal
 import threading
 import os
+import queue
 import requests
 from requests.adapters import HTTPAdapter
 from datetime import datetime
@@ -21,9 +22,6 @@ class SigmaAldrichAPI:
     def __init__(self):
         self.drivers: Dict[str, webdriver.Chrome] = {}
         self.sessions: Dict[str, requests.Session] = {}
-        # HATA GİDERME ve OPTİMİZASYON: Bağlantı havuzu (pool) boyutu artırıldı ve
-        # 'block=True' parametresi eklendi. Bu sayede havuz dolduğunda program
-        # hata verip isteği iptal etmek yerine, bir bağlantı boşa çıkana kadar bekler.
         self.adapter = HTTPAdapter(pool_connections=10, pool_maxsize=100, pool_block=True)
 
     def start_drivers(self):
@@ -126,36 +124,54 @@ class SigmaAldrichAPI:
         self.sessions.clear()
 
     def search_products(self, search_term: str, cancellation_token: threading.Event) -> Generator[
-        List[Dict[str, Any]], None, None]:
-        logging.info(f"Sigma (TR): '{search_term}' için arama yapılıyor...")
-        current_page = 1
-        while True:
-            if cancellation_token.is_set():
-                logging.info("Sigma ürün arama görevi iptal edildi.")
+        Dict[str, Any], None, None]:
+        """
+        Arama sonuçlarını buldukça tek tek ürün bazında `yield` ile döndürür.
+        Arka planda sayfaları önceden yükleyerek ağ bekleme süresini minimize eder.
+        """
+        logging.info(f"Sigma (TR): '{search_term}' için EŞ ZAMANLI arama yapılıyor...")
+        page_queue = queue.Queue(maxsize=5)
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="Sigma-Page-Producer")
+
+        def page_producer():
+            current_page = 1
+            has_more_pages = True
+            while has_more_pages and not cancellation_token.is_set():
+                result_json = self._search_page(search_term, current_page, cancellation_token)
+                if result_json is None or cancellation_token.is_set():
+                    has_more_pages = False
+                else:
+                    items = result_json.get('data', {}).get('getProductSearchResults', {}).get('items', [])
+                    if not items:
+                        has_more_pages = False
+                    else:
+                        page_queue.put(items)
+                        current_page += 1
+            page_queue.put(None)
+
+        producer_future = executor.submit(page_producer)
+
+        while not cancellation_token.is_set():
+            items = page_queue.get()
+            if items is None:
                 break
 
-            result_json = self._search_page(search_term, current_page, cancellation_token)
-            if result_json is None: break
-
-            items = result_json.get('data', {}).get('getProductSearchResults', {}).get('items', [])
-            if not items:
-                logging.info(f"Sigma: '{search_term}' için {current_page - 1}. sayfadan sonra ürün bulunamadı.")
-                break
-
-            page_products = []
             for item in items:
+                if cancellation_token.is_set(): break
                 cas = item.get('casNumber', 'N/A')
                 for p in item.get('products', []):
+                    if cancellation_token.is_set(): break
                     if p.get('productNumber'):
-                        page_products.append({
+                        # Her bir ürünü anında yield ile gönder
+                        yield {
                             "product_name_sigma": p.get('name'), "product_number": p.get('productNumber'),
                             "product_key": p.get('productKey'), "brand": p.get('brand', {}).get('key', 'N-A'),
                             "cas_number": cas
-                        })
+                        }
 
-            logging.info(f"Sigma: {len(page_products)} ürün {current_page}. sayfada bulundu. Arayüze gönderiliyor.")
-            yield page_products
-            current_page += 1
+        executor.shutdown(wait=False, cancel_futures=True)
+        if cancellation_token.is_set():
+            logging.info("Sigma ürün arama görevi iptal edildi.")
 
     def _search_page(self, search_term: str, page: int, cancellation_token: threading.Event) -> Dict[str, Any] or None:
         if cancellation_token.is_set(): return None
@@ -247,4 +263,3 @@ class SigmaAldrichAPI:
             if not cancellation_token.is_set():
                 logging.error(f"Fiyatlandırma sırasında beklenmedik hata ({country_code.upper()}): {e}")
             return []
-

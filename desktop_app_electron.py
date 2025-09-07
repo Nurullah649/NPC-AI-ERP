@@ -9,7 +9,7 @@ import re
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Generator
 from pathlib import Path
 import openpyxl
 import docx  # Toplu arama için docx desteği
@@ -190,7 +190,6 @@ def _translate_if_turkish(term: str) -> str:
     try:
         lang = detect(term)
         if lang == 'tr':
-            # Hata düzeltmesi: Senkron çalışan googletrans==3.0.0 versiyonu kullanılıyor.
             translated = translator.translate(term, src='tr', dest='en')
             if translated and translated.text:
                 logging.info(f"Otomatik Çeviri: '{term}' (TR) -> '{translated.text}' (EN)")
@@ -198,7 +197,6 @@ def _translate_if_turkish(term: str) -> str:
     except LangDetectException:
         pass
     except Exception as e:
-        # Hataları daha detaylı logla ama programı durdurma
         logging.error(f"'{term}' terimi çevrilirken bir hata oluştu: {e}", exc_info=False)
     return term
 
@@ -314,58 +312,70 @@ class ComparisonEngine:
     def _clean_html(self, raw_html: str) -> str:
         return re.sub(re.compile('<.*?>'), '', raw_html) if raw_html else ""
 
-    def _are_names_similar(self, name1: str, name2: str, avg_threshold: int = 50) -> bool:
-        if not name1 or not name2: return False
-        n1, n2 = name1.lower(), name2.lower()
-        if fuzz.partial_ratio(n1, n2) == 100: return True
-        scores = [fuzz.ratio(n1, n2), fuzz.token_sort_ratio(n1, n2), fuzz.token_set_ratio(n1, n2)]
-        return (sum(scores) / len(scores)) > avg_threshold
+    def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict):
+        """
+        Tek bir Sigma ürününü alır, varyasyonlarını ve Netflex verilerini çeker,
+        birleştirir ve sonucu arayüze gönderir.
+        """
+        try:
+            if self.search_cancelled.is_set(): return False
 
-    def _process_sigma_product(self, sigma_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any] or None:
-        if self.search_cancelled.is_set(): return None
-        s_name, s_num, s_brand, s_key, cas = (
-            sigma_product.get('product_name_sigma'), sigma_product.get('product_number'),
-            sigma_product.get('brand'), sigma_product.get('product_key'), sigma_product.get('cas_number', 'N/A')
-        )
-        if not all([s_name, s_num, s_brand, s_key]): return None
-        cleaned_sigma_name = self._clean_html(s_name)
+            # Adım 1: Ürünün varyasyonlarını (fiyat/stok) çek
+            s_num = raw_sigma_product.get('product_number')
+            s_brand = raw_sigma_product.get('brand')
+            s_key = raw_sigma_product.get('product_key')
 
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="Sigma-Variation-Fetcher") as executor:
-            future_prices = executor.submit(self.sigma_api.get_all_product_prices, s_num, s_brand, s_key,
-                                            self.search_cancelled)
-            sigma_variations = future_prices.result()
+            sigma_variations = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key, self.search_cancelled)
+            if self.search_cancelled.is_set(): return False
 
-        if self.search_cancelled.is_set(): return None
-
-        netflex_search_terms = {cleaned_sigma_name, s_num}
-        if sigma_variations:
-            for country_variations in sigma_variations.values():
-                for variation in country_variations:
-                    if mat_num := variation.get('material_number'):
+            # Adım 2: Netflex'te aranacak tüm kodları topla
+            netflex_search_terms = {s_num}
+            for country_vars in sigma_variations.values():
+                for var in country_vars:
+                    if mat_num := var.get('material_number'):
                         netflex_search_terms.add(mat_num)
 
-        all_netflex_products_list = []
-        with ThreadPoolExecutor(max_workers=10, thread_name_prefix="Netflex-Searcher") as executor:
-            futures = {executor.submit(self.netflex_api.search_products, term, self.search_cancelled)
-                       for term in netflex_search_terms if term}
+            # Adım 3: Netflex aramasını yap
+            netflex_cache = {}
+            # Birden çok terimi tek seferde aramak daha verimli olabilir, ancak anlık geri bildirim için tek tek arama yapıyoruz.
+            for term in netflex_search_terms:
+                if self.search_cancelled.is_set(): return False
+                if results := self.netflex_api.search_products(term, self.search_cancelled):
+                    for r in results:
+                        if r_code := r.get('product_code'):
+                            netflex_cache[r_code] = r
 
-            for future in as_completed(futures):
-                if self.search_cancelled.is_set():
-                    for f in futures: f.cancel()
-                    break
-                try:
-                    if results := future.result():
-                        all_netflex_products_list.extend(results)
-                except Exception as e:
-                    logging.warning(f"Netflex arama sırasında bir hata oluştu: {e}")
+            if self.search_cancelled.is_set(): return False
 
-        if self.search_cancelled.is_set(): return None
+            # Adım 4: Tüm verileri birleştir ve son ürünü oluştur
+            final_product = self._build_final_sigma_product(raw_sigma_product, netflex_cache, {s_num: sigma_variations})
 
-        all_netflex_products_map = {p['product_code']: p for p in all_netflex_products_list if p.get('product_code')}
-        all_netflex_products = list(all_netflex_products_map.values())
+            if final_product:
+                send_to_frontend("product_found", {"product": final_product}, context=context)
+                return True
+        except Exception as e:
+            logging.error(f"Tekil Sigma ürünü ({raw_sigma_product.get('product_number')}) işlenirken hata: {e}",
+                          exc_info=False)
+        return False
+
+    def _build_final_sigma_product(self, sigma_product: Dict[str, Any], netflex_cache: Dict[str, Any],
+                                   all_sigma_variations: Dict[str, Any]) -> Dict[str, Any] or None:
+        """
+        Ham Sigma ürünü, Netflex ve varyasyon verilerini alıp nihai ürün nesnesini oluşturur.
+        Bu fonksiyon ağ çağrısı YAPMAZ.
+        """
+        s_name, s_num, s_brand, cas = (
+            sigma_product.get('product_name_sigma'), sigma_product.get('product_number'),
+            sigma_product.get('brand'), sigma_product.get('cas_number', 'N/A')
+        )
+        if not all([s_name, s_num, s_brand]): return None
+
+        cleaned_sigma_name = self._clean_html(s_name)
+        sigma_variations = all_sigma_variations.get(s_num, {})
 
         netflex_matches = []
         processed_codes = set()
+
         sigma_material_numbers = set()
         if sigma_variations:
             for country_vars in sigma_variations.values():
@@ -373,13 +383,13 @@ class ComparisonEngine:
                     if mat_num := var.get('material_number'):
                         sigma_material_numbers.add(mat_num)
 
-        for p in all_netflex_products:
-            netflex_code = p.get('product_code')
-            if not netflex_code or netflex_code in processed_codes:
-                continue
-            if netflex_code in sigma_material_numbers:
-                netflex_matches.append(p)
-                processed_codes.add(netflex_code)
+        for mat_num in sigma_material_numbers:
+            if mat_num in netflex_cache and mat_num not in processed_codes:
+                netflex_matches.append(netflex_cache[mat_num])
+                processed_codes.add(mat_num)
+
+        for netflex_code, p in netflex_cache.items():
+            if netflex_code in processed_codes:
                 continue
             is_code_match = s_num in netflex_code
             is_name_match = fuzz.partial_ratio(cleaned_sigma_name.lower(), p.get('product_name', '').lower()) > 80
@@ -401,6 +411,7 @@ class ComparisonEngine:
         }
 
     def _process_tci_product(self, tci_product: tci.Product, context: Dict = None) -> Dict[str, Any]:
+        """ TCI ürünlerini işler ve sabit katsayı ile fiyat hesaplar. """
         processed_variations = []
         min_original_price = float('inf')
 
@@ -431,129 +442,82 @@ class ComparisonEngine:
             if price_float is not None and price_float < min_original_price:
                 min_original_price = price_float
 
-        cheapest_price_to_show = None
+        cheapest_price_to_show = "N/A"
         if min_original_price != float('inf'):
             tci_coefficient = self.settings.get('tci_coefficient', 1.4)
             calculated_cheapest = min_original_price * tci_coefficient
             cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",
                                                                                                                 ".")
-        else:
-            cheapest_price_to_show = "N/A"
 
         return {
             "source": "TCI", "product_name": tci_product.name, "product_number": tci_product.code,
             "cas_number": tci_product.cas_number, "brand": "TCI",
             "cheapest_netflex_price_str": cheapest_price_to_show,
-            "cheapest_netflex_stock": "",
+            "cheapest_netflex_stock": "N/A",
             "tci_variations": processed_variations, "sigma_variations": {}, "netflex_matches": []
         }
 
     def search_and_compare(self, search_term: str, context: Dict = None):
-        if not self.search_cancelled.is_set():
-            start_time = time.monotonic()
-            logging.info(f"===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '{search_term}' =====")
-            if not context:
-                admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
-
-        def _search_and_process_source(source_name, page_generator, product_processor):
-            page_queue = queue.Queue(maxsize=2)
-            found_count = 0
-
-            def producer():
-                try:
-                    for product_page in page_generator(search_term, self.search_cancelled):
-                        if self.search_cancelled.is_set(): break
-                        page_queue.put(product_page)
-                finally:
-                    page_queue.put(None)
-
-            def consumer():
-                nonlocal found_count
-                executor = ThreadPoolExecutor(max_workers=self.max_workers,
-                                              thread_name_prefix=f"{source_name}-Page-Processor")
-                futures = set()
-
-                producer_finished = False
-                while not producer_finished or futures:
-                    if self.search_cancelled.is_set():
-                        break
-                    try:
-                        while not page_queue.empty():
-                            product_page = page_queue.get_nowait()
-                            if product_page is None:
-                                producer_finished = True
-                                break
-                            page_futures = {executor.submit(product_processor, p, context) for p in product_page}
-                            futures.update(page_futures)
-
-                        if not futures:
-                            time.sleep(0.1)
-                            continue
-
-                        completed_futures = set()
-                        try:
-                            for future in as_completed(futures, timeout=1.0):
-                                if self.search_cancelled.is_set():
-                                    break
-                                try:
-                                    result = future.result()
-                                    if result:
-                                        send_to_frontend("product_found", {"product": result}, context=context)
-                                        found_count += 1
-                                except Exception:
-                                    pass
-                                finally:
-                                    completed_futures.add(future)
-                        except TimeoutError:
-                            pass
-
-                        futures -= completed_futures
-
-                    except queue.Empty:
-                        if producer_finished and not futures:
-                            break
-                        time.sleep(0.1)
-
-                for f in futures:
-                    f.cancel()
-                executor.shutdown(wait=False, cancel_futures=True)
-
-            producer_thread = threading.Thread(target=producer, name=f"{source_name}-Producer", daemon=True)
-            consumer_thread = threading.Thread(target=consumer, name=f"{source_name}-Consumer", daemon=True)
-            producer_thread.start()
-            consumer_thread.start()
-            producer_thread.join()
-            consumer_thread.join()
-            return found_count
+        start_time = time.monotonic()
+        logging.info(f"===== ANLIK ÜRÜN AKIŞI ARAMASI BAŞLATILDI: '{search_term}' =====")
+        if not context:
+            admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
 
         total_found = 0
-        try:
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Search-Source") as executor:
-                tasks = {
-                    executor.submit(_search_and_process_source, "Sigma", self.sigma_api.search_products,
-                                    self._process_sigma_product),
-                    executor.submit(_search_and_process_source, "TCI", self.tci_api.get_products,
-                                    self._process_tci_product)
-                }
-                for future in as_completed(tasks):
+        total_found_lock = threading.Lock()
+
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Source-Streamer") as executor:
+            # TCI Görevi: Sayfa sayfa bulur ve her sayfadaki ürünleri anında gönderir
+            def tci_stream_task():
+                nonlocal total_found
+                try:
+                    for product_page in self.tci_api.get_products(search_term, self.search_cancelled):
+                        if self.search_cancelled.is_set(): break
+                        for product in product_page:
+                            if self.search_cancelled.is_set(): break
+                            processed_product = self._process_tci_product(product, context)
+                            send_to_frontend("product_found", {"product": processed_product}, context=context)
+                            with total_found_lock:
+                                total_found += 1
+                except Exception as e:
+                    logging.error(f"TCI akışı sırasında hata: {e}", exc_info=True)
+
+            # Sigma Görevi: Ürün ürün bulur, her birini anında zenginleştirir ve gönderir
+            def sigma_stream_task():
+                nonlocal total_found
+                # Her bir ürünü paralel olarak işlemek için yeni bir thread havuzu
+                with ThreadPoolExecutor(max_workers=self.max_workers,
+                                        thread_name_prefix="Sigma-Product-Processor") as processor_executor:
                     try:
-                        total_found += future.result()
-                    except Exception as exc:
-                        logging.error(f"Arama kaynağı işlenirken hata: {exc}", exc_info=True)
-        except netflex.AuthenticationError as e:
-            logging.error(f"Netflex kimlik doğrulama hatası: {e}", exc_info=False)
-            send_to_frontend("authentication_error", True)
-        except Exception as e:
-            if not self.search_cancelled.is_set():
-                logging.error(f"Arama sırasında genel bir hata: {e}", exc_info=True)
-                send_to_frontend("search_error", f"Arama sırasında hata: {e}")
+                        sigma_product_generator = self.sigma_api.search_products(search_term, self.search_cancelled)
+
+                        futures = []
+                        for raw_product in sigma_product_generator:
+                            if self.search_cancelled.is_set(): break
+                            # Her bir ham ürünü işlemek için bir görev gönder
+                            future = processor_executor.submit(self._process_single_sigma_product_and_send, raw_product,
+                                                               context)
+                            futures.append(future)
+
+                        # Görevlerin tamamlanmasını bekle ve başarılı olanları say
+                        for future in as_completed(futures):
+                            if future.result():  # Worker başarılıysa True döner
+                                with total_found_lock:
+                                    total_found += 1
+                    except Exception as e:
+                        logging.error(f"Sigma akışı sırasında hata: {e}", exc_info=True)
+
+            future_tci = executor.submit(tci_stream_task)
+            future_sigma = executor.submit(sigma_stream_task)
+
+            future_tci.result()
+            future_sigma.result()
 
         if not self.search_cancelled.is_set():
             elapsed_time = time.monotonic() - start_time
             logging.info(f"Arama Tamamlandı: '{search_term}', Toplam={total_found}, Süre={elapsed_time:.2f}s")
-            if not context:
-                send_to_frontend("search_complete", {"status": "complete", "total_found": total_found,
-                                                     "execution_time": round(elapsed_time, 2)})
+            send_to_frontend("search_complete", {"status": "complete", "total_found": total_found,
+                                                 "execution_time": round(elapsed_time, 2)}, context=context)
         elif not context:
             send_to_frontend("search_complete", {"status": "cancelled"})
             logging.warning(f"Arama İptal Edildi: '{search_term}'")

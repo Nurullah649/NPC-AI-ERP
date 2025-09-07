@@ -3,6 +3,7 @@ import time
 import os
 import signal
 import threading
+import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -12,6 +13,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException,
     InvalidSessionIdException
 from webdriver_manager.chrome import ChromeDriverManager
 from typing import Generator, List, Dict, Any
+from urllib.parse import quote
 
 
 class Product:
@@ -45,22 +47,31 @@ class TciScraper:
         try:
             logging.info("TCI Selenium WebDriver başlatılıyor...")
             options = webdriver.ChromeOptions()
+            # Testler sırasında sorunu daha iyi görebilmek için headless modu geçici olarak devre dışı bırakabilirsiniz.
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--start-maximized")
             options.add_argument(
-                "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 
-            # HIZ OPTİMİZASYONU: Resimlerin ve CSS'in yüklenmesini engelleme.
             prefs = {
                 "profile.managed_default_content_settings.images": 2,
                 "profile.managed_default_content_settings.stylesheets": 2,
             }
             options.add_experimental_option("prefs", prefs)
 
+            # Bot tespitini zorlaştıran ayarlar
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            options.add_argument('--disable-blink-features=AutomationControlled')
+
             service = ChromeService(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=options)
+
+            # Bot olarak işaretlenmemek için ek bir script
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
             logging.info("TCI WebDriver başarıyla (yeniden) başlatıldı.")
         except Exception as e:
             logging.critical(f"TCI WebDriver başlatılırken kritik hata: {e}", exc_info=True)
@@ -82,85 +93,106 @@ class TciScraper:
         finally:
             self.driver = None
 
-    def get_products(self, search_query, cancellation_token) -> Generator[List[Product], None, None]:
+    def get_products(self, search_query: str, cancellation_token: threading.Event) -> Generator[
+        List[Product], None, None]:
         """
-        Ürünleri çeker ve sonuçları sayfa sayfa akıtır (yield).
+        Ürünleri çeker ve "Sonraki Sayfa" butonuna tıklayarak sayfalar arasında gezinir.
         """
         if not self.driver or cancellation_token.is_set():
             return
 
-        base_url = f"https://www.tcichemicals.com/AT/de/search/?text={search_query}"
-        page_count = 1
+        encoded_query = quote(search_query)
+        start_url = f"https://www.tcichemicals.com/AT/de/search?text={encoded_query}"
 
         try:
-            self.driver.get(base_url)
-            logging.info(f"'{search_query}' için TCI arama sayfası açıldı: {base_url}")
+            self.driver.get(start_url)
+            logging.info(f"'{search_query}' için TCI arama sayfası açıldı: {start_url}")
 
-            while not cancellation_token.is_set():
-                logging.info(f"\nTCI Sayfa {page_count} taranıyor...")
-                wait = WebDriverWait(self.driver, 15)
+            # --- Cookie Onay Banner'ını Handle Etme ---
+            try:
+                wait = WebDriverWait(self.driver, 10)
+                accept_button_selector = "//button[contains(text(), 'Alle akzeptieren')]"
+                accept_button = wait.until(EC.element_to_be_clickable((By.XPATH, accept_button_selector)))
+                accept_button.click()
+                logging.info("Cookie onay banner'ı kabul edildi.")
+                time.sleep(2)  # Banner'ın tamamen kaybolması için bekle
+            except TimeoutException:
+                logging.info("Cookie onay banner'ı bulunamadı, muhtemelen daha önce kabul edilmiş veya yok.")
+            except Exception as e:
+                logging.error(f"Cookie banner'ı tıklanırken bir hata oluştu: {e}")
 
+        except WebDriverException as e:
+            logging.error(f"TCI ana arama sayfası yüklenirken hata oluştu: {e}")
+            return
+
+        page_count = 1
+        while not cancellation_token.is_set():
+            logging.info(f"TCI Sayfa {page_count} taranıyor...")
+            # Zaman aşımı süresini artırarak yavaş yüklenen sayfalara şans tanıyoruz
+            wait = WebDriverWait(self.driver, 30)
+            product_list_selector = "#product-basic-wrap div[data-product-code1]"
+
+            try:
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, product_list_selector)))
+                product_cards = self.driver.find_elements(By.CSS_SELECTOR, product_list_selector)
+                logging.info(f"{len(product_cards)} adet ürün kartı bulundu.")
+            except TimeoutException:
+                logging.info("Bu sayfada ürün kartı bulunamadı veya sayfa zaman aşımına uğradı. Tarama tamamlanıyor.")
+                break
+
+            if not product_cards:
+                logging.info("Ürün kartları listesi boş. Tarama tamamlanıyor.")
+                break
+
+            # Sayfa geçişini doğrulamak için mevcut ürün kodlarını sakla
+            current_product_codes = [card.get_attribute("data-product-code1") for card in product_cards]
+
+            page_products = []
+            for card in product_cards:
+                if cancellation_token.is_set(): break
                 try:
-                    # GÜNCELLEME: Seçici, 'prductlist' veya 'selectProduct' sınıflarından
-                    # herhangi birine sahip olan div'leri yakalamak için güncellendi.
-                    # Bu, "melatonin" gibi aramalarda karşılaşılan farklı sayfa yapısıyla
-                    # uyumluluk sağlar.
-                    product_list_selector = "#product-basic-wrap div.prductlist, #product-basic-wrap div.selectProduct"
-                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, product_list_selector)))
-                    product_cards = self.driver.find_elements(By.CSS_SELECTOR, product_list_selector)
-                    logging.info(f"{len(product_cards)} adet ürün kartı bulundu.")
-                except TimeoutException:
-                    logging.info("Bu sayfada ürün kartı bulunamadı veya sayfa yüklenemedi.")
-                    break
+                    name = card.find_element(By.CSS_SELECTOR, "a.name.product-title").text.strip()
+                    code = card.get_attribute("data-product-code1").strip()
+                    cas_number = card.get_attribute("data-casNo").strip()
+                    variations = []
+                    rows = card.find_elements(By.CSS_SELECTOR, "#PricingTable tr")
+                    for row in rows[1:]:
+                        cols = row.find_elements(By.TAG_NAME, "td")
+                        if len(cols) >= 2:
+                            unit = cols[0].text.strip()
+                            price = cols[1].text.strip().replace('\n', ' ')
+                            variations.append({'unit': unit, 'price': price})
+                    page_products.append(Product(name, code, variations, brand="TCI", cas_number=cas_number))
+                except Exception as e:
+                    logging.error(f"Bir TCI ürün kartı işlenirken hata oluştu: {e}", exc_info=False)
 
-                page_products = []
-                for card in product_cards:
-                    if cancellation_token.is_set(): break
-                    try:
-                        name = card.find_element(By.CSS_SELECTOR, "a.name.product-title").text.strip()
-                        code = card.get_attribute("data-product-code1").strip()
-                        cas_number = card.get_attribute("data-casNo").strip()
-                        variations = []
-                        try:
-                            rows = card.find_elements(By.CSS_SELECTOR, "#PricingTable tr")
-                            for row in rows[1:]:  # Başlık satırını atla
-                                cols = row.find_elements(By.TAG_NAME, "td")
-                                if len(cols) >= 2:
-                                    unit = cols[0].text.strip()
-                                    price = cols[1].text.strip().replace('\n', ' ')
-                                    variations.append({'unit': unit, 'price': price})
-                        except NoSuchElementException:
-                            logging.warning(f"TCI ürünü '{name}' ({code}) için fiyat tablosu bulunamadı.")
+            if page_products:
+                yield page_products
 
-                        page_products.append(Product(name, code, variations, brand="TCI", cas_number=cas_number))
-                    except Exception as e:
-                        logging.error(f"Bir TCI ürün kartı işlenirken hata oluştu: {e}", exc_info=False)
+            # Sonraki sayfaya geçme
+            try:
+                next_button = self.driver.find_element(By.CSS_SELECTOR, "li.pagination-next a")
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+                time.sleep(0.5)
+                self.driver.execute_script("arguments[0].click();", next_button)
+                logging.info("Sonraki sayfa butonuna tıklandı.")
 
-                if page_products:
-                    yield page_products
+                # --- YENİ VE KARARLI BEKLEME MANTIĞI ---
+                # Yeni sayfadaki ilk ürünün kodunun, eskilerden farklı olmasını bekle
+                wait.until(
+                    lambda d: d.find_element(By.CSS_SELECTOR, product_list_selector).get_attribute(
+                        "data-product-code1") not in current_product_codes
+                )
 
-                try:
-                    next_button = self.driver.find_element(By.CSS_SELECTOR, "li.pagination-next a")
-                    if next_button.is_displayed() and next_button.is_enabled():
-                        product_container_element = self.driver.find_element(By.ID, "product-basic-wrap")
-                        self.driver.execute_script("arguments[0].click();", next_button)
-                        wait.until(EC.staleness_of(product_container_element))
-                        page_count += 1
-                    else:
-                        logging.info("TCI'da sonraki sayfa butonu tıklanabilir değil. Tarama tamamlandı.")
-                        break
-                except NoSuchElementException:
-                    logging.info("TCI'da sonraki sayfa butonu bulunamadı. Tarama tamamlandı.")
-                    break
-                except TimeoutException:
-                    logging.info("TCI'da sonraki sayfaya geçilemedi veya sayfa zaman aşımına uğradı.")
-                    break
-
-        except (WebDriverException, InvalidSessionIdException) as e:
-            logging.error(f"TCI WebDriver ile iletişim kesildi: {e}")
-        except Exception as e:
-            if not cancellation_token.is_set():
-                logging.error(f"TCI taraması sırasında beklenmedik bir hata oluştu: {e}", exc_info=True)
+                logging.info("Yeni sayfa içeriği başarıyla yüklendi.")
+                page_count += 1
+                time.sleep(random.uniform(1.0, 2.5))  # İnsan gibi davranmak için rastgele bekleme
+            except NoSuchElementException:
+                logging.info("TCI'da sonraki sayfa butonu bulunamadı. Tarama tamamlandı.")
+                break
+            except TimeoutException:
+                logging.info("TCI'da sonraki sayfaya geçilemedi veya yeni içerik yüklenemedi. Tarama tamamlanıyor.")
+                break
 
     def close_driver(self):
         """WebDriver'ı düzgünce kapatır."""
@@ -172,3 +204,29 @@ class TciScraper:
                 logging.warning("TCI WebDriver kapatılırken zaten ulaşılamaz durumdaydı.")
             finally:
                 self.driver = None
+
+
+# --- DENEME BLOĞU ---
+"""if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    test_search_query = "Methanol"
+    scraper = TciScraper()
+    cancel_event = threading.Event()
+    all_products_found = []
+    try:
+        scraper.reinit_driver()
+        product_generator = scraper.get_products(test_search_query, cancel_event)
+        page_num = 1
+        for product_list in product_generator:
+            logging.info(f"--- Sayfa {page_num} Sonuçları ({len(product_list)} ürün) ---")
+            for product in product_list:
+                print(product)
+                all_products_found.append(product)
+            page_num += 1
+        logging.info(f"\nToplam {len(all_products_found)} ürün bulundu.")
+    except Exception as main_exc:
+        logging.error(f"Ana test bloğunda bir hata oluştu: {main_exc}")
+    finally:
+        logging.info("Test tamamlandı. WebDriver kapatılıyor.")
+        scraper.close_driver()"""
+

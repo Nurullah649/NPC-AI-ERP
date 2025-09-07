@@ -32,6 +32,7 @@ import {
   Upload,
   ArrowLeft,
   SkipForward, // Yeni ikon
+  Filter, // Yeni ikon
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -171,7 +172,6 @@ const stripHtml = (html: string | null | undefined): string => {
     return doc.body.textContent || "";
 };
 
-// YENİ EKLENEN FONKSİYON
 const cleanAndDecodeHtml = (html: string | null | undefined): string => {
     if (!html) return '';
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -569,7 +569,6 @@ const CustomersPage = ({ customers, setCustomers, assignments, setAssignments })
                 {assignedProducts.map((product, index) => (
                   <TableRow key={`${product.product_code}-${index}`}>
                     <TableCell>{product.source}</TableCell>
-                    {/* DEĞİŞİKLİK BURADA */}
                     <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
                     <TableCell>{product.product_code}</TableCell>
                     <TableCell>{product.price_str}</TableCell>
@@ -768,7 +767,6 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
         <div className="border rounded-lg">
           <div className="grid grid-cols-[1.5fr_4fr_2fr_1.5fr_2fr_1fr_auto] gap-x-4 items-center p-4 hover:bg-muted/50">
              <div className="font-semibold flex items-center gap-2 truncate"><Building className="h-4 w-4 text-muted-foreground" /> {product.brand}</div>
-             {/* DEĞİŞİKLİK BURADA */}
              <div className="min-w-0 font-medium truncate" title={stripHtml(product.product_name)} dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
             <div className="font-mono">{product.product_number}</div>
             <div>{product.cas_number}</div>
@@ -830,7 +828,6 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                                          Stok: {item.netflex.stock}
                                        </span>
                                      </div>
-                                      {/* DEĞİŞİKLİK BURADA */}
                                      <span
                                        className="text-xs text-muted-foreground truncate"
                                        title={stripHtml(item.netflex.product_name)}
@@ -934,6 +931,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
 // --------------------------------------------------------------------------------
 const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, customers, onAssignProducts, settings }) => {
   const [searchTerm, setSearchTerm] = useState("")
+  const [filterTerm, setFilterTerm] = useState(""); // YENİ: Anlık filtreleme için state
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState({
     brands: { sigma: true, tci: true },
@@ -943,7 +941,6 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
 
-  // Arama ilerlemesini hesaplamak için
   useEffect(() => {
     if (isLoading) {
       const newProgress = 1 - (1 / (searchResults.length + 1.5));
@@ -960,6 +957,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
       if (isLoading) {
           handleCancel();
       } else {
+          setFilterTerm(""); // Yeni arama yapıldığında anlık filtreyi temizle
           handleSearch(searchTerm);
       }
   }
@@ -1004,12 +1002,24 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
         }));
     };
 
-    const filteredResults = searchResults.filter(product => {
-        const brand = product.brand.toLowerCase();
-        if (brand.includes('sigma')) return filters.brands.sigma;
-        if (brand.includes('tci')) return filters.brands.tci;
-        return true;
-    });
+    // YENİ: Filtrelenmiş sonuçları hesaplayan useMemo
+    const filteredResults = useMemo(() => {
+        const lowerCaseFilter = filterTerm.toLowerCase();
+        return searchResults.filter(product => {
+            const brand = product.brand.toLowerCase();
+            const brandMatch = (brand.includes('sigma') && filters.brands.sigma) || (brand.includes('tci') && filters.brands.tci) || (!brand.includes('sigma') && !brand.includes('tci'));
+
+            if (!brandMatch) return false;
+
+            if (!filterTerm.trim()) return true; // Anlık filtre boşsa, sadece marka filtresini uygula
+
+            const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
+            const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
+            const casMatch = product.cas_number.toLowerCase().includes(lowerCaseFilter);
+
+            return nameMatch || numberMatch || casMatch;
+        });
+    }, [searchResults, filters, filterTerm]);
 
 
   return (
@@ -1022,7 +1032,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
             placeholder="Ürün adı, kodu veya CAS..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !isLoading && handleSearch(searchTerm)}
+            onKeyDown={(e) => e.key === "Enter" && !isLoading && onSearchOrCancelClick()}
             disabled={isLoading}
           />
           <Button
@@ -1134,10 +1144,20 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
         </Alert>
       )}
 
-      {filteredResults.length > 0 && (
+      {searchResults.length > 0 && (
         <Card className="flex-grow flex flex-col overflow-hidden mt-4">
-          <CardHeader className="flex-shrink-0">
+          <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
             <CardTitle>Arama Sonuçları ({filteredResults.length})</CardTitle>
+            {/* YENİ: Anlık Arama Filtresi */}
+            <div className="relative w-full max-w-xs">
+                <Input
+                    placeholder="Sonuçlar içinde ara..."
+                    value={filterTerm}
+                    onChange={(e) => setFilterTerm(e.target.value)}
+                    className="pl-8"
+                />
+                <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            </div>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col overflow-hidden p-0">
             <div className="p-4 border-b bg-muted/40 flex-shrink-0">
@@ -1192,7 +1212,6 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
 // Toplu Proforma Arama Sayfası
 // --------------------------------------------------------------------------------
 const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, setBatchState }) => {
-    // Durum (state) artık parent bileşenden (MainApplication) prop olarak geliyor.
     const {
         pageState,
         filePath,
@@ -1205,15 +1224,14 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
         selectedTerm,
     } = batchState;
 
-    // Sadece dialog'un açık/kapalı durumunu yöneten lokal state
+    const [filterTerm, setFilterTerm] = useState(""); // YENİ: Anlık filtreleme için state
+
     const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
 
-    // Parent'tan gelen state'i güncellemek için yardımcı fonksiyon
     const updateState = (newState) => {
         setBatchState(prev => ({ ...prev, ...newState }));
     };
 
-    // onProductFound event listener'ı
     useEffect(() => {
         if (!window.electronAPI) return;
 
@@ -1235,7 +1253,6 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
         return () => cleanup();
     }, [setBatchState]);
 
-    // Arama ilerlemesi ve tamamlama event listener'ları
     useEffect(() => {
         if (!window.electronAPI) return;
         const cleanups = [
@@ -1342,7 +1359,21 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
     }
 
     const resultsArray = useMemo(() => Array.from(batchResults.keys()), [batchResults]);
-    const currentResultsForSelectedTerm = useMemo(() => batchResults.get(selectedTerm) || [], [batchResults, selectedTerm]);
+
+    // YENİ: Anlık filtrelenmiş sonuç listesi
+    const currentResultsForSelectedTerm = useMemo(() => {
+      const results = batchResults.get(selectedTerm) || [];
+      if (!filterTerm.trim()) {
+          return results;
+      }
+      const lowerCaseFilter = filterTerm.toLowerCase();
+      return results.filter(product => {
+          const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
+          const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
+          const casMatch = product.cas_number.toLowerCase().includes(lowerCaseFilter);
+          return nameMatch || numberMatch || casMatch;
+      });
+    }, [batchResults, selectedTerm, filterTerm]);
 
 
     return (
@@ -1438,7 +1469,7 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                                             key={term}
                                             variant={selectedTerm === term ? "secondary" : "ghost"}
                                             className="w-full justify-between h-auto py-2"
-                                            onClick={() => updateState({ selectedTerm: term })}
+                                            onClick={() => updateState({ selectedTerm: term, filterTerm: "" })}
                                         >
                                             <span className="truncate text-left whitespace-normal text-sm">{term}</span>
                                             <span className="flex-shrink-0 ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-secondary-foreground bg-secondary rounded-full">
@@ -1460,8 +1491,18 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                                 </div>
                             ) : (
                                 <Card className="h-full flex flex-col overflow-hidden">
-                                    <CardHeader className="flex-shrink-0">
-                                        <CardTitle>Sonuçlar: "{selectedTerm}"</CardTitle>
+                                    <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
+                                        <CardTitle>Sonuçlar: "{selectedTerm}" ({currentResultsForSelectedTerm.length})</CardTitle>
+                                        {/* YENİ: Anlık Arama Filtresi */}
+                                        <div className="relative w-full max-w-xs">
+                                            <Input
+                                                placeholder="Sonuçlar içinde ara..."
+                                                value={filterTerm}
+                                                onChange={(e) => setFilterTerm(e.target.value)}
+                                                className="pl-8"
+                                            />
+                                            <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="flex-grow overflow-y-auto custom-scrollbar p-4">
                                         {currentResultsForSelectedTerm.length > 0 ? (
@@ -1512,9 +1553,8 @@ function MainApplication({ appStatus, setAppStatus }) {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
-  // Toplu Arama Sayfasının durumunu yukarı taşıdık (state lifting)
   const [batchSearchState, setBatchSearchState] = useState({
-      pageState: 'idle', // 'idle' | 'searching_and_results'
+      pageState: 'idle',
       filePath: null as string | null,
       fileName: null as string | null,
       customerName: '',
@@ -1526,7 +1566,6 @@ function MainApplication({ appStatus, setAppStatus }) {
   });
 
 
-  // Veriyi SADECE bir kez, component yüklendiğinde oku
   useEffect(() => {
     try {
       const savedCustomers = localStorage.getItem("customers");
@@ -1541,7 +1580,6 @@ function MainApplication({ appStatus, setAppStatus }) {
     }
   }, []);
 
-  // Ayarları Yükle
   useEffect(() => {
     if (window.electronAPI) {
         window.electronAPI.loadSettings();
@@ -1553,7 +1591,6 @@ function MainApplication({ appStatus, setAppStatus }) {
   }, []);
 
 
-  // Verileri her değiştiğinde kaydet
   useEffect(() => {
     if (isDataLoaded) {
       try {
@@ -1574,7 +1611,6 @@ function MainApplication({ appStatus, setAppStatus }) {
     if (typeof window === "undefined" || !window.electronAPI) return
     const cleanups = [
         window.electronAPI.onProductFound(({ product, context }) => {
-            // Sadece bağlamı olmayan (yani tekli aramadan gelen) sonuçları işle
             if (!context) {
                 setSearchResults((prev) => {
                     const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
@@ -1718,7 +1754,6 @@ export default function App() {
         })
     ];
 
-    // Tüm dinleyiciler kurulduktan sonra, ana sürece hazır olduğumuzu bildiriyoruz.
     window.electronAPI.rendererReady();
 
     return () => cleanups.forEach(c => c())
