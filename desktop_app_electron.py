@@ -1,4 +1,4 @@
-# Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz
+# Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz, python-docx, googletrans==3.0.0, langdetect
 import sys
 import os
 import time
@@ -8,14 +8,20 @@ import logging
 import re
 import threading
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from typing import Dict, Any, List
 from pathlib import Path
 import openpyxl
+import docx  # Toplu arama için docx desteği
+import csv  # Toplu arama için csv desteği
 from dotenv import load_dotenv
 from thefuzz import fuzz
 import io
 import queue
+
+# Çeviri için yeni eklenen kütüphaneler
+from googletrans import Translator
+from langdetect import detect, LangDetectException
 
 # Optimize edilmiş modülleri import et
 # 'src' klasör yapınız olduğunu varsayarak. Eğer yoksa, 'from src import ...' yerine
@@ -110,6 +116,7 @@ def setup_logging():
     logging.basicConfig(level=logging.INFO, handlers=[dev_handler, console_handler])
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("selenium").setLevel(logging.WARNING)
+    logging.getLogger("googletrans").setLevel(logging.WARNING)
     return admin_logger
 
 
@@ -117,9 +124,13 @@ admin_logger = setup_logging()
 
 
 # --- JSON Mesajlaşma ---
-def send_to_frontend(message_type: str, data: Any):
+def send_to_frontend(message_type: str, data: Any, context: Dict = None):
     try:
-        message = json.dumps({"type": message_type, "data": data})
+        message_obj = {"type": message_type, "data": data}
+        if context:
+            message_obj["context"] = context
+
+        message = json.dumps(message_obj)
         print(message, flush=True)
     except (TypeError, OSError, BrokenPipeError) as e:
         logging.error(f"Frontend'e mesaj gönderilemedi: {e}")
@@ -167,6 +178,112 @@ def export_to_excel(data: Dict[str, Any]):
         return {"status": "error", "message": str(e)}
 
 
+# --- Toplu Arama için Dosya Okuma ve Çeviri Fonksiyonları ---
+
+translator = Translator()
+
+
+def _translate_if_turkish(term: str) -> str:
+    """Bir terimin Türkçe olup olmadığını algılar ve öyleyse İngilizce'ye çevirir."""
+    if not term:
+        return term
+    try:
+        lang = detect(term)
+        if lang == 'tr':
+            # Hata düzeltmesi: Senkron çalışan googletrans==3.0.0 versiyonu kullanılıyor.
+            translated = translator.translate(term, src='tr', dest='en')
+            if translated and translated.text:
+                logging.info(f"Otomatik Çeviri: '{term}' (TR) -> '{translated.text}' (EN)")
+                return translated.text
+    except LangDetectException:
+        pass
+    except Exception as e:
+        # Hataları daha detaylı logla ama programı durdurma
+        logging.error(f"'{term}' terimi çevrilirken bir hata oluştu: {e}", exc_info=False)
+    return term
+
+
+def _clean_term(term):
+    """Arama terimini temizler (parantezleri kaldırır)."""
+    if not isinstance(term, str):
+        return ""
+    cleaned_term = re.sub(r'\s*\([^)]*\)', '', term)
+    return cleaned_term.strip()
+
+
+def _extract_terms_from_xlsx(file_path):
+    terms = []
+    try:
+        workbook = openpyxl.load_workbook(file_path, data_only=True)
+        sheet = workbook.active
+        for row in sheet.iter_rows(min_row=1, values_only=True):
+            for i in range(min(2, len(row))):
+                cell_value = row[i]
+                cleaned_value = _clean_term(cell_value)
+                translated_value = _translate_if_turkish(cleaned_value)
+                if translated_value and len(translated_value) > 2 and translated_value not in terms:
+                    terms.append(translated_value)
+    except Exception as e:
+        logging.error(f"Excel dosyası okunurken hata: {e}")
+    return terms
+
+
+def _extract_terms_from_csv(file_path):
+    terms = []
+    try:
+        with open(file_path, mode='r', encoding='utf-8', errors='ignore') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                for i in range(min(2, len(row))):
+                    cell_value = row[i]
+                    cleaned_value = _clean_term(cell_value)
+                    translated_value = _translate_if_turkish(cleaned_value)
+                    if translated_value and len(translated_value) > 2 and translated_value not in terms:
+                        terms.append(translated_value)
+    except Exception as e:
+        logging.error(f"CSV dosyası okunurken hata: {e}")
+    return terms
+
+
+def _extract_terms_from_docx(file_path):
+    terms = []
+    try:
+        doc = docx.Document(file_path)
+        for table in doc.tables:
+            for row in table.rows:
+                for i in range(min(2, len(row.cells))):
+                    cell_text = row.cells[i].text
+                    cleaned_text = _clean_term(cell_text)
+                    translated_text = _translate_if_turkish(cleaned_text)
+                    if translated_text and len(translated_text) > 2 and translated_text not in terms:
+                        terms.append(translated_text)
+        if not terms:
+            for para in doc.paragraphs:
+                cleaned_text = _clean_term(para.text)
+                translated_text = _translate_if_turkish(cleaned_text)
+                if translated_text and len(translated_text) > 2 and translated_text not in terms:
+                    terms.append(translated_text)
+    except Exception as e:
+        logging.error(f"Word dosyası okunurken hata: {e}")
+    return terms
+
+
+def get_search_terms_from_file(file_path):
+    if not os.path.exists(file_path):
+        logging.error(f"Toplu arama dosyası bulunamadı: {file_path}")
+        return []
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext == '.xlsx':
+        return _extract_terms_from_xlsx(file_path)
+    elif file_ext == '.csv':
+        return _extract_terms_from_csv(file_path)
+    elif file_ext == '.docx':
+        return _extract_terms_from_docx(file_path)
+    else:
+        logging.error(f"Desteklenmeyen dosya formatı: {file_ext}")
+        return []
+
+
 # --- Karşılaştırma Motoru ---
 class ComparisonEngine:
     def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI, tci_api: tci.TciScraper,
@@ -176,6 +293,7 @@ class ComparisonEngine:
         self.tci_api = tci_api
         self.max_workers = max_workers
         self.search_cancelled = threading.Event()
+        self.batch_search_cancelled = threading.Event()
         self.settings = initial_settings
 
     def initialize_drivers(self):
@@ -203,7 +321,7 @@ class ComparisonEngine:
         scores = [fuzz.ratio(n1, n2), fuzz.token_sort_ratio(n1, n2), fuzz.token_set_ratio(n1, n2)]
         return (sum(scores) / len(scores)) > avg_threshold
 
-    def _process_sigma_product(self, sigma_product: Dict[str, Any]) -> Dict[str, Any] or None:
+    def _process_sigma_product(self, sigma_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any] or None:
         if self.search_cancelled.is_set(): return None
         s_name, s_num, s_brand, s_key, cas = (
             sigma_product.get('product_name_sigma'), sigma_product.get('product_number'),
@@ -212,10 +330,6 @@ class ComparisonEngine:
         if not all([s_name, s_num, s_brand, s_key]): return None
         cleaned_sigma_name = self._clean_html(s_name)
 
-        # DEĞİŞİKLİK: Önce Sigma'dan tüm varyasyonlar (ve materyal numaraları) alınır.
-        # Ardından bu materyal numaraları ile Netflex'te arama yapılır.
-
-        # 1. Sigma'dan fiyat ve varyasyon bilgilerini (materyal numaraları dahil) al
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="Sigma-Variation-Fetcher") as executor:
             future_prices = executor.submit(self.sigma_api.get_all_product_prices, s_num, s_brand, s_key,
                                             self.search_cancelled)
@@ -223,7 +337,6 @@ class ComparisonEngine:
 
         if self.search_cancelled.is_set(): return None
 
-        # 2. Netflex'te aranacak tüm terimleri topla: ürün adı, ürün kodu ve tüm materyal numaraları
         netflex_search_terms = {cleaned_sigma_name, s_num}
         if sigma_variations:
             for country_variations in sigma_variations.values():
@@ -231,16 +344,13 @@ class ComparisonEngine:
                     if mat_num := variation.get('material_number'):
                         netflex_search_terms.add(mat_num)
 
-        # 3. Tüm terimler için Netflex'te eş zamanlı arama yap
         all_netflex_products_list = []
         with ThreadPoolExecutor(max_workers=10, thread_name_prefix="Netflex-Searcher") as executor:
-            # Boş terimler için arama yapmayı engelle
             futures = {executor.submit(self.netflex_api.search_products, term, self.search_cancelled)
                        for term in netflex_search_terms if term}
 
             for future in as_completed(futures):
                 if self.search_cancelled.is_set():
-                    # İptal durumunda kalan görevleri de iptal et
                     for f in futures: f.cancel()
                     break
                 try:
@@ -251,15 +361,11 @@ class ComparisonEngine:
 
         if self.search_cancelled.is_set(): return None
 
-        # 4. Netflex sonuçlarını ürün koduna göre tekilleştir
         all_netflex_products_map = {p['product_code']: p for p in all_netflex_products_list if p.get('product_code')}
         all_netflex_products = list(all_netflex_products_map.values())
 
-        # 5. Eşleşen Netflex ürünlerini bul ve en ucuzunu seç (YENİ, KATI KURALLAR)
         netflex_matches = []
-        processed_codes = set()  # Duplike eklemeyi önlemek için
-
-        # Sadece Sigma varyasyonlarının kodlarını (material_number) bir sette toplayalım.
+        processed_codes = set()
         sigma_material_numbers = set()
         if sigma_variations:
             for country_vars in sigma_variations.values():
@@ -271,19 +377,12 @@ class ComparisonEngine:
             netflex_code = p.get('product_code')
             if not netflex_code or netflex_code in processed_codes:
                 continue
-
-            # Kriter 1: Netflex ürün kodu, bir Sigma 'material_number' ile tam eşleşiyorsa,
-            # bu en güvenilir eşleşmedir ve isim kontrolü GEREKMEZ.
             if netflex_code in sigma_material_numbers:
                 netflex_matches.append(p)
                 processed_codes.add(netflex_code)
                 continue
-
-            # Kriter 2: Ana ürün kodu (s_num) Netflex kodunun içinde geçiyorsa,
-            # bu daha az kesin bir eşleşme olduğu için isim kontrolü de yapılır.
             is_code_match = s_num in netflex_code
             is_name_match = fuzz.partial_ratio(cleaned_sigma_name.lower(), p.get('product_name', '').lower()) > 80
-
             if is_code_match and is_name_match:
                 netflex_matches.append(p)
                 processed_codes.add(netflex_code)
@@ -301,7 +400,7 @@ class ComparisonEngine:
             "cheapest_netflex_stock": cheapest_stock
         }
 
-    def _process_tci_product(self, tci_product: tci.Product) -> Dict[str, Any]:
+    def _process_tci_product(self, tci_product: tci.Product, context: Dict = None) -> Dict[str, Any]:
         processed_variations = []
         min_original_price = float('inf')
 
@@ -349,11 +448,12 @@ class ComparisonEngine:
             "tci_variations": processed_variations, "sigma_variations": {}, "netflex_matches": []
         }
 
-    def search_and_compare(self, search_term: str):
-        self.search_cancelled.clear()
-        start_time = time.monotonic()
-        logging.info(f"===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '{search_term}' =====")
-        admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
+    def search_and_compare(self, search_term: str, context: Dict = None):
+        if not self.search_cancelled.is_set():
+            start_time = time.monotonic()
+            logging.info(f"===== YENİ BİRLEŞİK ARAMA BAŞLATILDI: '{search_term}' =====")
+            if not context:
+                admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
 
         def _search_and_process_source(source_name, page_generator, product_processor):
             page_queue = queue.Queue(maxsize=2)
@@ -369,21 +469,54 @@ class ComparisonEngine:
 
             def consumer():
                 nonlocal found_count
-                with ThreadPoolExecutor(max_workers=self.max_workers,
-                                        thread_name_prefix=f"{source_name}-Page-Processor") as executor:
-                    while not self.search_cancelled.is_set():
-                        try:
-                            product_page = page_queue.get(timeout=0.2)
-                            if product_page is None: break
+                executor = ThreadPoolExecutor(max_workers=self.max_workers,
+                                              thread_name_prefix=f"{source_name}-Page-Processor")
+                futures = set()
 
-                            futures = {executor.submit(product_processor, p) for p in product_page}
-                            for future in as_completed(futures):
-                                if self.search_cancelled.is_set(): break
-                                if result := future.result():
-                                    send_to_frontend("product_found", result)
-                                    found_count += 1
-                        except queue.Empty:
+                producer_finished = False
+                while not producer_finished or futures:
+                    if self.search_cancelled.is_set():
+                        break
+                    try:
+                        while not page_queue.empty():
+                            product_page = page_queue.get_nowait()
+                            if product_page is None:
+                                producer_finished = True
+                                break
+                            page_futures = {executor.submit(product_processor, p, context) for p in product_page}
+                            futures.update(page_futures)
+
+                        if not futures:
+                            time.sleep(0.1)
                             continue
+
+                        completed_futures = set()
+                        try:
+                            for future in as_completed(futures, timeout=1.0):
+                                if self.search_cancelled.is_set():
+                                    break
+                                try:
+                                    result = future.result()
+                                    if result:
+                                        send_to_frontend("product_found", {"product": result}, context=context)
+                                        found_count += 1
+                                except Exception:
+                                    pass
+                                finally:
+                                    completed_futures.add(future)
+                        except TimeoutError:
+                            pass
+
+                        futures -= completed_futures
+
+                    except queue.Empty:
+                        if producer_finished and not futures:
+                            break
+                        time.sleep(0.1)
+
+                for f in futures:
+                    f.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
 
             producer_thread = threading.Thread(target=producer, name=f"{source_name}-Producer", daemon=True)
             consumer_thread = threading.Thread(target=consumer, name=f"{source_name}-Consumer", daemon=True)
@@ -406,29 +539,68 @@ class ComparisonEngine:
                     try:
                         total_found += future.result()
                     except Exception as exc:
-                        logging.error(f"Arama kaynağı işlenirken hata oluştu: {exc}", exc_info=True)
+                        logging.error(f"Arama kaynağı işlenirken hata: {exc}", exc_info=True)
         except netflex.AuthenticationError as e:
             logging.error(f"Netflex kimlik doğrulama hatası: {e}", exc_info=False)
             send_to_frontend("authentication_error", True)
         except Exception as e:
             if not self.search_cancelled.is_set():
-                logging.error(f"Arama sırasında genel bir hata oluştu: {e}", exc_info=True)
+                logging.error(f"Arama sırasında genel bir hata: {e}", exc_info=True)
                 send_to_frontend("search_error", f"Arama sırasında hata: {e}")
 
-        elapsed_time = time.monotonic() - start_time
         if not self.search_cancelled.is_set():
-            logging.info(
-                f"Arama Tamamlandı: Terim='{search_term}', Toplam Bulunan={total_found}, Süre={elapsed_time:.2f}s")
-            send_to_frontend("search_complete", {"status": "complete", "total_found": total_found,
-                                                 "execution_time": round(elapsed_time, 2)})
+            elapsed_time = time.monotonic() - start_time
+            logging.info(f"Arama Tamamlandı: '{search_term}', Toplam={total_found}, Süre={elapsed_time:.2f}s")
+            if not context:
+                send_to_frontend("search_complete", {"status": "complete", "total_found": total_found,
+                                                     "execution_time": round(elapsed_time, 2)})
+        elif not context:
+            send_to_frontend("search_complete", {"status": "cancelled"})
+            logging.warning(f"Arama İptal Edildi: '{search_term}'")
+
+    def run_batch_search(self, file_path, customer_name):
+        logging.info(f"Toplu arama başlatıldı. Dosya: {file_path}, Müşteri: {customer_name}")
+        self.batch_search_cancelled.clear()
+
+        admin_logger.info(f"Toplu Arama Başlatıldı: Müşteri='{customer_name}', Dosya='{os.path.basename(file_path)}'")
+
+        search_terms = get_search_terms_from_file(file_path)
+        if not search_terms:
+            send_to_frontend("batch_search_complete",
+                             {"status": "error", "message": "Dosyadan okunacak ürün bulunamadı."})
+            return
+
+        total_terms = len(search_terms)
+        for i, term in enumerate(search_terms):
+            if self.batch_search_cancelled.is_set():
+                logging.warning("Toplu arama kullanıcı tarafından iptal edildi.")
+                break
+
+            self.search_cancelled.clear()
+
+            progress_data = {"term": term, "current": i + 1, "total": total_terms}
+            send_to_frontend("batch_search_progress", progress_data)
+            admin_logger.info(f"  -> Toplu Arama İlerleme ({i + 1}/{total_terms}): '{term}' aranıyor...")
+
+            self.search_and_compare(term, context={"batch_search_term": term})
+
+        if not self.batch_search_cancelled.is_set():
+            logging.info("Tüm toplu arama terimleri tamamlandı.")
+            send_to_frontend("batch_search_complete", {"status": "complete"})
+            admin_logger.info(f"Toplu Arama Tamamlandı: Müşteri='{customer_name}'")
         else:
-            logging.warning(f"Arama İptal Edildi: Terim='{search_term}'")
+            send_to_frontend("batch_search_complete", {"status": "cancelled"})
 
     def force_cancel(self):
         if not self.search_cancelled.is_set():
-            logging.info("Zorunlu iptal talebi alındı. Tüm görevler iptal ediliyor.")
+            logging.info("Zorunlu iptal talebi alındı. (Tekli veya Mevcut Terim)")
             self.search_cancelled.set()
-            send_to_frontend("search_complete", {"status": "cancelled"})
+
+    def force_cancel_batch(self):
+        if not self.batch_search_cancelled.is_set():
+            logging.info("Zorunlu iptal talebi alındı. (Tüm Toplu Arama)")
+            self.batch_search_cancelled.set()
+            self.force_cancel()
 
 
 # --- Ana Fonksiyon ---
@@ -437,14 +609,11 @@ def main():
     services_initialized = threading.Event()
     sigma_api = sigma.SigmaAldrichAPI()
     tci_api = tci.TciScraper()
-
-    # DEĞİŞİKLİK: 'atexit' kayıtları kaldırıldı. Kapatma işlemi artık 'shutdown' komutuyla manuel olarak yönetiliyor.
-    # Bu, işlemlerin zorla kapatıldığında bile kaynakların serbest bırakılmasını sağlamak için daha güvenilirdir.
-    # atexit.register(sigma_api.stop_drivers) <-- KALDIRILDI
-    # atexit.register(tci_api.close_driver)   <-- KALDIRILDI
-
     netflex_api = None
     engine = None
+
+    search_thread = None
+    batch_search_thread = None
 
     def initialize_services(settings_data: Dict[str, Any]):
         nonlocal netflex_api, engine
@@ -481,7 +650,6 @@ def main():
         logging.warning("Ayarlar dosyası bulunamadı. Arayüzden ilk kurulum bekleniyor.")
         send_to_frontend("initial_setup_required", True)
 
-    search_thread = None
     for line in sys.stdin:
         try:
             request = json.loads(line.strip())
@@ -504,34 +672,62 @@ def main():
                     send_to_frontend("settings_saved", {"status": "success"})
             elif action == "search" and data:
                 if not services_initialized.is_set():
-                    send_to_frontend("search_error",
-                                     "Servisler başlatılmadı. Lütfen önce ayarları kontrol edip kaydedin.")
+                    send_to_frontend("search_error", "Servisler başlatılmadı.")
                     continue
                 if search_thread and search_thread.is_alive():
                     engine.force_cancel()
                     search_thread.join(5.0)
+                if batch_search_thread and batch_search_thread.is_alive():
+                    engine.force_cancel_batch()
+                    batch_search_thread.join(5.0)
+
+                engine.search_cancelled.clear()
                 search_thread = threading.Thread(target=engine.search_and_compare, args=(data,),
                                                  name="Search-Coordinator")
                 search_thread.start()
+
+            elif action == "start_batch_search" and data:
+                if not services_initialized.is_set():
+                    send_to_frontend("search_error", "Servisler başlatılmadı.")
+                    continue
+                if search_thread and search_thread.is_alive():
+                    engine.force_cancel()
+                    search_thread.join(5.0)
+                if batch_search_thread and batch_search_thread.is_alive():
+                    engine.force_cancel_batch()
+                    batch_search_thread.join(5.0)
+
+                batch_search_thread = threading.Thread(
+                    target=engine.run_batch_search,
+                    args=(data.get("filePath"), data.get("customerName")),
+                    name="Batch-Search-Coordinator"
+                )
+                batch_search_thread.start()
+
             elif action == "cancel_search":
                 if engine: engine.force_cancel()
+
+            elif action == "cancel_current_term_search":
+                if engine: engine.force_cancel()
+
+            elif action == "cancel_batch_search":
+                if engine: engine.force_cancel_batch()
+
             elif action == "export":
                 send_to_frontend("export_result", export_to_excel(data))
 
-            # --- KÖKLÜ DEĞİŞİKLİK: KONTROLLÜ KAPATMA KOMUTU ---
             elif action == "shutdown":
                 logging.info("Kapatma komutu alındı. Selenium sürücüleri temizleniyor...")
                 if engine:
                     engine.force_cancel()
-                if search_thread and search_thread.is_alive():
-                    search_thread.join(2.0)
+                    engine.force_cancel_batch()
+                if search_thread and search_thread.is_alive(): search_thread.join(2.0)
+                if batch_search_thread and batch_search_thread.is_alive(): batch_search_thread.join(2.0)
 
-                # Bütün Selenium sürücülerini düzgünce kapat
                 sigma_api.stop_drivers()
                 tci_api.close_driver()
-
                 logging.info("Tüm sürücüler durduruldu. Python betiği sonlandırılıyor.")
-                break  # Ana döngüden çıkarak betiğin sonlanmasını sağla
+                break
 
         except json.JSONDecodeError:
             logging.error(f"Geçersiz JSON formatı: {line}")

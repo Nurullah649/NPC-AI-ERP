@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportToExcel: (data) => ipcRenderer.send('export-to-excel', data),
   loadSettings: () => ipcRenderer.send('load-settings'),
   saveSettings: (settings) => ipcRenderer.send('save-settings', settings),
+  selectFile: () => ipcRenderer.invoke('select-file'),
+  startBatchSearch: (data) => ipcRenderer.send('start-batch-search', data),
+  cancelBatchSearch: () => ipcRenderer.send('cancel-batch-search'),
+  cancelCurrentTermSearch: () => ipcRenderer.send('cancel-current-term-search'),
 
   // --- Dinleyiciler (Main -> Renderer) ---
   onServicesReady: createListener('services-ready'),
@@ -32,4 +36,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSettingsSaved: createListener('settings-saved'),
   onAuthenticationError: createListener('authentication-error'),
   onPythonCrashed: createListener('python-crashed'),
+  onBatchSearchProgress: createListener('batch-search-progress'),
+  onBatchSearchComplete: createListener('batch-search-complete'),
 });

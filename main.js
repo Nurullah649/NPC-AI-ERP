@@ -1,6 +1,6 @@
 // main.js
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 // DEĞİŞİKLİK: senkron komut çalıştırmak için execSync eklendi.
 const { spawn, exec, execSync } = require('child_process');
@@ -60,13 +60,9 @@ function startPythonService() {
         try {
           const message = JSON.parse(completeJsonString);
           if (message && typeof message === 'object' && message.type) {
-            const { type, data } = message;
 
-            if (type === 'initiate_restart') {
-              app.relaunch();
-              app.quit();
-              return;
-            }
+            const { type, data, context } = message;
+            const messagePayload = { ...message }; // Gelen mesajı kopyala
 
             const channels = {
               python_services_ready: 'services-ready',
@@ -78,6 +74,8 @@ function startPythonService() {
               error: 'search-error',
               settings_loaded: 'settings-loaded',
               settings_saved: 'settings-saved',
+              batch_search_progress: 'batch-search-progress',
+              batch_search_complete: 'batch-search-complete',
             };
             const channel = channels[type];
 
@@ -90,7 +88,12 @@ function startPythonService() {
                 }
             }
             else if (win && !win.isDestroyed() && channel) {
-              win.webContents.send(channel, data);
+              // product_found mesajı için context'i de gönder
+              if (type === 'product_found' && context) {
+                  win.webContents.send(channel, { product: data.product, context: context });
+              } else {
+                  win.webContents.send(channel, data);
+              }
             }
           }
         } catch (error) {
@@ -143,16 +146,27 @@ function createWindow() {
   win.setMenu(null);
 
   if (isDev) {
+    win.webContents.openDevTools();
     loadDevUrlWithRetry();
   } else {
-    // Paketlenmiş uygulamada, 'out' klasörünün içindeki 'index.html' dosyasını yükle
-    // __dirname, paketlendiğinde 'resources/app.asar' klasörünü gösterir.
-    // 'out' klasörü bu dizinin içinde oluşturulacaktır.
     win.loadFile(path.join(__dirname,  'out', 'index.html'));
   }
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle('select-file', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        filters: [
+            { name: 'Documents', extensions: ['xlsx', 'csv', 'docx'] }
+        ]
+    });
+    if (!canceled) {
+        return filePaths[0];
+    }
+    return null;
+  });
+
   ipcMain.once('renderer-ready', () => {
     console.log('Arayüz hazır. Saklanan ilk durum mesajı gönderiliyor (varsa).');
     handshakeComplete = true;
@@ -169,19 +183,15 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   console.log('Uygulama kapanıyor, Python servisi ve alt işlemleri sonlandırılıyor...');
 
-  // Önce Python'a düzgün kapanması için sinyal gönderiyoruz.
   sendCommandToPython({ action: 'shutdown' });
 
   if (pythonProcess && !pythonProcess.killed) {
     console.log(`Python işlemini (PID: ${pythonProcess.pid}) ve tüm alt işlemlerini sonlandırma garantisi alınıyor.`);
     try {
         if (process.platform === "win32") {
-            // DEĞİŞİKLİK: execSync kullanımı, bu komutun tamamen bitmesini beklemesini sağlar.
-            // Bu, uygulamanın, temizlik işlemi bitmeden kapanmasını önler.
             execSync(`taskkill /PID ${pythonProcess.pid} /T /F`);
             console.log("taskkill komutu başarıyla çalıştırıldı ve tamamlandı.");
         } else {
-            // Diğer işletim sistemleri için (Linux, macOS) process group killing kullanılır.
             process.kill(-pythonProcess.pid, 'SIGKILL');
         }
     } catch (e) {
@@ -211,3 +221,6 @@ ipcMain.on('cancel-search', () => sendCommandToPython({ action: 'cancel_search' 
 ipcMain.on('export-to-excel', (event, data) => sendCommandToPython({ action: 'export', data: data }));
 ipcMain.on('load-settings', () => sendCommandToPython({ action: 'load_settings' }));
 ipcMain.on('save-settings', (event, settings) => sendCommandToPython({ action: 'save_settings', data: settings }));
+ipcMain.on('start-batch-search', (event, data) => sendCommandToPython({ action: 'start_batch_search', data: data }));
+ipcMain.on('cancel-batch-search', () => sendCommandToPython({ action: 'cancel_batch_search' }));
+ipcMain.on('cancel-current-term-search', () => sendCommandToPython({ action: 'cancel_current_term_search' }));
