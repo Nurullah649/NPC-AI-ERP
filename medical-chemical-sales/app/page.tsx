@@ -180,7 +180,6 @@ const cleanAndDecodeHtml = (html: string | null | undefined): string => {
 
 import SplashScreen from "@/public/SplashScreen"
 
-
 // --------------------------------------------------------------------------------
 // Tema Yönetimi
 // --------------------------------------------------------------------------------
@@ -1606,16 +1605,58 @@ function MainApplication({ appStatus, setAppStatus }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
+  const [currentSearchTerm, setCurrentSearchTerm] = useState(""); // Arama terimini saklamak için yeni state
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
+
+    const calculateRelevance = (product: ProductResult, term: string): number => {
+        let score = 0;
+        const termLower = term.toLowerCase().trim();
+        if (!termLower) return 0;
+
+        const name = stripHtml(product.product_name || "").toLowerCase();
+        const number = (product.product_number || "").toLowerCase();
+        const cas = (product.cas_number || "").toLowerCase();
+
+        if (termLower === number) score += 10000;
+        if (termLower === cas) score += 5000;
+        if (termLower === name) score += 2000;
+        if (name.startsWith(termLower)) score += 500;
+        if (number.startsWith(termLower)) score += 500;
+        if (name.includes(termLower)) score += 100 + (50 / (name.length + 1));
+
+        const termWords = new Set(termLower.split(' ').filter(w => w));
+        const nameWords = new Set(name.split(' ').filter(w => w));
+
+        let allWordsPresent = true;
+        for (const word of termWords) {
+            if (!nameWords.has(word)) {
+                allWordsPresent = false;
+                break;
+            }
+        }
+        if (allWordsPresent && termWords.size > 0) {
+            score += termWords.size * 50;
+        }
+
+        const commonWords = new Set([...termWords].filter(x => nameWords.has(x)));
+        score += commonWords.size * 10;
+
+        return score;
+    };
+
     const cleanups = [
         window.electronAPI.onProductFound(({ product, context }) => {
             if (!context) {
                 setSearchResults((prev) => {
                     const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
-                    if (!isProductAlreadyInList) { return [...prev, product] }
-                    return prev
+                    if (isProductAlreadyInList) { return prev }
+
+                    const newList = [...prev, product];
+                    // Her yeni ürün geldiğinde listeyi yeniden sırala
+                    newList.sort((a, b) => calculateRelevance(b, currentSearchTerm) - calculateRelevance(a, currentSearchTerm));
+                    return newList;
                 })
             }
         }),
@@ -1634,7 +1675,7 @@ function MainApplication({ appStatus, setAppStatus }) {
         window.electronAPI.onAuthenticationError(() => { setAppStatus('auth_error') }),
     ];
     return () => { cleanups.forEach(cleanup => cleanup()); }
-  }, [setAppStatus])
+  }, [setAppStatus, currentSearchTerm]) // Bağımlılıklara currentSearchTerm eklendi
 
   useEffect(() => {
     let productCount = 0
@@ -1665,6 +1706,7 @@ function MainApplication({ appStatus, setAppStatus }) {
     setIsLoading(true)
     setSearchResults([])
     setError(null)
+    setCurrentSearchTerm(searchTerm); // Arama terimini state'e kaydet
     if (window.electronAPI) {
         window.electronAPI.performSearch(searchTerm)
     } else {
@@ -1810,3 +1852,4 @@ export default function App() {
     </ThemeProvider>
   )
 }
+
