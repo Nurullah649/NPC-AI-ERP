@@ -155,13 +155,35 @@ class TciScraper:
                     code = card.get_attribute("data-product-code1").strip()
                     cas_number = card.get_attribute("data-casNo").strip()
                     variations = []
+                    # DEĞİŞİKLİK: Fiyat ve stok tablosunu daha detaylı ayrıştırma
                     rows = card.find_elements(By.CSS_SELECTOR, "#PricingTable tr")
-                    for row in rows[1:]:
+                    for row in rows:  # Başlık satırını atlamaya gerek yok, data-attr ile kontrol edilecek
                         cols = row.find_elements(By.TAG_NAME, "td")
-                        if len(cols) >= 2:
-                            unit = cols[0].text.strip()
-                            price = cols[1].text.strip().replace('\n', ' ')
-                            variations.append({'unit': unit, 'price': price})
+                        if not cols: continue
+
+                        unit = ''
+                        price = ''
+                        stock_info = []
+
+                        for col in cols:
+                            try:
+                                data_attr = col.get_attribute("data-attr").strip().strip(':')
+                                text = col.text.strip()
+
+                                if not text: continue
+
+                                if data_attr == "Einheit":
+                                    unit = text
+                                elif data_attr == "Stückpreis":
+                                    price = text.replace('\n', ' ')
+                                else:
+                                    stock_info.append({'country': data_attr, 'stock': text})
+                            except:
+                                continue  # Sütun işlenirken hata olursa atla
+
+                        if unit and price:
+                            variations.append({'unit': unit, 'price': price, 'stock_info': stock_info})
+
                     page_products.append(Product(name, code, variations, brand="TCI", cas_number=cas_number))
                 except Exception as e:
                     logging.error(f"Bir TCI ürün kartı işlenirken hata oluştu: {e}", exc_info=False)
@@ -204,29 +226,3 @@ class TciScraper:
                 logging.warning("TCI WebDriver kapatılırken zaten ulaşılamaz durumdaydı.")
             finally:
                 self.driver = None
-
-
-# --- DENEME BLOĞU ---
-"""if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    test_search_query = "Methanol"
-    scraper = TciScraper()
-    cancel_event = threading.Event()
-    all_products_found = []
-    try:
-        scraper.reinit_driver()
-        product_generator = scraper.get_products(test_search_query, cancel_event)
-        page_num = 1
-        for product_list in product_generator:
-            logging.info(f"--- Sayfa {page_num} Sonuçları ({len(product_list)} ürün) ---")
-            for product in product_list:
-                print(product)
-                all_products_found.append(product)
-            page_num += 1
-        logging.info(f"\nToplam {len(all_products_found)} ürün bulundu.")
-    except Exception as main_exc:
-        logging.error(f"Ana test bloğunda bir hata oluştu: {main_exc}")
-    finally:
-        logging.info("Test tamamlandı. WebDriver kapatılıyor.")
-        scraper.close_driver()"""
-

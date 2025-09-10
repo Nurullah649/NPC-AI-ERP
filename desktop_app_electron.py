@@ -26,7 +26,7 @@ from langdetect import detect, LangDetectException
 # Optimize edilmiş modülleri import et
 # 'src' klasör yapınız olduğunu varsayarak. Eğer yoksa, 'from src import ...' yerine
 # 'import sigma, netflex, tci' kullanın.
-from src import sigma, netflex, tci
+from src import sigma, netflex, tci, currency_converter
 
 # --- BAŞLANGIÇTA KODLAMAYI AYARLA ---
 if sys.platform == "win32":
@@ -82,7 +82,9 @@ def save_settings(new_settings: Dict[str, Any]):
     """Yeni ayarları JSON dosyasına kaydeder."""
     try:
         if 'tci_coefficient' in new_settings:
-            new_settings['tci_coefficient'] = float(str(new_settings['tci_coefficient']).replace(',', '.'))
+            if new_settings.get('tci_coefficient'):
+                new_settings['tci_coefficient'] = float(str(new_settings['tci_coefficient']).replace(',', '.'))
+
         LOGS_AND_SETTINGS_DIR.mkdir(exist_ok=True)
         with open(SETTINGS_FILE_PATH, 'w', encoding='utf-8') as f:
             json.dump(new_settings, f, indent=4)
@@ -289,6 +291,7 @@ class ComparisonEngine:
         self.sigma_api = sigma_api
         self.netflex_api = netflex_api
         self.tci_api = tci_api
+        self.currency_converter = currency_converter.CurrencyConverter()
         self.max_workers = max_workers
         self.search_cancelled = threading.Event()
         self.batch_search_cancelled = threading.Event()
@@ -370,50 +373,79 @@ class ComparisonEngine:
         )
         if not all([s_name, s_num, s_brand]): return None
 
+        parities = self.currency_converter.get_parities()
+        if "error" in parities:
+            logging.error(f"Pariteler alınamadı: {parities['error']}. {s_num} için fiyat dönüşümü yapılamayacak.")
+
         cleaned_sigma_name = self._clean_html(s_name)
         sigma_variations = all_sigma_variations.get(s_num, {})
+        all_eur_prices = []
+
+        # HATA DÜZELTME: Sigma fiyatlarını EUR'ya çevir ve arayüz için formatla
+        for country_code, variations in sigma_variations.items():
+            for var in variations:
+                price_eur = None
+                original_price = var.get('price')
+                currency = var.get('currency', '').upper()
+
+                var['original_price_str'] = f"{original_price} {currency}" if original_price is not None else "N/A"
+
+                if original_price is not None:
+                    try:
+                        if currency == 'USD' and parities.get('usd_eur'):
+                            price_eur = original_price * parities['usd_eur']
+                        elif currency == 'GBP' and parities.get('gbp_eur'):
+                            price_eur = original_price * parities['gbp_eur']
+                        elif currency == 'EUR':
+                            price_eur = original_price
+
+                        if price_eur is not None:
+                            var['price_eur'] = price_eur
+                            var['price_eur_str'] = f"€{price_eur:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                            all_eur_prices.append(price_eur)
+                        else:
+                            var['price_eur_str'] = "N/A"
+                    except Exception:
+                        var['price_eur_str'] = "N/A"
+                else:
+                    var['price_eur_str'] = "N/A"
+
 
         netflex_matches = []
         processed_codes = set()
-
-        sigma_material_numbers = set()
-        if sigma_variations:
-            for country_vars in sigma_variations.values():
-                for var in country_vars:
-                    if mat_num := var.get('material_number'):
-                        sigma_material_numbers.add(mat_num)
+        sigma_material_numbers = {var.get('material_number') for vars_list in sigma_variations.values() for var in
+                                  vars_list if var.get('material_number')}
 
         for mat_num in sigma_material_numbers:
             if mat_num in netflex_cache and mat_num not in processed_codes:
-                netflex_matches.append(netflex_cache[mat_num])
+                match = netflex_cache[mat_num]
+                netflex_matches.append(match)
+                if price := match.get('price_numeric'):
+                    all_eur_prices.append(price)
                 processed_codes.add(mat_num)
 
-        for netflex_code, p in netflex_cache.items():
-            if netflex_code in processed_codes:
-                continue
-            is_code_match = s_num in netflex_code
-            is_name_match = fuzz.partial_ratio(cleaned_sigma_name.lower(), p.get('product_name', '').lower()) > 80
-            if is_code_match and is_name_match:
-                netflex_matches.append(p)
-                processed_codes.add(netflex_code)
+        # Genel en ucuz EUR fiyatını bul
+        cheapest_eur_price = min(all_eur_prices) if all_eur_prices else None
+        cheapest_eur_price_str = f"€{cheapest_eur_price:,.2f}".replace(",", "X").replace(".", ",").replace("X",
+                                                                                                           ".") if cheapest_eur_price is not None else "N/A"
 
-        cheapest_name, cheapest_price, cheapest_stock = "Bulunamadı", "N/A", "N/A"
+        # Orijinal en ucuz Netflex fiyatını bul (arayüzde hala kullanılıyor olabilir)
+        cheapest_netflex_stock = "N/A"
         if priced_matches := [p for p in netflex_matches if p.get('price_numeric') is not None]:
-            cheapest = min(priced_matches, key=lambda x: x['price_numeric'])
-            cheapest_name, cheapest_price, cheapest_stock = (cheapest.get('product_name'), cheapest.get('price_str'),
-                                                             cheapest.get('stock'))
+            cheapest_netflex_stock = min(priced_matches, key=lambda x: x['price_numeric']).get('stock', "N/A")
 
         return {
             "source": "Sigma", "product_name": s_name, "product_number": s_num, "cas_number": cas,
             "brand": f"Sigma ({s_brand})", "sigma_variations": sigma_variations, "netflex_matches": netflex_matches,
-            "cheapest_netflex_name": cheapest_name, "cheapest_netflex_price_str": cheapest_price,
-            "cheapest_netflex_stock": cheapest_stock
+            "cheapest_netflex_stock": cheapest_netflex_stock,
+            "cheapest_eur_price_str": cheapest_eur_price_str
         }
 
     def _process_tci_product(self, tci_product: tci.Product, context: Dict = None) -> Dict[str, Any]:
         """ TCI ürünlerini işler ve sabit katsayı ile fiyat hesaplar. """
         processed_variations = []
         min_original_price = float('inf')
+        cheapest_stock_summary = "N/A"
 
         for variation in tci_product.variations:
             original_price_str = variation.get('price', 'N/A')
@@ -436,24 +468,26 @@ class ComparisonEngine:
             processed_variations.append({
                 "unit": variation.get('unit'),
                 "original_price": original_price_str,
-                "original_price_numeric": price_float
+                "original_price_numeric": price_float,
+                "stock_info": variation.get('stock_info', [])
             })
 
             if price_float is not None and price_float < min_original_price:
                 min_original_price = price_float
+                if stock_info := variation.get('stock_info'):
+                    cheapest_stock_summary = ', '.join([f"{s['country']}: {s['stock']}" for s in stock_info])
 
         cheapest_price_to_show = "N/A"
         if min_original_price != float('inf'):
             tci_coefficient = self.settings.get('tci_coefficient', 1.4)
             calculated_cheapest = min_original_price * tci_coefficient
-            cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",
-                                                                                                                ".")
+            cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",".")
 
         return {
             "source": "TCI", "product_name": tci_product.name, "product_number": tci_product.code,
             "cas_number": tci_product.cas_number, "brand": "TCI",
-            "cheapest_netflex_price_str": cheapest_price_to_show,
-            "cheapest_netflex_stock": "N/A",
+            "cheapest_eur_price_str": cheapest_price_to_show,
+            "cheapest_netflex_stock": cheapest_stock_summary,
             "tci_variations": processed_variations, "sigma_variations": {}, "netflex_matches": []
         }
 
@@ -489,6 +523,8 @@ class ComparisonEngine:
                 with ThreadPoolExecutor(max_workers=self.max_workers,
                                         thread_name_prefix="Sigma-Product-Processor") as processor_executor:
                     try:
+                        # İlk olarak pariteleri bir kere çek, her ürün için tekrar çekme
+                        self.currency_converter.get_parities()
                         sigma_product_generator = self.sigma_api.search_products(search_term, self.search_cancelled)
 
                         futures = []
@@ -573,6 +609,7 @@ def main():
     services_initialized = threading.Event()
     sigma_api = sigma.SigmaAldrichAPI()
     tci_api = tci.TciScraper()
+    currency_api = currency_converter.CurrencyConverter()
     netflex_api = None
     engine = None
 
@@ -679,6 +716,10 @@ def main():
 
             elif action == "export":
                 send_to_frontend("export_result", export_to_excel(data))
+
+            elif action == "get_parities":
+                parities = currency_api.get_parities()
+                send_to_frontend("parities_updated", parities)
 
             elif action == "shutdown":
                 logging.info("Kapatma komutu alındı. Selenium sürücüleri temizleniyor...")

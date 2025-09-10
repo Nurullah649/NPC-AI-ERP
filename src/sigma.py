@@ -31,7 +31,7 @@ class SigmaAldrichAPI:
     def start_drivers(self):
         # YENİ LOGLAMA: Sürücü başlatma sürecinin başlangıcını logla.
         logging.info("Starting all country drivers and sessions concurrently...")
-        countries = ['TR', 'US', 'DE', 'GB']
+        countries = ['US', 'DE', 'GB']
         with ThreadPoolExecutor(max_workers=len(countries), thread_name_prefix="Driver-Starter") as executor:
             executor.map(self._start_single_driver, countries)
 
@@ -208,9 +208,10 @@ class SigmaAldrichAPI:
 
     def _search_page(self, search_term: str, page: int, cancellation_token: threading.Event) -> Dict[str, Any] or None:
         if cancellation_token.is_set(): return None
-        session = self.sessions.get('tr')
+        # DEĞİŞİKLİK: Arama için 'tr' yerine 'us' oturumu kullanılıyor.
+        session = self.sessions.get('us')
         if not session:
-            logging.error("TR session not found for searching. Cannot proceed.")
+            logging.error("US session not found for searching. Cannot proceed.")
             return None
 
         query = "query ProductSearch($searchTerm: String, $page: Int!, $sort: Sort, $group: ProductSearchGroup, $selectedFacets: [FacetInput!], $type: ProductSearchType) { getProductSearchResults(input: { searchTerm: $searchTerm, pagination: { page: $page }, sort: $sort, group: $group, facets: $selectedFacets, type: $type }) { items { ... on Substance { casNumber products { name productNumber productKey brand { key } } } } } }"
@@ -338,53 +339,3 @@ class SigmaAldrichAPI:
             if not cancellation_token.is_set():
                 logging.error(f"Unexpected error during pricing ({country_code.upper()}).", exc_info=True)
             return []
-
-
-# YENİ BÖLÜM: Loglamayı yapılandırmak ve sınıfı test etmek için ana blok
-"""if __name__ == '__main__':
-    # Loglama için temel yapılandırma
-    # Level: INFO -> Sadece genel bilgileri ve hataları gösterir.
-    # Level: DEBUG -> Ağ istekleri, payload'lar gibi çok daha detaylı bilgileri gösterir.
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    logging.info("Application starting...")
-    api = SigmaAldrichAPI()
-
-    # İptal mekanizmasını test etmek için bir Event
-    # Örneğin, başka bir thread bu event'i set ederek tüm işlemleri durdurabilir.
-    cancellation_token = threading.Event()
-
-    try:
-        api.start_drivers()
-
-        # Arama fonksiyonunu test etme
-        search_term = "ethanol"
-        logging.info(f"--- TESTING PRODUCT SEARCH for '{search_term}' ---")
-        product_generator = api.search_products(search_term, cancellation_token)
-
-        # İlk 5 ürünü alıp fiyatlarını sorgulayalım
-        for i, product in enumerate(product_generator):
-            if i >= 5:
-                break
-            logging.info(f"Found product: {product}")
-            api.get_all_product_prices(
-                product_number=product['product_number'],
-                brand=product['brand'],
-                product_key=product['product_key'],
-                cancellation_token=cancellation_token
-            )
-
-    except KeyboardInterrupt:
-        logging.warning("KeyboardInterrupt received. Setting cancellation token...")
-        cancellation_token.set()
-    except Exception as e:
-        logging.critical("An unhandled exception occurred in the main block.", exc_info=True)
-    finally:
-        # Sürücüleri her zaman temiz bir şekilde kapat
-        logging.info("Shutting down in finally block...")
-        api.stop_drivers()
-        logging.info("Application finished.")"""

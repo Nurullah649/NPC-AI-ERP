@@ -33,6 +33,11 @@ import {
   ArrowLeft,
   SkipForward, // Yeni ikon
   Filter, // Yeni ikon
+  Eye, // Yeni ikon
+  EyeOff, // Yeni ikon
+  DollarSign, // Yeni ikon
+  Euro, // Yeni ikon
+  Sterling, // Yeni ikon
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -73,8 +78,11 @@ import { Progress } from "@/components/ui/progress"
 interface SigmaVariation {
   material_number: string
   price: number | null
+  price_eur?: number | null
   currency: string
   availability_date: string | null
+  price_eur_str?: string
+  original_price_str?: string
 }
 
 interface NetflexResult {
@@ -87,9 +95,10 @@ interface NetflexResult {
 }
 
 interface TciVariation {
-  unit: string
-  original_price: string
-  original_price_numeric: number | null
+  unit: string;
+  original_price: string;
+  original_price_numeric: number | null;
+  stock_info?: { country: string; stock: string }[];
 }
 
 interface ProductResult {
@@ -98,7 +107,6 @@ interface ProductResult {
   cas_number: string
   brand: string
   sigma_variations: {
-    tr?: SigmaVariation[]
     us?: SigmaVariation[]
     de?: SigmaVariation[]
     gb?: SigmaVariation[]
@@ -108,6 +116,7 @@ interface ProductResult {
   cheapest_netflex_price_str: string
   cheapest_netflex_stock: number | string
   tci_variations?: TciVariation[]
+  cheapest_eur_price_str?: string;
 }
 
 interface AssignmentItem {
@@ -140,7 +149,8 @@ declare global {
       selectFile: () => Promise<string | null>
       startBatchSearch: (data: { filePath: string; customerName: string }) => void
       cancelBatchSearch: () => void
-      cancelCurrentTermSearch: () => void; // Yeni fonksiyon
+      cancelCurrentTermSearch: () => void;
+      getParities: () => void;
       onServicesReady: (callback: (isReady: boolean) => void) => () => void
       onInitialSetupRequired: (callback: () => void) => () => void
       onProductFound: (callback: (message: { product: any, context?: any }) => void) => () => void
@@ -153,6 +163,7 @@ declare global {
       onPythonCrashed: (callback: () => void) => () => void
       onBatchSearchProgress: (callback: (progress: any) => void) => () => void
       onBatchSearchComplete: (callback: (summary: any) => void) => () => void
+      onParitiesUpdated: (callback: (parities: any) => void) => () => void;
     }
   }
 }
@@ -162,8 +173,9 @@ declare global {
 // --------------------------------------------------------------------------------
 const formatCurrency = (value: number | null, currency = "EUR") => {
     if (value === null || isNaN(value)) return "N/A"
-    const currencySymbol = currency === "EUR" ? "€" : currency
-    return `${currencySymbol}${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const currencySymbol = currency === "EUR" ? "€" : currency === "USD" ? "$" : "£"
+    const locale = currency === "EUR" ? "de-DE" : currency === "USD" ? "en-US" : "en-GB";
+    return `${currencySymbol}${value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 const stripHtml = (html: string | null | undefined): string => {
@@ -230,23 +242,20 @@ const ModeToggle = () => {
 // --------------------------------------------------------------------------------
 const Sidebar = ({ setPage, currentPage }) => {
   const navItems = [
-    { name: "home", href: "#", icon: Home, label: "Ana Sayfa" },
+    { name: "home", href: "#", icon: User, label: "Müşteri Listesi" },
     { name: "search", href: "#", icon: Search, label: "Ürün Arama" },
     { name: "batch-search", href: "#", icon: FileSearch, label: "Toplu Proforma Arama" },
-    { name: "customers", href: "#", icon: Users, label: "Müşteriler" },
     { name: "settings", href: "#", icon: Settings, label: "Ayarlar" },
   ]
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
       <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
-        <a
-          href="#"
-          onClick={() => setPage("home")}
+        <div
           className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
         >
           <Package2 className="h-4 w-4 transition-all group-hover:scale-110" />
           <span className="sr-only">Tales Job</span>
-        </a>
+        </div>
         <TooltipProvider>
           {navItems.map((item) => (
             <Tooltip key={item.name}>
@@ -304,6 +313,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
           </div>
         </CardContent>
       </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary"/> TCI Fiyatlandırma</CardTitle>
@@ -316,6 +326,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
           </div>
         </CardContent>
       </Card>
+
       <div className="flex justify-end">
         <Button type="submit" disabled={isSaving}>
           {isSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -383,7 +394,11 @@ const InitialSetupScreen = ({ setAppStatus }) => {
           </CardHeader>
           <CardContent>
              <SettingsForm
-                initialSettings={{ netflex_username: "", netflex_password: "", tci_coefficient: 1.4 }}
+                initialSettings={{
+                    netflex_username: "",
+                    netflex_password: "",
+                    tci_coefficient: 1.4
+                }}
                 onSave={onSave}
                 isSaving={isSaving}
                 isInitialSetup={true}
@@ -396,164 +411,69 @@ const InitialSetupScreen = ({ setAppStatus }) => {
 }
 
 // --------------------------------------------------------------------------------
-// Ana Sayfa (Dashboard)
+// Müşteri (Ana Sayfa)
 // --------------------------------------------------------------------------------
-const HomePage = ({ stats }) => {
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-2xl font-bold tracking-tight">Hoş Geldiniz!</h1>
-      <p className="text-muted-foreground">Yönetim sisteminize genel bir bakış.</p>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Müşteriler</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.customerCount}</div>
-            <p className="text-xs text-muted-foreground">Toplam kayıtlı müşteri</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Atanan Toplam Ürün</CardTitle>
-            <Package2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUniqueProducts}</div>
-            <p className="text-xs text-muted-foreground">Müşterilerdeki toplam ürün çeşidi</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aktif Siparişler</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeOrders}</div>
-            <p className="text-xs text-muted-foreground">Toplam ürün atama sayısı</p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
+const CustomerPage = ({ assignments, setAssignments }) => {
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportCustomerName, setExportCustomerName] = useState("");
 
-// --------------------------------------------------------------------------------
-// Müşteriler Sayfası
-// --------------------------------------------------------------------------------
-const CustomersPage = ({ customers, setCustomers, assignments, setAssignments }) => {
-  const [newCustomer, setNewCustomer] = useState({ name: "" })
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [customerToDelete, setCustomerToDelete] = useState(null)
-
-  const handleAddCustomer = () => {
-    if (newCustomer.name.trim()) {
-      setCustomers([
-        ...customers,
-        { id: customers.length > 0 ? Math.max(...customers.map((c) => c.id)) + 1 : 1, ...newCustomer },
-      ])
-      setNewCustomer({ name: "" })
-      setIsAddDialogOpen(false)
-      toast.success("Yeni müşteri başarıyla eklendi!")
-    } else {
-      toast.error("Lütfen müşteri adını girin.")
-    }
-  }
-
-  const handleDeleteCustomer = () => {
-    if (!customerToDelete) return
-
-    setCustomers(customers.filter((c) => c.id !== customerToDelete.id))
-    setAssignments((prev) => {
-      const newAssignments = { ...prev }
-      delete newAssignments[customerToDelete.id]
-      return newAssignments
-    })
-
-    toast.success(`'${customerToDelete.name}' adlı müşteri silindi.`)
-    setCustomerToDelete(null)
-  }
+  const handleDeleteAssignment = (productToRemove: AssignmentItem) => {
+    setAssignments((prev) =>
+      prev.filter(
+        (p) => !(p.product_code === productToRemove.product_code && p.source === productToRemove.source)
+      )
+    );
+    toast.warning(`'${stripHtml(productToRemove.product_name)}' listeden kaldırıldı.`);
+  };
 
   const handleExport = () => {
-    if (!selectedCustomer || !window.electronAPI) return
-    const assignedProducts = assignments[selectedCustomer.id] || []
-    toast.info("Excel dosyası oluşturuluyor...")
-    window.electronAPI.exportToExcel({ customerName: selectedCustomer.name, products: assignedProducts })
-  }
-  const assignedProducts = selectedCustomer ? assignments[selectedCustomer.id] || [] : []
+    if (!exportCustomerName.trim()) {
+      toast.error("Lütfen bir müşteri adı girin.");
+      return;
+    }
+    toast.info("Excel dosyası oluşturuluyor...");
+    window.electronAPI.exportToExcel({ customerName: exportCustomerName, products: assignments });
+    setIsExportDialogOpen(false);
+    setExportCustomerName("");
+  };
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Müşteriler</h1>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <h1 className="text-2xl font-bold">Müşteri Listesi - Atanmış Ürünler</h1>
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" /> Yeni Müşteri Ekle
+            <Button disabled={assignments.length === 0}>
+              <FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Yeni Müşteri Ekle</DialogTitle>
-              <DialogDescription>Yeni müşterinin adını ve soyadını girin.</DialogDescription>
+              <DialogTitle>Excel'e Aktar</DialogTitle>
+              <DialogDescription>
+                Dosya adında kullanılacak müşteri adını girin.
+              </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Ad Soyad
-                </Label>
-                <Input
-                  id="name"
-                  value={newCustomer.name}
-                  onChange={(e) => setNewCustomer({ name: e.target.value })}
-                  className="col-span-3"
-                />
-              </div>
+            <div className="py-4">
+              <Label htmlFor="customerNameExport">Müşteri Adı</Label>
+              <Input
+                id="customerNameExport"
+                value={exportCustomerName}
+                onChange={(e) => setExportCustomerName(e.target.value)}
+                placeholder="Örn: Proje A Müşterisi"
+              />
             </div>
             <DialogFooter>
-              <Button type="submit" onClick={handleAddCustomer}>
-                Kaydet
-              </Button>
+               <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>İptal</Button>
+               <Button onClick={handleExport}>Onayla ve Aktar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {customers.map((customer) => (
-          <Card
-            key={customer.id}
-            className="group relative cursor-pointer transition-shadow hover:shadow-lg"
-            onClick={() => setSelectedCustomer(customer)}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2 h-7 w-7 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation()
-                setCustomerToDelete(customer)
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              <span className="sr-only">Müşteriyi Sil</span>
-            </Button>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 py-4">
-                <User className="h-5 w-5" />
-                {customer.name}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
-      <Dialog open={!!selectedCustomer} onOpenChange={() => setSelectedCustomer(null)}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{selectedCustomer?.name} - Atanmış Ürünler</DialogTitle>
-            <DialogDescription>Bu müşteriye atanmış ürünlerin listesi.</DialogDescription>
-          </DialogHeader>
-          {assignedProducts.length > 0 ? (
+
+      <Card>
+        <CardContent className="p-0">
+          {assignments.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -562,16 +482,29 @@ const CustomersPage = ({ customers, setCustomers, assignments, setAssignments })
                   <TableHead>Kodu</TableHead>
                   <TableHead>Fiyat</TableHead>
                   <TableHead>Stok</TableHead>
+                  <TableHead className="w-[50px] text-right">İşlem</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignedProducts.map((product, index) => (
+                {assignments.map((product, index) => (
                   <TableRow key={`${product.product_code}-${index}`}>
                     <TableCell>{product.source}</TableCell>
                     <TableCell className="font-medium" dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
                     <TableCell>{product.product_code}</TableCell>
                     <TableCell>{product.price_str}</TableCell>
                     <TableCell>{product.cheapest_netflex_stock ?? "N/A"}</TableCell>
+                    <TableCell className="text-right">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteAssignment(product)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Ürünü Sil</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -579,61 +512,33 @@ const CustomersPage = ({ customers, setCustomers, assignments, setAssignments })
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <FileText className="h-12 w-12 text-muted-foreground" />
-              <p className="mt-4 text-muted-foreground">Bu müşteriye henüz atanmış bir ürün bulunmuyor.</p>
+              <p className="mt-4 text-muted-foreground">Henüz atanmış bir ürün bulunmuyor.</p>
+              <p className="text-sm text-muted-foreground">Ürün atamak için Arama sayfalarını kullanabilirsiniz.</p>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={handleExport} disabled={assignedProducts.length === 0}>
-              <FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={!!customerToDelete} onOpenChange={() => setCustomerToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Müşteriyi Silmek İstediğinizden Emin misiniz?</DialogTitle>
-            <DialogDescription>
-              '{customerToDelete?.name}' adlı müşteriyi silmek üzeresiniz. Bu işlem geri alınamaz. Müşteriye atanmış
-              tüm ürün bilgileri de silinecektir.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCustomerToDelete(null)}>
-              İptal
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteCustomer}>
-              Sil
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
+      </Card>
     </div>
-  )
-}
+  );
+};
+
 
 // --------------------------------------------------------------------------------
 // Ürün Atama Dialog Bileşeni
 // --------------------------------------------------------------------------------
-const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfirm, targetCustomerName }) => {
-    const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
-    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+const AssignmentDialog = ({ selectedForAssignment, handleAssignConfirm, targetCustomerName }) => {
+    const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
 
     const handleConfirmClick = () => {
-      const customerId = targetCustomerName ? customers.find(c => c.name === targetCustomerName)?.id.toString() : selectedCustomerId;
-
-      if (!customerId) {
-        toast.error("Lütfen bir müşteri seçin.")
-        return
-      }
-      handleAssignConfirm(customerId, selectedForAssignment)
-      setIsAssignDialogOpen(false)
-      setSelectedCustomerId(null)
-    }
+      handleAssignConfirm(selectedForAssignment);
+      setIsAssignDialogOpen(false);
+    };
 
     if (selectedForAssignment.length === 0) {
-        return null
+        return null;
     }
+
+    const customerDisplayName = targetCustomerName || "Mevcut Müşteri";
 
     return (
       <div className="fixed bottom-4 right-4 z-50">
@@ -647,34 +552,12 @@ const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfir
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Müşteriye Ürün Ata</DialogTitle>
-              {targetCustomerName ? (
-                <DialogDescription>Seçili {selectedForAssignment.length} ürün, <strong>{targetCustomerName}</strong> adlı müşteriye atanacak.</DialogDescription>
-              ) : (
-                <DialogDescription>Seçili ürünleri atamak için bir müşteri seçin.</DialogDescription>
-              )}
+                <DialogDescription>
+                  Seçili {selectedForAssignment.length} ürün, <strong>{customerDisplayName}</strong> listesine eklenecektir. Onaylıyor musunuz?
+                </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              {targetCustomerName ? (
-                 <div className="flex items-center gap-2 rounded-md border p-3">
-                    <User className="h-5 w-5 text-primary" />
-                    <span className="font-medium">{targetCustomerName}</span>
-                 </div>
-              ) : (
-                  <Select onValueChange={setSelectedCustomerId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Bir müşteri seçin..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-              )}
-            </div>
             <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>İptal</Button>
               <Button onClick={handleConfirmClick} className="w-full">
                 Atamayı Onayla
               </Button>
@@ -682,21 +565,26 @@ const AssignmentDialog = ({ selectedForAssignment, customers, handleAssignConfir
           </DialogContent>
         </Dialog>
       </div>
-    )
-}
+    );
+};
+
 
 
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası (Tekli ve Toplu için Ortak Bileşenler)
 // --------------------------------------------------------------------------------
 
-const ProductResultItem = ({ product, settings, expandedProducts, toggleProductExpansion, selectedForAssignment, onSelectionChange }) => {
+const ProductResultItem = ({ product, settings, expandedProducts, toggleProductExpansion, selectedForAssignment, onSelectionChange, isProductNameVisible, showOriginalPrices }) => {
+    const countryHeaders = {us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
 
-    const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
-    const countryHeaders = { tr: "Türkiye (TR)", us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
-    const [filters, setFilters] = useState({ countries: { tr: true, us: true, de: true, gb: true } });
+    const gridClasses = cn(
+        "grid gap-x-4 items-center p-4 hover:bg-muted/50",
+        isProductNameVisible
+            ? "grid-cols-[200px_1fr_150px_150px_150px_100px_auto]"
+            : "grid-cols-[200px_150px_150px_150px_100px_auto]"
+    );
 
-    const getCombinedData = (product: ProductResult) => {
+    const getCombinedData = useMemo(() => {
         const dataMap: { [key: string]: any } = {}
         Object.entries(product.sigma_variations).forEach(([country, variations]) => {
           if (variations) {
@@ -716,16 +604,28 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
           }
           dataMap[key].netflex = match
         })
-        return Object.values(dataMap)
-    }
+
+        const combinedArray = Object.values(dataMap);
+
+        return combinedArray.map(item => {
+            const prices: number[] = [];
+            if (item.netflex?.price_numeric) prices.push(item.netflex.price_numeric);
+            Object.values(item.sigma).forEach((variation: any) => {
+                if (variation?.price_eur != null) prices.push(variation.price_eur);
+            });
+            const cheapestPrice = prices.length > 0 ? Math.min(...prices) : null;
+            return { ...item, cheapestPrice };
+        });
+    }, [product]);
+
 
     const handleSelectSigma = (product: ProductResult, item, countryCode, priceData) => {
       const assignmentItem: AssignmentItem = {
         product_name: product.product_name,
         product_code: item.material_number,
         cas_number: product.cas_number,
-        price_numeric: priceData.price,
-        price_str: priceData.price !== null ? `${priceData.price} ${priceData.currency}` : "Fiyat Bilgisi Yok",
+        price_numeric: priceData.price_eur,
+        price_str: priceData.price_eur_str,
         source: `Sigma (${countryCode.toUpperCase()})`,
         cheapest_netflex_stock: "N/A",
       }
@@ -757,26 +657,24 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
         price_numeric: calculatedPrice,
         price_str: formatCurrency(calculatedPrice),
         source: 'TCI',
-        cheapest_netflex_stock: ''
+        cheapest_netflex_stock: variation.stock_info?.map(s => `${s.country}: ${s.stock}`).join(', ') || 'N/A'
       };
       onSelectionChange(assignmentItem);
     };
 
     return (
         <div className="border rounded-lg">
-          <div className="grid grid-cols-[1.5fr_4fr_2fr_1.5fr_2fr_1fr_auto] gap-x-4 items-center p-4 hover:bg-muted/50">
-             <div className="font-semibold flex items-center gap-2 truncate"><Building className="h-4 w-4 text-muted-foreground" /> {product.brand}</div>
-             <div className="min-w-0 font-medium truncate" title={stripHtml(product.product_name)} dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
+          <div className={gridClasses}>
+             <div className="font-semibold flex items-center gap-2 truncate"><Building className="h-4 w-4 text-muted-foreground flex-shrink-0" /> <span className="truncate">{product.brand}</span></div>
+             {isProductNameVisible && (
+                <div className="min-w-0 font-medium truncate" title={stripHtml(product.product_name)} dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
+             )}
             <div className="font-mono">{product.product_number}</div>
             <div>{product.cas_number}</div>
-            <div>{product.cheapest_netflex_price_str}</div>
-            <div>{product.brand.toLowerCase().includes('tci') ? '' : product.cheapest_netflex_stock}</div>
+            <div className="font-semibold">{product.cheapest_eur_price_str}</div>
+            <div>{product.cheapest_netflex_stock}</div>
             <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)} className="justify-self-end">
-              {expandedProducts.has(product.product_number) ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
+              {expandedProducts.has(product.product_number) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
           </div>
           <AnimatePresence>
@@ -797,88 +695,59 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                          <TableHead className="w-[150px]">Ürün Kodu</TableHead>
                          <TableHead>Netflex</TableHead>
                          {Object.entries(countryHeaders).map(
-                           ([code, name]) => filters.countries[code] && <TableHead key={code}>{name}</TableHead>,
+                           ([code, name]) => <TableHead key={code}>{name}</TableHead>,
                          )}
                        </TableRow>
                      </TableHeader>
                      <TableBody>
-                       {getCombinedData(product).map((item, itemIndex) => (
+                       {getCombinedData.map((item, itemIndex) => {
+                          const isCheapestNetflex = item.netflex && item.netflex.price_numeric === item.cheapestPrice;
+                         return (
                          <TableRow key={itemIndex}>
                            <TableCell className="font-mono">{item.material_number}</TableCell>
                            <TableCell>
                              {item.netflex ? (
                                <div className="flex items-center gap-2">
-                                 <Checkbox
-                                   id={`cb-netflex-${item.material_number}`}
-                                   onCheckedChange={() => handleSelectNetflex(product, item)}
-                                   checked={selectedForAssignment.some(
-                                     (p) => p.product_code === item.material_number && p.source === "Netflex",
-                                   )}
-                                   className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
-                                 />
-                                 <Label
-                                   htmlFor={`cb-netflex-${item.material_number}`}
-                                   className="flex-grow cursor-pointer"
-                                 >
+                                 <Checkbox id={`cb-netflex-${item.material_number}`} onCheckedChange={() => handleSelectNetflex(product, item)} checked={selectedForAssignment.some(p => p.product_code === item.material_number && p.source === "Netflex")} className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary" />
+                                 <Label htmlFor={`cb-netflex-${item.material_number}`} className="flex-grow cursor-pointer" >
                                    <div className="flex flex-col">
-                                     <div className="flex items-baseline gap-2">
-                                       <span className="font-semibold">{item.netflex.price_str}</span>
-                                       <span className="font-medium text-sm text-muted-foreground">
-                                         Stok: {item.netflex.stock}
-                                       </span>
+                                     <div className={cn("flex items-baseline gap-2", isCheapestNetflex && "text-red-600 font-bold")}>
+                                       <span>{item.netflex.price_str}</span>
+                                       <span className="font-medium text-sm text-muted-foreground">Stok: {item.netflex.stock}</span>
                                      </div>
-                                     <span
-                                       className="text-xs text-muted-foreground truncate"
-                                       title={stripHtml(item.netflex.product_name)}
-                                       dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(item.netflex.product_name) }}
-                                     />
+                                     <span className="text-xs text-muted-foreground truncate" title={stripHtml(item.netflex.product_name)} dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(item.netflex.product_name) }}/>
                                    </div>
                                  </Label>
                                </div>
-                             ) : (
-                               <span className="text-xs text-muted-foreground">-</span>
-                             )}
+                             ) : <span className="text-xs text-muted-foreground">-</span>}
                            </TableCell>
-                           {Object.keys(countryHeaders).map(
-                             (code) =>
-                               filters.countries[code] && (
+                           {Object.keys(countryHeaders).map(code => {
+                               const isCheapestSigma = item.sigma[code] && item.sigma[code].price_eur === item.cheapestPrice;
+                               return (
                                  <TableCell key={code}>
                                    {item.sigma[code] ? (
-                                     <div className="flex items-center gap-2">
-                                       <Checkbox
-                                         id={`cb-${code}-${item.material_number}`}
-                                         onCheckedChange={() =>
-                                           handleSelectSigma(product, item, code, item.sigma[code])
-                                         }
-                                         checked={selectedForAssignment.some(
-                                           (p) =>
-                                             p.product_code === item.material_number &&
-                                             p.source === `Sigma (${code.toUpperCase()})`,
-                                         )}
-                                         className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
-                                       />
-                                       <Label
-                                         htmlFor={`cb-${code}-${item.material_number}`}
-                                         className="flex items-baseline gap-2 cursor-pointer"
-                                       >
-                                         <span className="font-semibold whitespace-nowrap">
-                                           {item.sigma[code].price !== null
-                                             ? `${item.sigma[code].price} ${item.sigma[code].currency}`
-                                             : "N/A"}
-                                         </span>
-                                         <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                           {item.sigma[code].availability_date || "Tarih Yok"}
-                                         </span>
+                                     <div className="flex items-start gap-2">
+                                       <Checkbox id={`cb-${code}-${item.material_number}`} onCheckedChange={() => handleSelectSigma(product, item, code, item.sigma[code])} checked={selectedForAssignment.some(p => p.product_code === item.material_number && p.source === `Sigma (${code.toUpperCase()})`)} className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary mt-1"/>
+                                       <Label htmlFor={`cb-${code}-${item.material_number}`} className={cn("flex flex-col cursor-pointer", isCheapestSigma && "text-red-600 font-bold")}>
+                                           <span className="whitespace-nowrap font-semibold">
+                                               {item.sigma[code].price_eur_str || 'N/A'}
+                                           </span>
+                                           {showOriginalPrices && (
+                                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                  {item.sigma[code].original_price_str || '...'}
+                                              </span>
+                                           )}
+                                           <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                               {item.sigma[code].availability_date || "Tarih Yok"}
+                                           </span>
                                        </Label>
                                      </div>
-                                   ) : (
-                                     <span className="text-xs text-muted-foreground">-</span>
-                                   )}
+                                   ) : <span className="text-xs text-muted-foreground">-</span>}
                                  </TableCell>
-                               ),
-                           )}
+                               )
+                           })}
                          </TableRow>
-                       ))}
+                       )})}
                      </TableBody>
                    </Table>
                  </div>
@@ -890,29 +759,19 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                          <TableHead>Birim</TableHead>
                          <TableHead>Orijinal Fiyat</TableHead>
                          <TableHead>Hesaplanmış Fiyat (x{settings.tci_coefficient})</TableHead>
+                         <TableHead>Stok Durumu</TableHead>
                        </TableRow>
                      </TableHeader>
                      <TableBody>
                        {product.tci_variations?.map((variation, vIndex) => (
                          <TableRow key={vIndex}>
                            <TableCell>
-                              <Checkbox
-                                id={`cb-tci-${product.product_number}-${vIndex}`}
-                                onCheckedChange={() => handleSelectTCI(product, variation)}
-                                checked={selectedForAssignment.some(
-                                    p => p.product_code === `${product.product_number}-${variation.unit}` && p.source === 'TCI'
-                                )}
-                                className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
-                              />
+                              <Checkbox id={`cb-tci-${product.product_number}-${vIndex}`} onCheckedChange={() => handleSelectTCI(product, variation)} checked={selectedForAssignment.some( p => p.product_code === `${product.product_number}-${variation.unit}` && p.source === 'TCI')} className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary" />
                            </TableCell>
                            <TableCell>{variation.unit}</TableCell>
                            <TableCell>{variation.original_price}</TableCell>
-                           <TableCell className="font-semibold">
-                             {formatCurrency(variation.original_price_numeric
-                                 ? variation.original_price_numeric * settings.tci_coefficient
-                                 : null
-                             )}
-                           </TableCell>
+                           <TableCell className="font-semibold">{formatCurrency(variation.original_price_numeric ? variation.original_price_numeric * settings.tci_coefficient : null)}</TableCell>
+                           <TableCell className="text-xs">{variation.stock_info && variation.stock_info.length > 0 ? variation.stock_info.map(s => `${s.country}: ${s.stock}`).join(', ') : 'N/A'}</TableCell>
                          </TableRow>
                        ))}
                      </TableBody>
@@ -928,14 +787,16 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, customers, onAssignProducts, settings }) => {
+const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, onAssignProducts, settings }) => {
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterTerm, setFilterTerm] = useState(""); // YENİ: Anlık filtreleme için state
+  const [filterTerm, setFilterTerm] = useState("");
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
   const [filters, setFilters] = useState({
     brands: { sigma: true, tci: true },
-    countries: { tr: true, us: true, de: true, gb: true },
   })
+  const [isProductNameVisible, setIsProductNameVisible] = useState(false);
+  const [showOriginalPrices, setShowOriginalPrices] = useState(false);
+
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -950,13 +811,11 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
   }, [searchResults.length, isLoading]);
 
 
-  const countryLabels = { tr: "Türkiye", us: "Amerika", de: "Almanya", gb: "İngiltere" }
-
   const onSearchOrCancelClick = () => {
       if (isLoading) {
           handleCancel();
       } else {
-          setFilterTerm(""); // Yeni arama yapıldığında anlık filtreyi temizle
+          setFilterTerm("");
           handleSearch(searchTerm);
       }
   }
@@ -984,10 +843,9 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
     })
   }
 
-  const handleAssignConfirm = (customerId, products) => {
-    onAssignProducts(customerId, products)
-    const customerName = customers.find((c) => c.id.toString() === customerId)?.name
-    toast.success(`${products.length} ürün, ${customerName} adlı müşteriye atandı!`)
+  const handleAssignConfirm = (products: AssignmentItem[]) => {
+    onAssignProducts(products)
+    toast.success(`${products.length} ürün, müşteri listesine atandı!`)
     setSelectedForAssignment([])
   }
 
@@ -1001,7 +859,6 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
         }));
     };
 
-    // YENİ: Filtrelenmiş sonuçları hesaplayan useMemo
     const filteredResults = useMemo(() => {
         const lowerCaseFilter = filterTerm.toLowerCase();
         return searchResults.filter(product => {
@@ -1010,7 +867,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
 
             if (!brandMatch) return false;
 
-            if (!filterTerm.trim()) return true; // Anlık filtre boşsa, sadece marka filtresini uygula
+            if (!filterTerm.trim()) return true;
 
             const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
             const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
@@ -1019,6 +876,13 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
             return nameMatch || numberMatch || casMatch;
         });
     }, [searchResults, filters, filterTerm]);
+
+    const headerGridClasses = cn(
+        "grid gap-x-4 font-semibold text-sm text-muted-foreground",
+        isProductNameVisible
+            ? "grid-cols-[200px_1fr_150px_150px_150px_100px_auto]"
+            : "grid-cols-[200px_150px_150px_150px_100px_auto]"
+    );
 
 
   return (
@@ -1040,95 +904,60 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
               onMouseLeave={() => { if(isLoading) setIsHovering(false) }}
               className={cn(
                   "relative w-36 overflow-hidden transition-all duration-300 ease-in-out",
-                  isLoading && isHovering && "w-44" // İptal durumunda buton genişler
+                  isLoading && isHovering && "w-44"
               )}
               variant={isLoading && isHovering ? "destructive" : "default"}
           >
               <div className="relative z-10">
                   <AnimatePresence mode="wait">
                       {isLoading && isHovering ? (
-                          <motion.span
-                              key="cancel"
-                              className="flex items-center justify-center"
-                              initial={{ opacity: 0, y: 5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              transition={{ duration: 0.2 }}
-                          >
-                              <XCircle className="mr-2 h-5 w-5" />
-                              Aramayı İptal Et
+                          <motion.span key="cancel" className="flex items-center justify-center" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }}>
+                              <XCircle className="mr-2 h-5 w-5" /> Aramayı İptal Et
                           </motion.span>
                       ) : isLoading ? (
-                          <motion.span
-                              key="searching"
-                              className="flex items-center justify-center"
-                              initial={{ opacity: 0, y: 5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              transition={{ duration: 0.2 }}
-                          >
-                              <LoaderCircle className="h-4 w-4 animate-spin mr-2" />
-                              Aranıyor...
+                          <motion.span key="searching" className="flex items-center justify-center" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }}>
+                              <LoaderCircle className="h-4 w-4 animate-spin mr-2" /> Aranıyor...
                           </motion.span>
                       ) : (
-                          <motion.span
-                              key="search"
-                              className="flex items-center justify-center"
-                              initial={{ opacity: 0, y: 5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              transition={{ duration: 0.2 }}
-                          >
-                              <Search className="mr-2 h-4 w-4" />
-                               Ara
+                          <motion.span key="search" className="flex items-center justify-center" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }}>
+                              <Search className="mr-2 h-4 w-4" /> Ara
                           </motion.span>
                       )}
                   </AnimatePresence>
               </div>
-
-              {isLoading && !isHovering && (
-                  <motion.div
-                      className="absolute bottom-0 left-0 right-0 bg-primary/20"
-                      initial={{ height: "0%" }}
-                      animate={{ height: `${progress * 100}%` }}
-                      transition={{ type: 'spring', stiffness: 50, damping: 20 }}
-                      style={{ zIndex: 5 }}
-                  />
-              )}
+              {isLoading && !isHovering && (<motion.div className="absolute bottom-0 left-0 right-0 bg-primary/20" initial={{ height: "0%" }} animate={{ height: `${progress * 100}%` }} transition={{ type: 'spring', stiffness: 50, damping: 20 }} style={{ zIndex: 5 }} />)}
           </Button>
+
+          <TooltipProvider>
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
+                          <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
+                          {showOriginalPrices ? <Euro className="h-4 w-4"/> : <DollarSign className="h-4 w-4"/>}
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Orijinal Fiyatları Göster/Gizle</p></TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon" onClick={() => setIsProductNameVisible(!isProductNameVisible)}>
+                          <span className="sr-only">Ürün Adını Gizle/Göster</span>
+                          {isProductNameVisible ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Ürün Adı Sütununu Göster/Gizle</p></TooltipContent>
+              </Tooltip>
+          </TooltipProvider>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <ListFilter className="mr-2 h-4 w-4" /> Filtrele
-              </Button>
+              <Button variant="outline"><ListFilter className="mr-2 h-4 w-4" /> Marka Filtrele</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" side="bottom" className="w-56">
                <DropdownMenuLabel>Marka</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-               <DropdownMenuCheckboxItem
-                  checked={filters.brands.sigma}
-                  onCheckedChange={(checked) => handleFilterChange('brands', 'sigma', checked)}
-                  onSelect={(e) => e.preventDefault()}
-                >Sigma</DropdownMenuCheckboxItem>
-               <DropdownMenuCheckboxItem
-                  checked={filters.brands.tci}
-                  onCheckedChange={(checked) => handleFilterChange('brands', 'tci', checked)}
-                  onSelect={(e) => e.preventDefault()}
-                >TCI</DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Ülkeler (Sigma)</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {Object.entries(countryLabels).map(([code, label]) => (
-                <DropdownMenuCheckboxItem
-                  key={code}
-                  checked={filters.countries[code]}
-                  onCheckedChange={(checked) => handleFilterChange('countries', code, checked)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {label}
-                </DropdownMenuCheckboxItem>
-              ))}
+               <DropdownMenuSeparator />
+               <DropdownMenuCheckboxItem checked={filters.brands.sigma} onCheckedChange={(checked) => handleFilterChange('brands', 'sigma', checked)} onSelect={(e) => e.preventDefault()}>Sigma</DropdownMenuCheckboxItem>
+               <DropdownMenuCheckboxItem checked={filters.brands.tci} onCheckedChange={(checked) => handleFilterChange('brands', 'tci', checked)} onSelect={(e) => e.preventDefault()}>TCI</DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1147,41 +976,27 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
         <Card className="flex-grow flex flex-col overflow-hidden mt-4">
           <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
             <CardTitle>Arama Sonuçları ({filteredResults.length})</CardTitle>
-            {/* YENİ: Anlık Arama Filtresi */}
             <div className="relative w-full max-w-xs">
-                <Input
-                    placeholder="Sonuçlar içinde ara..."
-                    value={filterTerm}
-                    onChange={(e) => setFilterTerm(e.target.value)}
-                    className="pl-8"
-                />
+                <Input placeholder="Sonuçlar içinde ara..." value={filterTerm} onChange={(e) => setFilterTerm(e.target.value)} className="pl-8"/>
                 <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col overflow-hidden p-0">
             <div className="p-4 border-b bg-muted/40 flex-shrink-0">
-              <div className="grid grid-cols-[1.5fr_4fr_2fr_1.5fr_2fr_1fr_auto] gap-x-4 font-semibold text-sm text-muted-foreground">
+              <div className={headerGridClasses}>
                   <div className="truncate">Marka</div>
-                  <div className="truncate">Ürün Adı</div>
+                  {isProductNameVisible && <div className="truncate">Ürün Adı</div>}
                   <div className="truncate">Kodu</div>
                   <div className="truncate">CAS</div>
-                  <div className="truncate">Fiyat</div>
+                  <div className="truncate">En Ucuz Fiyat (EUR)</div>
                   <div className="truncate">Stok</div>
-                  <div className="w-9"></div> {/* Button column placeholder */}
+                  <div className="w-9"></div>
               </div>
             </div>
              <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
                 <div className="space-y-2">
                   {filteredResults.map((product, index) => (
-                    <ProductResultItem
-                        key={product.product_number + index}
-                        product={product}
-                        settings={settings}
-                        expandedProducts={expandedProducts}
-                        toggleProductExpansion={toggleProductExpansion}
-                        selectedForAssignment={selectedForAssignment}
-                        onSelectionChange={handleSelectionChange}
-                    />
+                    <ProductResultItem key={product.product_number + index} product={product} settings={settings} expandedProducts={expandedProducts} toggleProductExpansion={toggleProductExpansion} selectedForAssignment={selectedForAssignment} onSelectionChange={handleSelectionChange} isProductNameVisible={isProductNameVisible} showOriginalPrices={showOriginalPrices}/>
                   ))}
                 </div>
             </div>
@@ -1196,12 +1011,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
         </div>
       )}
 
-      <AssignmentDialog
-        selectedForAssignment={selectedForAssignment}
-        customers={customers}
-        handleAssignConfirm={handleAssignConfirm}
-        targetCustomerName={null}
-      />
+      <AssignmentDialog selectedForAssignment={selectedForAssignment} handleAssignConfirm={handleAssignConfirm} targetCustomerName={null}/>
     </div>
   )
 }
@@ -1210,22 +1020,12 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
 // --------------------------------------------------------------------------------
 // Toplu Proforma Arama Sayfası
 // --------------------------------------------------------------------------------
-const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, setBatchState }) => {
-    const {
-        pageState,
-        filePath,
-        fileName,
-        customerName,
-        searchProgress,
-        batchResults,
-        expandedProducts,
-        selectedForAssignment,
-        selectedTerm,
-    } = batchState;
-
-    const [filterTerm, setFilterTerm] = useState(""); // YENİ: Anlık filtreleme için state
-
+const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState }) => {
+    const { pageState, filePath, fileName, customerName, searchProgress, batchResults, expandedProducts, selectedForAssignment, selectedTerm } = batchState;
+    const [filterTerm, setFilterTerm] = useState("");
     const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+    const [isProductNameVisible, setIsProductNameVisible] = useState(false);
+    const [showOriginalPrices, setShowOriginalPrices] = useState(false);
 
     const updateState = (newState) => {
         setBatchState(prev => ({ ...prev, ...newState }));
@@ -1233,7 +1033,6 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
 
     useEffect(() => {
         if (!window.electronAPI) return;
-
         const cleanup = window.electronAPI.onProductFound(({ product, context }) => {
             if (context?.batch_search_term) {
                 setBatchState(prev => {
@@ -1248,7 +1047,6 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                 });
             }
         });
-
         return () => cleanup();
     }, [setBatchState]);
 
@@ -1258,23 +1056,15 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
             window.electronAPI.onBatchSearchProgress(progress => {
                 setBatchState(prev => {
                     const isFirstUpdate = progress.current === 1 && !prev.selectedTerm;
-                    return {
-                        ...prev,
-                        searchProgress: { ...progress, running: true },
-                        selectedTerm: isFirstUpdate ? progress.term : prev.selectedTerm,
-                    };
+                    return { ...prev, searchProgress: { ...progress, running: true }, selectedTerm: isFirstUpdate ? progress.term : prev.selectedTerm };
                 });
             }),
             window.electronAPI.onBatchSearchComplete(summary => {
                 setBatchState(prev => ({ ...prev, searchProgress: { ...prev.searchProgress, running: false } }));
-                 if (summary.status === 'cancelled') {
-                    toast.warning("Toplu arama iptal edildi.")
-                } else if(summary.status === 'complete') {
-                    toast.success("Toplu arama tamamlandı!");
-                }
+                 if (summary.status === 'cancelled') { toast.warning("Toplu arama iptal edildi.") }
+                 else if(summary.status === 'complete') { toast.success("Toplu arama tamamlandı!"); }
             }),
         ];
-
         return () => cleanups.forEach(c => c());
     }, [setBatchState]);
 
@@ -1282,10 +1072,7 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
     const handleFileSelect = async () => {
         const selectedPath = await window.electronAPI.selectFile();
         if (selectedPath) {
-            updateState({
-                filePath: selectedPath,
-                fileName: selectedPath.split(/[\\/]/).pop() || null,
-            });
+            updateState({ filePath: selectedPath, fileName: selectedPath.split(/[\\/]/).pop() || null });
             setIsCustomerDialogOpen(true);
         }
     };
@@ -1296,51 +1083,27 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
             return;
         }
         setIsCustomerDialogOpen(false);
-        setBatchState(prev => ({
-            ...prev,
-            pageState: 'searching_and_results',
-            batchResults: new Map(),
-            selectedForAssignment: [],
-            selectedTerm: null,
-        }));
+        setBatchState(prev => ({ ...prev, pageState: 'searching_and_results', batchResults: new Map(), selectedForAssignment: [], selectedTerm: null }));
         window.electronAPI.startBatchSearch({ filePath, customerName });
     };
 
-    const handleCancelSearch = () => {
-        window.electronAPI.cancelBatchSearch();
-    };
-
-    const handleSkipTerm = () => {
-        toast.info(`'${searchProgress.term}' araması atlanıyor...`);
-        window.electronAPI.cancelCurrentTermSearch();
-    };
-
+    const handleCancelSearch = () => { window.electronAPI.cancelBatchSearch(); };
+    const handleSkipTerm = () => { toast.info(`'${searchProgress.term}' araması atlanıyor...`); window.electronAPI.cancelCurrentTermSearch(); };
     const handleResetBatchSearch = () => {
         window.electronAPI.cancelBatchSearch();
-        updateState({
-            pageState: 'idle',
-            filePath: null,
-            fileName: null,
-            customerName: '',
-            searchProgress: { term: '', current: 0, total: 0, running: false },
-            batchResults: new Map(),
-            selectedForAssignment: [],
-            selectedTerm: null,
-        });
+        updateState({ pageState: 'idle', filePath: null, fileName: null, customerName: '', searchProgress: { term: '', current: 0, total: 0, running: false }, batchResults: new Map(), selectedForAssignment: [], selectedTerm: null });
     };
 
     const handleSelectionChange = (item: AssignmentItem) => {
       setBatchState(prev => {
         const isSelected = prev.selectedForAssignment.some((p) => p.product_code === item.product_code && p.source === item.source);
-        const newSelection = isSelected
-            ? prev.selectedForAssignment.filter((p) => !(p.product_code === item.product_code && p.source === item.source))
-            : [...prev.selectedForAssignment, item];
+        const newSelection = isSelected ? prev.selectedForAssignment.filter((p) => !(p.product_code === item.product_code && p.source === item.source)) : [...prev.selectedForAssignment, item];
         return { ...prev, selectedForAssignment: newSelection };
       });
     };
 
-    const handleAssignConfirm = (customerId, products) => {
-        onAssignProducts(customerId, products);
+    const handleAssignConfirm = (products: AssignmentItem[]) => {
+        onAssignProducts(products);
         toast.success(`${products.length} ürün, ${customerName} adlı müşteriye atandı!`);
         updateState({ selectedForAssignment: [] });
     };
@@ -1348,23 +1111,16 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
      const toggleProductExpansion = (productNumber: string) => {
         setBatchState(prev => {
           const newSet = new Set(prev.expandedProducts)
-          if (newSet.has(productNumber)) {
-            newSet.delete(productNumber)
-          } else {
-            newSet.add(productNumber)
-          }
+          if (newSet.has(productNumber)) { newSet.delete(productNumber) } else { newSet.add(productNumber) }
           return { ...prev, expandedProducts: newSet };
         })
     }
 
     const resultsArray = useMemo(() => Array.from(batchResults.keys()), [batchResults]);
 
-    // YENİ: Anlık filtrelenmiş sonuç listesi
     const currentResultsForSelectedTerm = useMemo(() => {
       const results = batchResults.get(selectedTerm) || [];
-      if (!filterTerm.trim()) {
-          return results;
-      }
+      if (!filterTerm.trim()) { return results; }
       const lowerCaseFilter = filterTerm.toLowerCase();
       return results.filter(product => {
           const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
@@ -1380,56 +1136,28 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
             <div className="flex-shrink-0">
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-2xl font-bold">Toplu Proforma Arama</h1>
-                    {pageState !== 'idle' && (
-                         <Button variant="outline" onClick={handleResetBatchSearch}>
-                            <ArrowLeft className="mr-2 h-4 w-4" /> Yeni Toplu Arama
-                         </Button>
-                    )}
+                    {pageState !== 'idle' && (<Button variant="outline" onClick={handleResetBatchSearch}><ArrowLeft className="mr-2 h-4 w-4" /> Yeni Toplu Arama</Button>)}
                 </div>
             </div>
 
             {pageState === 'idle' && (
                 <div className="flex-grow flex items-center justify-center">
                     <Card className="text-center w-full max-w-lg">
-                        <CardHeader>
-                            <CardTitle>Arama Dosyasını Yükleyin</CardTitle>
-                            <CardDescription>
-                               Ürünleri aramak için `.xlsx`, `.csv` veya `.docx` formatında bir dosya seçin.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button size="lg" onClick={handleFileSelect}>
-                               <Upload className="mr-2 h-5 w-5" /> Dosya Seç
-                            </Button>
-                        </CardContent>
+                        <CardHeader><CardTitle>Arama Dosyasını Yükleyin</CardTitle><CardDescription>Ürünleri aramak için `.xlsx`, `.csv` veya `.docx` formatında bir dosya seçin.</CardDescription></CardHeader>
+                        <CardContent><Button size="lg" onClick={handleFileSelect}><Upload className="mr-2 h-5 w-5" /> Dosya Seç</Button></CardContent>
                     </Card>
                 </div>
             )}
 
              <Dialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Müşteri Bilgisi</DialogTitle>
-                        <DialogDescription>
-                            Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.
-                        </DialogDescription>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Müşteri Bilgisi</DialogTitle><DialogDescription>Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.</DialogDescription></DialogHeader>
                     <div className="py-4 space-y-2">
                         <Label htmlFor="customerName">Müşteri Adı Soyadı</Label>
-                        <Input
-                            id="customerName"
-                            value={customerName}
-                            onChange={(e) => updateState({ customerName: e.target.value })}
-                            placeholder="Örn: Ahmet Yılmaz"
-                        />
-                         <p className="text-sm text-muted-foreground pt-2">
-                           Seçilen Dosya: <strong>{fileName}</strong>
-                         </p>
+                        <Input id="customerName" value={customerName} onChange={(e) => updateState({ customerName: e.target.value })} placeholder="Örn: Ahmet Yılmaz"/>
+                         <p className="text-sm text-muted-foreground pt-2">Seçilen Dosya: <strong>{fileName}</strong></p>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => {setIsCustomerDialogOpen(false);}}>İptal</Button>
-                        <Button onClick={handleStartSearch}>Aramayı Başlat</Button>
-                    </DialogFooter>
+                    <DialogFooter><Button variant="outline" onClick={() => {setIsCustomerDialogOpen(false);}}>İptal</Button><Button onClick={handleStartSearch}>Aramayı Başlat</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -1440,16 +1168,10 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                            <CardHeader><CardTitle>Arama Devam Ediyor...</CardTitle></CardHeader>
                            <CardContent className="space-y-3">
                                <Progress value={(searchProgress.current / searchProgress.total) * 100} className="w-full" />
-                               <div className="text-sm text-muted-foreground text-center">
-                                   <p>({searchProgress.current}/{searchProgress.total}) - <strong>{searchProgress.term}</strong> aranıyor...</p>
-                               </div>
+                               <div className="text-sm text-muted-foreground text-center"><p>({searchProgress.current}/{searchProgress.total}) - <strong>{searchProgress.term}</strong> aranıyor...</p></div>
                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                   <Button variant="outline" className="w-full" onClick={handleSkipTerm}>
-                                       <SkipForward className="mr-2 h-4 w-4" /> Sıradakine Geç
-                                   </Button>
-                                   <Button variant="destructive" className="w-full" onClick={handleCancelSearch}>
-                                       <XCircle className="mr-2 h-4 w-4" /> Tüm Aramayı İptal Et
-                                   </Button>
+                                   <Button variant="outline" className="w-full" onClick={handleSkipTerm}><SkipForward className="mr-2 h-4 w-4" /> Sıradakine Geç</Button>
+                                   <Button variant="destructive" className="w-full" onClick={handleCancelSearch}><XCircle className="mr-2 h-4 w-4" /> Tüm Aramayı İptal Et</Button>
                                </div>
                            </CardContent>
                         </Card>
@@ -1458,22 +1180,12 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                     <div className="flex gap-6 flex-grow overflow-hidden">
                         <aside className="w-1/3 lg:w-1/4 h-full">
                             <Card className="h-full flex flex-col">
-                                <CardHeader className="flex-shrink-0">
-                                    <CardTitle>Arama Terimleri</CardTitle>
-                                    <CardDescription>{resultsArray.length} ürün arandı.</CardDescription>
-                                </CardHeader>
+                                <CardHeader className="flex-shrink-0"><CardTitle>Arama Terimleri</CardTitle><CardDescription>{resultsArray.length} ürün arandı.</CardDescription></CardHeader>
                                 <CardContent className="flex-grow overflow-y-auto custom-scrollbar p-2">
                                     {resultsArray.map((term) => (
-                                        <Button
-                                            key={term}
-                                            variant={selectedTerm === term ? "secondary" : "ghost"}
-                                            className="w-full justify-between h-auto py-2"
-                                            onClick={() => updateState({ selectedTerm: term, filterTerm: "" })}
-                                        >
+                                        <Button key={term} variant={selectedTerm === term ? "secondary" : "ghost"} className="w-full justify-between h-auto py-2" onClick={() => updateState({ selectedTerm: term, filterTerm: "" })}>
                                             <span className="truncate text-left whitespace-normal text-sm">{term}</span>
-                                            <span className="flex-shrink-0 ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-secondary-foreground bg-secondary rounded-full">
-                                                {batchResults.get(term)?.length || 0}
-                                            </span>
+                                            <span className="flex-shrink-0 ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-secondary-foreground bg-secondary rounded-full">{batchResults.get(term)?.length || 0}</span>
                                         </Button>
                                     ))}
                                 </CardContent>
@@ -1483,44 +1195,48 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                         <main className="w-2/3 lg:w-3/4 h-full">
                             {!selectedTerm ? (
                                 <div className="flex items-center justify-center h-full rounded-lg border-2 border-dashed border-muted-foreground/30">
-                                    <div className="text-center py-10">
-                                        <FileSearch className="h-12 w-12 mx-auto text-muted-foreground" />
-                                        <p className="mt-4 text-muted-foreground">Detayları görmek için soldaki listeden bir ürün seçin.</p>
-                                    </div>
+                                    <div className="text-center py-10"><FileSearch className="h-12 w-12 mx-auto text-muted-foreground" /><p className="mt-4 text-muted-foreground">Detayları görmek için soldaki listeden bir ürün seçin.</p></div>
                                 </div>
                             ) : (
                                 <Card className="h-full flex flex-col overflow-hidden">
                                     <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
                                         <CardTitle>Sonuçlar: "{selectedTerm}" ({currentResultsForSelectedTerm.length})</CardTitle>
-                                        {/* YENİ: Anlık Arama Filtresi */}
-                                        <div className="relative w-full max-w-xs">
-                                            <Input
-                                                placeholder="Sonuçlar içinde ara..."
-                                                value={filterTerm}
-                                                onChange={(e) => setFilterTerm(e.target.value)}
-                                                className="pl-8"
-                                            />
-                                            <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <div className="flex items-center gap-2">
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button variant="ghost" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
+                                                            <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
+                                                            {showOriginalPrices ? <Euro className="h-4 w-4"/> : <DollarSign className="h-4 w-4"/>}
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Orijinal Fiyatları Göster/Gizle</p></TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button variant="ghost" size="icon" onClick={() => setIsProductNameVisible(!isProductNameVisible)}>
+                                                            <span className="sr-only">Ürün Adını Gizle/Göster</span>
+                                                            {isProductNameVisible ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Ürün Adı Sütununu Göster/Gizle</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+
+                                            <div className="relative w-full max-w-xs">
+                                                <Input placeholder="Sonuçlar içinde ara..." value={filterTerm} onChange={(e) => setFilterTerm(e.target.value)} className="pl-8"/>
+                                                <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            </div>
                                         </div>
                                     </CardHeader>
                                     <CardContent className="flex-grow overflow-y-auto custom-scrollbar p-4">
                                         {currentResultsForSelectedTerm.length > 0 ? (
                                             <div className="space-y-2">
                                                 {currentResultsForSelectedTerm.map((product, index) => (
-                                                    <ProductResultItem
-                                                        key={product.product_number + index}
-                                                        product={product}
-                                                        settings={settings}
-                                                        expandedProducts={expandedProducts}
-                                                        toggleProductExpansion={toggleProductExpansion}
-                                                        selectedForAssignment={selectedForAssignment}
-                                                        onSelectionChange={handleSelectionChange}
-                                                    />
+                                                    <ProductResultItem key={product.product_number + index} product={product} settings={settings} expandedProducts={expandedProducts} toggleProductExpansion={toggleProductExpansion} selectedForAssignment={selectedForAssignment} onSelectionChange={handleSelectionChange} isProductNameVisible={isProductNameVisible} showOriginalPrices={showOriginalPrices} />
                                                 ))}
                                             </div>
-                                        ) : (
-                                            <p className="text-muted-foreground text-center py-5">Bu terim için sonuç bulunamadı.</p>
-                                        )}
+                                        ) : ( <p className="text-muted-foreground text-center py-5">Bu terim için sonuç bulunamadı.</p> )}
                                     </CardContent>
                                 </Card>
                             )}
@@ -1528,15 +1244,7 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
                     </div>
                 </div>
             )}
-
-
-            <AssignmentDialog
-                selectedForAssignment={selectedForAssignment}
-                customers={customers}
-                handleAssignConfirm={handleAssignConfirm}
-                targetCustomerName={customerName}
-            />
-
+            <AssignmentDialog selectedForAssignment={selectedForAssignment} handleAssignConfirm={handleAssignConfirm} targetCustomerName={customerName}/>
         </div>
     );
 };
@@ -1547,8 +1255,7 @@ const BatchSearchPage = ({ customers, onAssignProducts, settings, batchState, se
 // --------------------------------------------------------------------------------
 function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("home");
-  const [customers, setCustomers] = useState<{id: number, name: string}[]>([]);
-  const [assignments, setAssignments] = useState<{[key: number]: AssignmentItem[]}>({});
+  const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
@@ -1567,9 +1274,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   useEffect(() => {
     try {
-      const savedCustomers = localStorage.getItem("customers");
-      if (savedCustomers) { setCustomers(JSON.parse(savedCustomers)); }
-      const savedAssignments = localStorage.getItem("assignments");
+      const savedAssignments = localStorage.getItem("assignments_single");
       if (savedAssignments) { setAssignments(JSON.parse(savedAssignments)); }
     } catch (error) {
       console.error("localStorage'dan veri yüklenirken hata:", error);
@@ -1593,19 +1298,17 @@ function MainApplication({ appStatus, setAppStatus }) {
   useEffect(() => {
     if (isDataLoaded) {
       try {
-        localStorage.setItem("customers", JSON.stringify(customers));
-        localStorage.setItem("assignments", JSON.stringify(assignments));
+        localStorage.setItem("assignments_single", JSON.stringify(assignments));
       } catch (error) {
         console.error("Veriler kaydedilirken hata:", error);
       }
     }
-  }, [customers, assignments, isDataLoaded]);
+  }, [assignments, isDataLoaded]);
 
-  const [dashboardStats, setDashboardStats] = useState({ customerCount: 0, totalUniqueProducts: 0, activeOrders: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
-  const [currentSearchTerm, setCurrentSearchTerm] = useState(""); // Arama terimini saklamak için yeni state
+  const [currentSearchTerm, setCurrentSearchTerm] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
@@ -1625,24 +1328,13 @@ function MainApplication({ appStatus, setAppStatus }) {
         if (name.startsWith(termLower)) score += 500;
         if (number.startsWith(termLower)) score += 500;
         if (name.includes(termLower)) score += 100 + (50 / (name.length + 1));
-
         const termWords = new Set(termLower.split(' ').filter(w => w));
         const nameWords = new Set(name.split(' ').filter(w => w));
-
         let allWordsPresent = true;
-        for (const word of termWords) {
-            if (!nameWords.has(word)) {
-                allWordsPresent = false;
-                break;
-            }
-        }
-        if (allWordsPresent && termWords.size > 0) {
-            score += termWords.size * 50;
-        }
-
+        for (const word of termWords) { if (!nameWords.has(word)) { allWordsPresent = false; break; } }
+        if (allWordsPresent && termWords.size > 0) { score += termWords.size * 50; }
         const commonWords = new Set([...termWords].filter(x => nameWords.has(x)));
         score += commonWords.size * 10;
-
         return score;
     };
 
@@ -1652,9 +1344,7 @@ function MainApplication({ appStatus, setAppStatus }) {
                 setSearchResults((prev) => {
                     const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
                     if (isProductAlreadyInList) { return prev }
-
                     const newList = [...prev, product];
-                    // Her yeni ürün geldiğinde listeyi yeniden sırala
                     newList.sort((a, b) => calculateRelevance(b, currentSearchTerm) - calculateRelevance(a, currentSearchTerm));
                     return newList;
                 })
@@ -1675,38 +1365,23 @@ function MainApplication({ appStatus, setAppStatus }) {
         window.electronAPI.onAuthenticationError(() => { setAppStatus('auth_error') }),
     ];
     return () => { cleanups.forEach(cleanup => cleanup()); }
-  }, [setAppStatus, currentSearchTerm]) // Bağımlılıklara currentSearchTerm eklendi
+  }, [setAppStatus, currentSearchTerm])
 
-  useEffect(() => {
-    let productCount = 0
-    const uniqueProducts = new Set<string>()
-    Object.values(assignments).forEach((productList: AssignmentItem[]) => {
-      productCount += productList.length
-      productList.forEach((product) => { uniqueProducts.add(product.product_code) })
-    })
-    setDashboardStats({
-      customerCount: customers.length,
-      totalUniqueProducts: uniqueProducts.size,
-      activeOrders: productCount,
-    })
-  }, [assignments, customers])
-
-  const handleAssignProducts = (customerId: string, products: AssignmentItem[]) => {
+  const handleAssignProducts = (products: AssignmentItem[]) => {
     setAssignments((prev) => {
-      const currentAssigned = prev[parseInt(customerId)] || []
       const newProducts = products.filter(
-        (p) => !currentAssigned.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
-      )
-      return { ...prev, [customerId]: [...currentAssigned, ...newProducts] }
-    })
-  }
+        (p) => !prev.some((ap) => ap.product_code === p.product_code && ap.source === p.source)
+      );
+      return [...prev, ...newProducts];
+    });
+  };
 
   const handleSearch = (searchTerm: string) => {
     if (!searchTerm.trim() || isLoading) return
     setIsLoading(true)
     setSearchResults([])
     setError(null)
-    setCurrentSearchTerm(searchTerm); // Arama terimini state'e kaydet
+    setCurrentSearchTerm(searchTerm);
     if (window.electronAPI) {
         window.electronAPI.performSearch(searchTerm)
     } else {
@@ -1738,22 +1413,14 @@ function MainApplication({ appStatus, setAppStatus }) {
 
     switch (page) {
       case "search":
-        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} handleCancel={handleCancel} customers={customers} onAssignProducts={handleAssignProducts} settings={settings}/> )
+        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} handleCancel={handleCancel} onAssignProducts={handleAssignProducts} settings={settings}/> )
       case "batch-search":
-        return ( <BatchSearchPage
-                    customers={customers}
-                    onAssignProducts={handleAssignProducts}
-                    settings={settings}
-                    batchState={batchSearchState}
-                    setBatchState={setBatchSearchState}
-                 />)
-      case "customers":
-        return ( <CustomersPage customers={customers} setCustomers={setCustomers} assignments={assignments} setAssignments={setAssignments} /> )
+        return ( <BatchSearchPage onAssignProducts={handleAssignProducts} settings={settings} batchState={batchSearchState} setBatchState={setBatchSearchState}/>)
       case "settings":
         return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} />;
       case "home":
       default:
-        return <HomePage stats={dashboardStats} />
+        return ( <CustomerPage assignments={assignments} setAssignments={setAssignments} /> )
     }
   }
 
@@ -1820,27 +1487,15 @@ export default function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <style jsx global>{`
-            .custom-scrollbar::-webkit-scrollbar {
-              width: 8px;
-              height: 8px;
-            }
-            .custom-scrollbar::-webkit-scrollbar-track {
-              background: transparent;
-            }
-            .custom-scrollbar::-webkit-scrollbar-thumb {
-              background-color: transparent;
-              border-radius: 10px;
-            }
-            .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-              background-color: hsl(var(--border));
-            }
-            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-              background-color: hsl(var(--primary));
-            }
+            .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+            .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 10px; }
+            .custom-scrollbar:hover::-webkit-scrollbar-thumb { background-color: hsl(var(--border)); }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--primary)); }
         `}</style>
       <AnimatePresence mode="wait">
          <motion.div
-            key={appStatus} // Durum değiştikçe animasyonun yeniden tetiklenmesini sağlar
+            key={appStatus}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
