@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, createContext, useContext, useMemo } from "react"
+import React, { useState, useEffect, createContext, useContext, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Home,
@@ -31,13 +31,14 @@ import {
   FileSearch,
   Upload,
   ArrowLeft,
-  SkipForward, // Yeni ikon
-  Filter, // Yeni ikon
-  Eye, // Yeni ikon
-  EyeOff, // Yeni ikon
-  DollarSign, // Yeni ikon
-  Euro, // Yeni ikon
-  Sterling, // Yeni ikon
+  SkipForward,
+  Filter,
+  Eye,
+  EyeOff,
+  DollarSign,
+  Euro,
+  History, // Yeni ikon
+  TrendingUp, // Yeni ikon
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -102,6 +103,7 @@ interface TciVariation {
 }
 
 interface ProductResult {
+  source: string;
   product_name: string
   product_number: string
   cas_number: string
@@ -135,6 +137,11 @@ interface AppSettings {
     tci_coefficient: number;
 }
 
+interface SearchHistoryItem {
+    term: string;
+    timestamp: number;
+}
+
 
 // Global Electron API tanımı
 declare global {
@@ -164,6 +171,7 @@ declare global {
       onBatchSearchProgress: (callback: (progress: any) => void) => () => void
       onBatchSearchComplete: (callback: (summary: any) => void) => () => void
       onParitiesUpdated: (callback: (parities: any) => void) => () => void;
+      onLogSearchTerm: (callback: (data: { term: string }) => void) => () => void;
     }
   }
 }
@@ -191,7 +199,6 @@ const cleanAndDecodeHtml = (html: string | null | undefined): string => {
 };
 
 import SplashScreen from "@/public/SplashScreen"
-
 // --------------------------------------------------------------------------------
 // Tema Yönetimi
 // --------------------------------------------------------------------------------
@@ -245,6 +252,8 @@ const Sidebar = ({ setPage, currentPage }) => {
     { name: "home", href: "#", icon: User, label: "Müşteri Listesi" },
     { name: "search", href: "#", icon: Search, label: "Ürün Arama" },
     { name: "batch-search", href: "#", icon: FileSearch, label: "Toplu Proforma Arama" },
+    { name: "frequent-searches", href: "#", icon: TrendingUp, label: "Sık Aratılanlar" },
+    { name: "search-history", href: "#", icon: History, label: "Arama Geçmişi" },
     { name: "settings", href: "#", icon: Settings, label: "Ayarlar" },
   ]
   return (
@@ -558,7 +567,7 @@ const AssignmentDialog = ({ selectedForAssignment, handleAssignConfirm, targetCu
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>İptal</Button>
-              <Button onClick={handleConfirmClick} className="w-full">
+              <Button onClick={handleConfirmClick}>
                 Atamayı Onayla
               </Button>
             </DialogFooter>
@@ -598,7 +607,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
           }
         })
         product.netflex_matches.forEach((match) => {
-          const key = match.product_code
+          const key = match.product_code.replace('.', '') // Noktaları temizle
           if (!dataMap[key]) {
             dataMap[key] = { material_number: key, sigma: {}, netflex: null }
           }
@@ -647,7 +656,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
 
     const handleSelectTCI = (product: ProductResult, variation: TciVariation) => {
       const calculatedPrice = variation.original_price_numeric
-          ? variation.original_price_numeric * settings.tci_coefficient
+          ? variation.original_price_numeric * (settings?.tci_coefficient || 1.4)
           : null;
 
       const assignmentItem: AssignmentItem = {
@@ -687,7 +696,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
               className="border-t bg-muted/20 p-4 overflow-hidden"
              >
               <h4 className="font-semibold mb-3">Ürün Varyasyonları</h4>
-               {product.brand.toLowerCase().includes('sigma') ? (
+               {product.source === 'Sigma' ? (
                  <div className="overflow-x-auto">
                    <Table>
                      <TableHeader>
@@ -758,7 +767,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                          <TableHead className="w-[50px]"></TableHead>
                          <TableHead>Birim</TableHead>
                          <TableHead>Orijinal Fiyat</TableHead>
-                         <TableHead>Hesaplanmış Fiyat (x{settings.tci_coefficient})</TableHead>
+                         <TableHead>Hesaplanmış Fiyat (x{settings?.tci_coefficient || 1.4})</TableHead>
                          <TableHead>Stok Durumu</TableHead>
                        </TableRow>
                      </TableHeader>
@@ -770,7 +779,7 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
                            </TableCell>
                            <TableCell>{variation.unit}</TableCell>
                            <TableCell>{variation.original_price}</TableCell>
-                           <TableCell className="font-semibold">{formatCurrency(variation.original_price_numeric ? variation.original_price_numeric * settings.tci_coefficient : null)}</TableCell>
+                           <TableCell className="font-semibold">{formatCurrency(variation.original_price_numeric ? variation.original_price_numeric * (settings?.tci_coefficient || 1.4) : null)}</TableCell>
                            <TableCell className="text-xs">{variation.stock_info && variation.stock_info.length > 0 ? variation.stock_info.map(s => `${s.country}: ${s.stock}`).join(', ') : 'N/A'}</TableCell>
                          </TableRow>
                        ))}
@@ -782,24 +791,47 @@ const ProductResultItem = ({ product, settings, expandedProducts, toggleProductE
           </AnimatePresence>
         </div>
     )
-}
+};
+const MemoizedProductResultItem = React.memo(ProductResultItem);
+
 
 // --------------------------------------------------------------------------------
 // Ürün Arama Sayfası
 // --------------------------------------------------------------------------------
-const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, onAssignProducts, settings }) => {
-  const [searchTerm, setSearchTerm] = useState("")
+const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCancel, onAssignProducts, settings, initialSearchTerm, onSearchExecuted }) => {
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
   const [filterTerm, setFilterTerm] = useState("");
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
+  const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("");
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({
     brands: { sigma: true, tci: true },
-  })
+  });
   const [isProductNameVisible, setIsProductNameVisible] = useState(false);
   const [showOriginalPrices, setShowOriginalPrices] = useState(false);
+  const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([]);
+  const [isHovering, setIsHovering] = useState(false);
+  const [progress, setProgress] = useState(0);
 
-  const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
-  const [isHovering, setIsHovering] = useState(false)
-  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    if (initialSearchTerm) {
+        setSearchTerm(initialSearchTerm);
+        handleSearch(initialSearchTerm);
+        onSearchExecuted();
+    }
+  // Hata düzeltmesi: onSearchExecuted ve handleSearch'ü bağımlılık dizisinden kaldırdık, çünkü bunlar genellikle değişmez ve sonsuz döngüye neden olabilir.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearchTerm]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedFilterTerm(filterTerm);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [filterTerm]);
+
 
   useEffect(() => {
     if (isLoading) {
@@ -816,6 +848,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
           handleCancel();
       } else {
           setFilterTerm("");
+          setDebouncedFilterTerm("");
           handleSearch(searchTerm);
       }
   }
@@ -860,22 +893,22 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
     };
 
     const filteredResults = useMemo(() => {
-        const lowerCaseFilter = filterTerm.toLowerCase();
+        const lowerCaseFilter = debouncedFilterTerm.toLowerCase().trim();
+
         return searchResults.filter(product => {
             const brand = product.brand.toLowerCase();
             const brandMatch = (brand.includes('sigma') && filters.brands.sigma) || (brand.includes('tci') && filters.brands.tci) || (!brand.includes('sigma') && !brand.includes('tci'));
-
             if (!brandMatch) return false;
 
-            if (!filterTerm.trim()) return true;
-
-            const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
-            const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
-            const casMatch = product.cas_number.toLowerCase().includes(lowerCaseFilter);
-
-            return nameMatch || numberMatch || casMatch;
+            if (lowerCaseFilter) {
+                const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
+                const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
+                const casMatch = product.cas_number.toLowerCase().includes(lowerCaseFilter);
+                return nameMatch || numberMatch || casMatch;
+            }
+            return true;
         });
-    }, [searchResults, filters, filterTerm]);
+    }, [searchResults, filters, debouncedFilterTerm]);
 
     const headerGridClasses = cn(
         "grid gap-x-4 font-semibold text-sm text-muted-foreground",
@@ -996,7 +1029,16 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
              <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
                 <div className="space-y-2">
                   {filteredResults.map((product, index) => (
-                    <ProductResultItem key={product.product_number + index} product={product} settings={settings} expandedProducts={expandedProducts} toggleProductExpansion={toggleProductExpansion} selectedForAssignment={selectedForAssignment} onSelectionChange={handleSelectionChange} isProductNameVisible={isProductNameVisible} showOriginalPrices={showOriginalPrices}/>
+                    <MemoizedProductResultItem
+                        key={`${product.source}-${product.product_number}-${index}`}
+                        product={product}
+                        settings={settings}
+                        expandedProducts={expandedProducts}
+                        toggleProductExpansion={toggleProductExpansion}
+                        selectedForAssignment={selectedForAssignment}
+                        onSelectionChange={handleSelectionChange}
+                        isProductNameVisible={isProductNameVisible}
+                        showOriginalPrices={showOriginalPrices}/>
                   ))}
                 </div>
             </div>
@@ -1023,6 +1065,7 @@ const SearchPage = ({ searchResults, isLoading, error, handleSearch, handleCance
 const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState }) => {
     const { pageState, filePath, fileName, customerName, searchProgress, batchResults, expandedProducts, selectedForAssignment, selectedTerm } = batchState;
     const [filterTerm, setFilterTerm] = useState("");
+    const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("");
     const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
     const [isProductNameVisible, setIsProductNameVisible] = useState(false);
     const [showOriginalPrices, setShowOriginalPrices] = useState(false);
@@ -1030,6 +1073,16 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
     const updateState = (newState) => {
         setBatchState(prev => ({ ...prev, ...newState }));
     };
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedFilterTerm(filterTerm);
+        }, 300);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [filterTerm]);
 
     useEffect(() => {
         if (!window.electronAPI) return;
@@ -1120,15 +1173,17 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
 
     const currentResultsForSelectedTerm = useMemo(() => {
       const results = batchResults.get(selectedTerm) || [];
-      if (!filterTerm.trim()) { return results; }
-      const lowerCaseFilter = filterTerm.toLowerCase();
+      const lowerCaseFilter = debouncedFilterTerm.toLowerCase().trim();
+      if (!lowerCaseFilter) {
+          return results;
+      }
       return results.filter(product => {
           const nameMatch = stripHtml(product.product_name).toLowerCase().includes(lowerCaseFilter);
           const numberMatch = product.product_number.toLowerCase().includes(lowerCaseFilter);
           const casMatch = product.cas_number.toLowerCase().includes(lowerCaseFilter);
           return nameMatch || numberMatch || casMatch;
       });
-    }, [batchResults, selectedTerm, filterTerm]);
+    }, [batchResults, selectedTerm, debouncedFilterTerm]);
 
 
     return (
@@ -1151,7 +1206,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
 
              <Dialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>Müşteri Bilgisi</DialogTitle><DialogDescription>Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle>Müşteri Bilgisi</DialogTitle><CardDescription>Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.</CardDescription></DialogHeader>
                     <div className="py-4 space-y-2">
                         <Label htmlFor="customerName">Müşteri Adı Soyadı</Label>
                         <Input id="customerName" value={customerName} onChange={(e) => updateState({ customerName: e.target.value })} placeholder="Örn: Ahmet Yılmaz"/>
@@ -1233,7 +1288,16 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
                                         {currentResultsForSelectedTerm.length > 0 ? (
                                             <div className="space-y-2">
                                                 {currentResultsForSelectedTerm.map((product, index) => (
-                                                    <ProductResultItem key={product.product_number + index} product={product} settings={settings} expandedProducts={expandedProducts} toggleProductExpansion={toggleProductExpansion} selectedForAssignment={selectedForAssignment} onSelectionChange={handleSelectionChange} isProductNameVisible={isProductNameVisible} showOriginalPrices={showOriginalPrices} />
+                                                    <MemoizedProductResultItem
+                                                        key={`${product.source}-${product.product_number}-${index}`}
+                                                        product={product}
+                                                        settings={settings}
+                                                        expandedProducts={expandedProducts}
+                                                        toggleProductExpansion={toggleProductExpansion}
+                                                        selectedForAssignment={selectedForAssignment}
+                                                        onSelectionChange={handleSelectionChange}
+                                                        isProductNameVisible={isProductNameVisible}
+                                                        showOriginalPrices={showOriginalPrices} />
                                                 ))}
                                             </div>
                                         ) : ( <p className="text-muted-foreground text-center py-5">Bu terim için sonuç bulunamadı.</p> )}
@@ -1249,6 +1313,231 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
     );
 };
 
+// --------------------------------------------------------------------------------
+// YENİ: Sık Aratılanlar Sayfası
+// --------------------------------------------------------------------------------
+const FrequentlySearchedPage = ({ searchHistory, onReSearch, onShowHistoryAssignments }) => {
+    const frequentSearches = useMemo(() => {
+        const counts = new Map<string, number>();
+        searchHistory.forEach(item => {
+            const term = item.term.trim();
+            if (term) {
+                counts.set(term, (counts.get(term) || 0) + 1);
+            }
+        });
+        return Array.from(counts.entries())
+            .map(([term, count]) => ({ term, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 1000); // Limiti 1000 yap
+    }, [searchHistory]);
+
+    return (
+        <div className="container mx-auto p-4">
+            <h1 className="text-2xl font-bold mb-6">En Sık Aratılanlar</h1>
+            <Card>
+                <CardContent className="p-0">
+                    {frequentSearches.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[80px]">Sıra</TableHead>
+                                    <TableHead>Arama Terimi</TableHead>
+                                    <TableHead className="w-[150px]">Arama Sayısı</TableHead>
+                                    <TableHead className="w-[200px] text-right">İşlemler</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {frequentSearches.map((item, index) => (
+                                    <TableRow key={item.term}>
+                                        <TableCell className="font-medium">{index + 1}</TableCell>
+                                        <TableCell>{item.term}</TableCell>
+                                        <TableCell>{item.count}</TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
+                                                                <FileText className="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent><p>Atanmış Ürünleri Göster</p></TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                                <Button variant="outline" size="sm" onClick={() => onReSearch(item.term)}>
+                                                    <Search className="mr-2 h-4 w-4" /> Tekrar Ara
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-10 text-center">
+                            <TrendingUp className="h-12 w-12 text-muted-foreground" />
+                            <p className="mt-4 text-muted-foreground">Henüz arama yapılmamış.</p>
+                            <p className="text-sm text-muted-foreground">Arama yaptıkça bu liste dolacaktır.</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+};
+
+// --------------------------------------------------------------------------------
+// YENİ: Arama Geçmişi Sayfası
+// --------------------------------------------------------------------------------
+const SearchHistoryPage = ({ searchHistory, onReSearch, onShowHistoryAssignments }) => {
+    const [filter, setFilter] = useState('monthly'); // Varsayılan aylık
+
+    const filteredHistory = useMemo(() => {
+        const now = new Date();
+        const oneDay = 24 * 60 * 60 * 1000;
+        const oneWeek = 7 * oneDay;
+        const oneMonth = 30 * oneDay;
+        const oneYear = 365 * oneDay;
+
+        return searchHistory.filter(item => {
+            const itemDate = new Date(item.timestamp);
+            switch (filter) {
+                case 'daily':
+                    return now.getTime() - itemDate.getTime() < oneDay;
+                case 'weekly':
+                    return now.getTime() - itemDate.getTime() < oneWeek;
+                case 'monthly':
+                    return now.getTime() - itemDate.getTime() < oneMonth;
+                case 'yearly':
+                     return now.getTime() - itemDate.getTime() < oneYear;
+                default:
+                    return true;
+            }
+        }).sort((a, b) => b.timestamp - a.timestamp);
+    }, [searchHistory, filter]);
+
+    return (
+        <div className="container mx-auto p-4">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold">Arama Geçmişi</h1>
+                <div className="w-[200px]">
+                    <Select value={filter} onValueChange={setFilter}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Filtrele..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="daily">Son 24 Saat</SelectItem>
+                            <SelectItem value="weekly">Son 1 Hafta</SelectItem>
+                            <SelectItem value="monthly">Son 1 Ay</SelectItem>
+                            <SelectItem value="yearly">Son 1 Yıl</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <Card>
+                <CardContent className="p-0">
+                     {filteredHistory.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Arama Terimi</TableHead>
+                                    <TableHead className="w-[250px]">Tarih</TableHead>
+                                    <TableHead className="w-[200px] text-right">İşlemler</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredHistory.map((item, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell className="font-medium">{item.term}</TableCell>
+                                        <TableCell>{new Date(item.timestamp).toLocaleString('tr-TR')}</TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
+                                                                <FileText className="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent><p>Atanmış Ürünleri Göster</p></TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                                <Button variant="outline" size="sm" onClick={() => onReSearch(item.term)}>
+                                                    <Search className="mr-2 h-4 w-4" /> Tekrar Ara
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                         <div className="flex flex-col items-center justify-center py-10 text-center">
+                            <History className="h-12 w-12 text-muted-foreground" />
+                            <p className="mt-4 text-muted-foreground">Seçili filtre için geçmiş arama bulunamadı.</p>
+                         </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+};
+
+// --------------------------------------------------------------------------------
+// YENİ: Geçmiş Arama Sonuçları Dialog
+// --------------------------------------------------------------------------------
+const HistoryResultsDialog = ({ historyResults, onClose, onReSearchAndAssign }) => {
+    if (!historyResults) return null;
+
+    return (
+        <Dialog open={historyResults !== null} onOpenChange={onClose}>
+            <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>"{historyResults.term}" Araması İçin Atanmış Ürünler</DialogTitle>
+                    <DialogDescription>
+                        Bu listedeki ürünler, geçmişte bu arama terimiyle bulunan ve bir müşteriye atanan ürünlerdir. Fiyatlar atama anındaki fiyatlardır. Yeniden atamak için fiyatı güncelleyebilirsiniz.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    {historyResults.products.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Ürün Adı</TableHead>
+                                    <TableHead>Kodu</TableHead>
+                                    <TableHead>Kaynak</TableHead>
+                                    <TableHead>Eski Fiyat</TableHead>
+                                    <TableHead className="text-right">İşlem</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {historyResults.products.map((product, index) => (
+                                    <TableRow key={`${product.product_code}-${index}`}>
+                                        <TableCell dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }} />
+                                        <TableCell>{product.product_code}</TableCell>
+                                        <TableCell>{product.source}</TableCell>
+                                        <TableCell>{product.price_str}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button size="sm" onClick={() => onReSearchAndAssign(product.product_code)}>
+                                                <Activity className="mr-2 h-4 w-4" /> Fiyatı Güncelle
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <p className="text-center text-muted-foreground py-8">Bu arama için daha önce atanmış bir ürün bulunamadı.</p>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>Kapat</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 // --------------------------------------------------------------------------------
 // Ana Uygulama Mantığı
@@ -1256,8 +1545,11 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
 function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("home");
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [searchTermForPage, setSearchTermForPage] = useState<string | null>(null);
+  const [historyResults, setHistoryResults] = useState<{term: string, products: AssignmentItem[]} | null>(null);
 
   const [batchSearchState, setBatchSearchState] = useState({
       pageState: 'idle',
@@ -1276,6 +1568,8 @@ function MainApplication({ appStatus, setAppStatus }) {
     try {
       const savedAssignments = localStorage.getItem("assignments_single");
       if (savedAssignments) { setAssignments(JSON.parse(savedAssignments)); }
+      const savedHistory = localStorage.getItem("search_history");
+      if(savedHistory) { setSearchHistory(JSON.parse(savedHistory)); }
     } catch (error) {
       console.error("localStorage'dan veri yüklenirken hata:", error);
       toast.error("Kaydedilmiş veriler yüklenemedi.");
@@ -1299,16 +1593,20 @@ function MainApplication({ appStatus, setAppStatus }) {
     if (isDataLoaded) {
       try {
         localStorage.setItem("assignments_single", JSON.stringify(assignments));
+        localStorage.setItem("search_history", JSON.stringify(searchHistory));
       } catch (error) {
         console.error("Veriler kaydedilirken hata:", error);
       }
     }
-  }, [assignments, isDataLoaded]);
+  }, [assignments, searchHistory, isDataLoaded]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
   const [currentSearchTerm, setCurrentSearchTerm] = useState("");
+
+  const productQueueRef = useRef<ProductResult[]>([]);
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
@@ -1341,13 +1639,32 @@ function MainApplication({ appStatus, setAppStatus }) {
     const cleanups = [
         window.electronAPI.onProductFound(({ product, context }) => {
             if (!context) {
-                setSearchResults((prev) => {
-                    const isProductAlreadyInList = prev.some((p) => p.product_number === product.product_number)
-                    if (isProductAlreadyInList) { return prev }
-                    const newList = [...prev, product];
-                    newList.sort((a, b) => calculateRelevance(b, currentSearchTerm) - calculateRelevance(a, currentSearchTerm));
-                    return newList;
-                })
+                productQueueRef.current.push(product);
+
+                if (updateTimeoutRef.current) {
+                    clearTimeout(updateTimeoutRef.current);
+                }
+
+                updateTimeoutRef.current = setTimeout(() => {
+                    if (productQueueRef.current.length === 0) return;
+
+                    setSearchResults((prev) => {
+                        const newProductsMap = new Map(prev.map(p => [`${p.source}-${p.product_number}`, p]));
+
+                        productQueueRef.current.forEach(p => {
+                            const key = `${p.source}-${p.product_number}`;
+                            if (!newProductsMap.has(key)) {
+                                newProductsMap.set(key, p);
+                            }
+                        });
+
+                        productQueueRef.current = []; // Clear the queue
+
+                        const sortedProducts = Array.from(newProductsMap.values());
+                        sortedProducts.sort((a, b) => calculateRelevance(b, currentSearchTerm) - calculateRelevance(a, currentSearchTerm));
+                        return sortedProducts;
+                    });
+                }, 200);
             }
         }),
         window.electronAPI.onSearchComplete((summary) => {
@@ -1363,8 +1680,18 @@ function MainApplication({ appStatus, setAppStatus }) {
             else { toast.error(`Excel hatası: ${result.message}`) }
         }),
         window.electronAPI.onAuthenticationError(() => { setAppStatus('auth_error') }),
+        window.electronAPI.onLogSearchTerm(({ term }) => {
+            if(term && term.trim()){
+                 setSearchHistory(prev => [{ term: term.trim(), timestamp: Date.now() }, ...prev].slice(0, 5000));
+            }
+        }),
     ];
-    return () => { cleanups.forEach(cleanup => cleanup()); }
+    return () => {
+      cleanups.forEach(cleanup => cleanup());
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
   }, [setAppStatus, currentSearchTerm])
 
   const handleAssignProducts = (products: AssignmentItem[]) => {
@@ -1378,6 +1705,11 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const handleSearch = (searchTerm: string) => {
     if (!searchTerm.trim() || isLoading) return
+    if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+    }
+    productQueueRef.current = [];
+
     setIsLoading(true)
     setSearchResults([])
     setError(null)
@@ -1389,6 +1721,11 @@ function MainApplication({ appStatus, setAppStatus }) {
         setIsLoading(false)
     }
   }
+
+  const handleReSearch = (term: string) => {
+    setSearchTermForPage(term);
+    setPage('search');
+  };
 
   const handleCancel = () => {
     if(isLoading && window.electronAPI) {
@@ -1405,6 +1742,21 @@ function MainApplication({ appStatus, setAppStatus }) {
     }
   };
 
+  const handleShowHistoryAssignments = (term: string) => {
+    const lowerCaseTerm = term.toLowerCase();
+    const matchingAssignments = assignments.filter(p =>
+        stripHtml(p.product_name).toLowerCase().includes(lowerCaseTerm) ||
+        p.product_code.toLowerCase().includes(lowerCaseTerm) ||
+        (p.cas_number && p.cas_number.toLowerCase().includes(lowerCaseTerm))
+    );
+    setHistoryResults({ term, products: matchingAssignments });
+  };
+
+  const handleReSearchAndAssign = (productCode: string) => {
+    setHistoryResults(null);
+    setSearchTermForPage(productCode);
+    setPage('search');
+  };
 
   const renderPage = () => {
     if (appStatus === 'auth_error') {
@@ -1413,9 +1765,13 @@ function MainApplication({ appStatus, setAppStatus }) {
 
     switch (page) {
       case "search":
-        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} handleCancel={handleCancel} onAssignProducts={handleAssignProducts} settings={settings}/> )
+        return ( <SearchPage searchResults={searchResults} isLoading={isLoading} error={error} handleSearch={handleSearch} handleCancel={handleCancel} onAssignProducts={handleAssignProducts} settings={settings} initialSearchTerm={searchTermForPage} onSearchExecuted={() => setSearchTermForPage(null)} /> )
       case "batch-search":
         return ( <BatchSearchPage onAssignProducts={handleAssignProducts} settings={settings} batchState={batchSearchState} setBatchState={setBatchSearchState}/>)
+      case "frequent-searches":
+        return <FrequentlySearchedPage searchHistory={searchHistory} onReSearch={handleReSearch} onShowHistoryAssignments={handleShowHistoryAssignments} />;
+      case "search-history":
+        return <SearchHistoryPage searchHistory={searchHistory} onReSearch={handleReSearch} onShowHistoryAssignments={handleShowHistoryAssignments} />;
       case "settings":
         return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} />;
       case "home":
@@ -1429,9 +1785,16 @@ function MainApplication({ appStatus, setAppStatus }) {
       <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
         <Sidebar setPage={setPage} currentPage={page} />
         <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
-          <main className="flex-1 items-start gap-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
+          <main className="flex-1 items-start gap-4 sm:px-6 sm:py-0 md:gap-8">
+            {renderPage()}
+          </main>
         </div>
         <Toaster position="bottom-right" />
+        <HistoryResultsDialog
+            historyResults={historyResults}
+            onClose={() => setHistoryResults(null)}
+            onReSearchAndAssign={handleReSearchAndAssign}
+        />
       </div>
     </motion.div>
   )
@@ -1507,4 +1870,3 @@ export default function App() {
     </ThemeProvider>
   )
 }
-

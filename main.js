@@ -76,6 +76,7 @@ function startPythonService() {
               settings_saved: 'settings-saved',
               batch_search_progress: 'batch-search-progress',
               batch_search_complete: 'batch-search-complete',
+              log_search_term: 'log-search-term', // YENİ: Arama kaydı kanalı
             };
             const channel = channels[type];
 

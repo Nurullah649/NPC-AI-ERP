@@ -38,4 +38,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPythonCrashed: createListener('python-crashed'),
   onBatchSearchProgress: createListener('batch-search-progress'),
   onBatchSearchComplete: createListener('batch-search-complete'),
+  onLogSearchTerm: createListener('log-search-term'), // YENİ: Arama kaydı dinleyicisi
 });

@@ -1,4 +1,4 @@
-# Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz, python-docx, googletrans==3.0.0, langdetect
+# Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz, python-docx, googletrans==3.0.0, langdetect, chardet
 import sys
 import os
 import time
@@ -14,6 +14,7 @@ from pathlib import Path
 import openpyxl
 import docx  # Toplu arama için docx desteği
 import csv  # Toplu arama için csv desteği
+import chardet  # Esnek CSV okuması için eklendi
 from dotenv import load_dotenv
 from thefuzz import fuzz
 import io
@@ -211,77 +212,145 @@ def _clean_term(term):
     return cleaned_term.strip()
 
 
-def _extract_terms_from_xlsx(file_path):
-    terms = []
+def process_raw_data(data: List[List[str]]) -> List[str]:
+    """
+    Hücre verilerini (liste içinde liste) alır, malzeme adlarını içeren sütunu bulur
+    ve bu sütundaki verileri temizlenmiş bir liste olarak döndürür.
+    Excel ve CSV okuyucuları için ortak mantığı içerir.
+    """
+    if not data:
+        return []
+    first_row_idx = -1
+    for i, row in enumerate(data):
+        if any(str(cell).strip() for cell in row if cell is not None):
+            first_row_idx = i
+            break
+    if first_row_idx == -1:
+        logging.warning("Dosyada işlenecek veri bulunamadı.")
+        return []
+    relevant_data = data[first_row_idx:]
+    if not relevant_data:
+        return []
+    potential_header = [str(cell).strip().lower() if cell is not None else '' for cell in relevant_data[0]]
+    keywords = ['malzeme', 'ad', 'ürün', 'sarflar', 'proforma', 'açıklama', 'description', 'item', 'name',
+                'stock keeping unit']
+    target_col_idx = -1
+    header_found = False
+    for i, header_cell in enumerate(potential_header):
+        for keyword in keywords:
+            if keyword in header_cell:
+                target_col_idx = i
+                header_found = True
+                break
+        if header_found:
+            break
+    if header_found:
+        body = relevant_data[1:]
+        original_header_cell = data[first_row_idx][target_col_idx]
+        logging.info(f"Başlık satırı bulundu. '{original_header_cell}' sütunu kullanılacak.")
+    else:
+        body = relevant_data
+        logging.warning("Anahtar kelime içeren bir başlık satırı bulunamadı. Veri okunacak sütun belirleniyor.")
+        for i, cell in enumerate(potential_header):
+            if cell:
+                target_col_idx = i
+                break
+        if target_col_idx == -1:
+            target_col_idx = 0
+        logging.info(f"Başlık bulunamadığı için {target_col_idx}. sütun veri olarak okunacak.")
+    search_terms = []
+    for row in body:
+        if len(row) > target_col_idx:
+            cell_value = row[target_col_idx]
+            if cell_value and isinstance(cell_value, str) and cell_value.strip():
+                search_terms.append(cell_value.strip())
+            elif cell_value and not isinstance(cell_value, str):
+                try:
+                    str_value = str(cell_value).strip()
+                    if str_value:
+                        search_terms.append(str_value)
+                except:
+                    pass
+    logging.info(f"Dosyadan {len(search_terms)} adet arama terimi çıkarıldı.")
+    return search_terms
+
+
+def read_excel_terms(file_path: str) -> List[str]:
+    """Bir Excel dosyasını okur ve arama terimlerinin listesini döndürür."""
     try:
         workbook = openpyxl.load_workbook(file_path, data_only=True)
         sheet = workbook.active
-        for row in sheet.iter_rows(min_row=1, values_only=True):
-            for i in range(min(2, len(row))):
-                cell_value = row[i]
-                cleaned_value = _clean_term(cell_value)
-                translated_value = _translate_if_turkish(cleaned_value)
-                if translated_value and len(translated_value) > 2 and translated_value not in terms:
-                    terms.append(translated_value)
+        data = list(sheet.values)
+        return process_raw_data(data)
     except Exception as e:
-        logging.error(f"Excel dosyası okunurken hata: {e}")
-    return terms
+        logging.error(f"Excel dosyası okunurken hata: {e}", exc_info=True)
+        return []
 
 
-def _extract_terms_from_csv(file_path):
-    terms = []
-    try:
-        with open(file_path, mode='r', encoding='utf-8', errors='ignore') as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                for i in range(min(2, len(row))):
-                    cell_value = row[i]
-                    cleaned_value = _clean_term(cell_value)
-                    translated_value = _translate_if_turkish(cleaned_value)
-                    if translated_value and len(translated_value) > 2 and translated_value not in terms:
-                        terms.append(translated_value)
-    except Exception as e:
-        logging.error(f"CSV dosyası okunurken hata: {e}")
-    return terms
-
-
-def _extract_terms_from_docx(file_path):
-    terms = []
+def read_docx_terms(file_path: str) -> List[str]:
+    """Bir Word (.docx) dosyasındaki tüm tablolardan arama terimlerini okur."""
     try:
         doc = docx.Document(file_path)
+        all_terms = []
+        if not doc.tables:
+            logging.warning("Word dosyasında hiç tablo bulunamadı.")
+            return []
         for table in doc.tables:
-            for row in table.rows:
-                for i in range(min(2, len(row.cells))):
-                    cell_text = row.cells[i].text
-                    cleaned_text = _clean_term(cell_text)
-                    translated_text = _translate_if_turkish(cleaned_text)
-                    if translated_text and len(translated_text) > 2 and translated_text not in terms:
-                        terms.append(translated_text)
-        if not terms:
-            for para in doc.paragraphs:
-                cleaned_text = _clean_term(para.text)
-                translated_text = _translate_if_turkish(cleaned_text)
-                if translated_text and len(translated_text) > 2 and translated_text not in terms:
-                    terms.append(translated_text)
+            data = [[cell.text for cell in row.cells] for row in table.rows]
+            all_terms.extend(process_raw_data(data))
+        return all_terms
     except Exception as e:
-        logging.error(f"Word dosyası okunurken hata: {e}")
-    return terms
+        logging.error(f"Word dosyası okunurken hata: {e}", exc_info=True)
+        return []
+
+
+def read_csv_terms(file_path: str) -> List[str]:
+    """Bir CSV dosyasını, karakter kodlamasını ve ayıracını otomatik algılayarak okur."""
+    try:
+        with open(file_path, 'rb') as f_raw:
+            raw_data = f_raw.read()
+            encoding_result = chardet.detect(raw_data)
+            encoding = encoding_result['encoding'] or 'utf-8'
+        with open(file_path, 'r', encoding=encoding, newline='', errors='replace') as f:
+            try:
+                dialect = csv.Sniffer().sniff(f.read(2048), delimiters=',;')
+                f.seek(0)
+            except csv.Error:
+                dialect = 'excel'
+                logging.warning("CSV ayıracı tespit edilemedi, ',' varsayıldı.")
+            reader = csv.reader(f, dialect)
+            data = list(reader)
+        return process_raw_data(data)
+    except Exception as e:
+        logging.error(f"CSV dosyası okunurken hata: {e}", exc_info=True)
+        return []
 
 
 def get_search_terms_from_file(file_path):
     if not os.path.exists(file_path):
         logging.error(f"Toplu arama dosyası bulunamadı: {file_path}")
         return []
+
     file_ext = os.path.splitext(file_path)[1].lower()
+    raw_terms = []
     if file_ext == '.xlsx':
-        return _extract_terms_from_xlsx(file_path)
+        raw_terms = read_excel_terms(file_path)
     elif file_ext == '.csv':
-        return _extract_terms_from_csv(file_path)
+        raw_terms = read_csv_terms(file_path)
     elif file_ext == '.docx':
-        return _extract_terms_from_docx(file_path)
+        raw_terms = read_docx_terms(file_path)
     else:
         logging.error(f"Desteklenmeyen dosya formatı: {file_ext}")
         return []
+
+    processed_terms = []
+    for term in raw_terms:
+        cleaned_value = _clean_term(term)
+        translated_value = _translate_if_turkish(cleaned_value)
+        if translated_value and len(translated_value) > 2 and translated_value not in processed_terms:
+            processed_terms.append(translated_value)
+
+    return processed_terms
 
 
 # --- Karşılaştırma Motoru ---
@@ -327,16 +396,24 @@ class ComparisonEngine:
             s_num = raw_sigma_product.get('product_number')
             s_brand = raw_sigma_product.get('brand')
             s_key = raw_sigma_product.get('product_key')
+            s_material_ids = raw_sigma_product.get('material_ids', [])
 
-            sigma_variations = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key, self.search_cancelled)
+            sigma_variations = self.sigma_api.get_all_product_prices(
+                product_number=s_num,
+                brand=s_brand,
+                product_key=s_key.replace('.', ''),
+                material_ids=s_material_ids,
+                cancellation_token=self.search_cancelled
+            )
             if self.search_cancelled.is_set(): return False
 
-            # Adım 2: Netflex'te aranacak tüm kodları topla
-            netflex_search_terms = {s_num}
+            # Adım 2: Netflex'te aranacak tüm kodları topla ve temizle
+            # Sigma'dan gelen ürün kodlarındaki noktaları kaldırarak Netflex'te arama yap
+            netflex_search_terms = {s_num.replace('.', '')} if s_num else set()
             for country_vars in sigma_variations.values():
                 for var in country_vars:
                     if mat_num := var.get('material_number'):
-                        netflex_search_terms.add(mat_num)
+                        netflex_search_terms.add(mat_num.replace('.', ''))
 
             # Adım 3: Netflex aramasını yap
             netflex_cache = {}
@@ -358,7 +435,7 @@ class ComparisonEngine:
                 return True
         except Exception as e:
             logging.error(f"Tekil Sigma ürünü ({raw_sigma_product.get('product_number')}) işlenirken hata: {e}",
-                          exc_info=False)
+                          exc_info=True) # Hata detayını görmek için True yapıldı
         return False
 
     def _build_final_sigma_product(self, sigma_product: Dict[str, Any], netflex_cache: Dict[str, Any],
@@ -384,6 +461,12 @@ class ComparisonEngine:
         # HATA DÜZELTME: Sigma fiyatlarını EUR'ya çevir ve arayüz için formatla
         for country_code, variations in sigma_variations.items():
             for var in variations:
+                # EĞER BİR HATA MESAJI VARSA, ONU İŞLE VE DÖNGÜYE DEVAM ET
+                if 'error' in var:
+                    var['price_eur_str'] = var['error']
+                    var['original_price_str'] = "N/A"
+                    continue
+
                 price_eur = None
                 original_price = var.get('price')
                 currency = var.get('currency', '').upper()
@@ -401,7 +484,8 @@ class ComparisonEngine:
 
                         if price_eur is not None:
                             var['price_eur'] = price_eur
-                            var['price_eur_str'] = f"€{price_eur:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                            var['price_eur_str'] = f"€{price_eur:,.2f}".replace(",", "X").replace(".", ",").replace("X",
+                                                                                                                    ".")
                             all_eur_prices.append(price_eur)
                         else:
                             var['price_eur_str'] = "N/A"
@@ -410,19 +494,20 @@ class ComparisonEngine:
                 else:
                     var['price_eur_str'] = "N/A"
 
-
         netflex_matches = []
         processed_codes = set()
         sigma_material_numbers = {var.get('material_number') for vars_list in sigma_variations.values() for var in
                                   vars_list if var.get('material_number')}
 
+        # Netflex eşleşmelerini bulurken, noktasız kodları kullanarak cache'i kontrol et
         for mat_num in sigma_material_numbers:
-            if mat_num in netflex_cache and mat_num not in processed_codes:
-                match = netflex_cache[mat_num]
+            clean_mat_num = mat_num.replace('.', '')
+            if clean_mat_num in netflex_cache and clean_mat_num not in processed_codes:
+                match = netflex_cache[clean_mat_num]
                 netflex_matches.append(match)
                 if price := match.get('price_numeric'):
                     all_eur_prices.append(price)
-                processed_codes.add(mat_num)
+                processed_codes.add(clean_mat_num)
 
         # Genel en ucuz EUR fiyatını bul
         cheapest_eur_price = min(all_eur_prices) if all_eur_prices else None
@@ -481,7 +566,8 @@ class ComparisonEngine:
         if min_original_price != float('inf'):
             tci_coefficient = self.settings.get('tci_coefficient', 1.4)
             calculated_cheapest = min_original_price * tci_coefficient
-            cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",".")
+            cheapest_price_to_show = f"€{calculated_cheapest:,.2f}".replace(",", "X").replace(".", ",").replace("X",
+                                                                                                                ".")
 
         return {
             "source": "TCI", "product_name": tci_product.name, "product_number": tci_product.code,
@@ -494,7 +580,10 @@ class ComparisonEngine:
     def search_and_compare(self, search_term: str, context: Dict = None):
         start_time = time.monotonic()
         logging.info(f"===== ANLIK ÜRÜN AKIŞI ARAMASI BAŞLATILDI: '{search_term}' =====")
-        if not context:
+
+        # YENİ: Arama başladığında arayüze loglama için bilgi gönder
+        if not context:  # Sadece tekli aramalarda logla, toplu arama kendi logunu tutuyor
+            send_to_frontend("log_search_term", {"term": search_term})
             admin_logger.info(f"Arama Başlatıldı: Terim='{search_term}'")
 
         total_found = 0
@@ -577,6 +666,9 @@ class ComparisonEngine:
                 break
 
             self.search_cancelled.clear()
+
+            # YENİ: Toplu aramadaki her terimi de logla
+            send_to_frontend("log_search_term", {"term": term})
 
             progress_data = {"term": term, "current": i + 1, "total": total_terms}
             send_to_frontend("batch_search_progress", progress_data)
@@ -744,4 +836,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
