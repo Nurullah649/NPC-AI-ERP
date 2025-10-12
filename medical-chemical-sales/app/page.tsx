@@ -50,35 +50,284 @@ import {
   Users,
 } from "lucide-react"
 
-import { cn } from "../lib/utils"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../components/ui/card"
-import { Button } from "../components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../components/ui/dialog"
-import { Input } from "../components/ui/input"
-import { Label } from "../components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { Checkbox } from "../components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { Toaster, toast } from "sonner"
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu"
-import { Progress } from "../components/ui/progress"
+// --------------------------------------------------------------------------------
+// Yerleşik Bileşenler ve Yardımcı Fonksiyonlar (Hata Düzeltmesi)
+// --------------------------------------------------------------------------------
+
+// Tailwind CSS sınıflarını birleştirmek için yardımcı fonksiyon
+const cn = (...classes) => classes.filter(Boolean).join(" ")
+
+// --- UI Bileşenleri (shadcn/ui yerine yerleşik olarak eklendi) ---
+
+const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)}
+    {...props}
+  />
+))
+Card.displayName = "Card"
+
+const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />
+  ),
+)
+CardHeader.displayName = "CardHeader"
+
+const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3 ref={ref} className={cn("text-2xl font-semibold leading-none tracking-tight", className)} {...props} />
+  ),
+)
+CardTitle.displayName = "CardTitle"
+
+const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
+  ({ className, ...props }, ref) => (
+    <p ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
+  ),
+)
+CardDescription.displayName = "CardDescription"
+
+const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />,
+)
+CardContent.displayName = "CardContent"
+
+const Button = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }
+>(({ className, variant = "default", size = "default", ...props }, ref) => {
+  const variants = {
+    default: "bg-primary text-primary-foreground hover:bg-primary/90",
+    destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+    secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+    ghost: "hover:bg-accent hover:text-accent-foreground",
+  }
+  const sizes = {
+    default: "h-10 px-4 py-2",
+    sm: "h-9 rounded-md px-3",
+    xs: "h-8 px-2.5",
+    lg: "h-11 rounded-md px-8",
+    icon: "h-10 w-10",
+  }
+  return (
+    <button
+      className={cn(
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        variants[variant],
+        sizes[size],
+        className,
+      )}
+      ref={ref}
+      {...props}
+    />
+  )
+})
+Button.displayName = "Button"
+
+const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          className,
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  },
+)
+Input.displayName = "Input"
+
+const Label = React.forwardRef<
+  React.ElementRef<"label">,
+  React.ComponentPropsWithoutRef<"label">
+>(({ className, ...props }, ref) => (
+  <label ref={ref} className={cn("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
+))
+Label.displayName = "Label"
+
+const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
+  ({ className, ...props }, ref) => (
+    <div className="relative w-full overflow-auto">
+      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+    </div>
+  ),
+)
+Table.displayName = "Table"
+
+const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />,
+)
+TableHeader.displayName = "TableHeader"
+
+const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className, ...props }, ref) => (
+    <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />
+  ),
+)
+TableBody.displayName = "TableBody"
+
+const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
+  ({ className, ...props }, ref) => (
+    <tr
+      ref={ref}
+      className={cn("border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted", className)}
+      {...props}
+    />
+  ),
+)
+TableRow.displayName = "TableRow"
+
+const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
+  ({ className, ...props }, ref) => (
+    <th
+      ref={ref}
+      className={cn("h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0", className)}
+      {...props}
+    />
+  ),
+)
+TableHead.displayName = "TableHead"
+
+const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
+  ({ className, ...props }, ref) => (
+    <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
+  ),
+)
+TableCell.displayName = "TableCell"
+
+const Checkbox = React.forwardRef<
+  HTMLButtonElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(({ className, ...props }, ref) => (
+  <input
+    type="checkbox"
+    ref={ref}
+    className={cn(
+      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      className,
+    )}
+    {...props}
+  />
+))
+Checkbox.displayName = "Checkbox"
+
+const Alert = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & { variant?: string }
+>(({ className, variant, ...props }, ref) => {
+    const variants = {
+        default: "bg-background text-foreground",
+        destructive: "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+    }
+    return (
+        <div ref={ref} role="alert" className={cn("relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground", variants[variant], className)} {...props} />
+    )
+})
+Alert.displayName = "Alert"
+
+const AlertTitle = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h5 ref={ref} className={cn("mb-1 font-medium leading-none tracking-tight", className)} {...props} />
+))
+AlertTitle.displayName = "AlertTitle"
+
+const AlertDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("text-sm [&_p]:leading-relaxed", className)} {...props} />
+))
+AlertDescription.displayName = "AlertDescription"
+
+const Progress = React.forwardRef<
+    React.ElementRef<'div'>,
+    React.ComponentPropsWithoutRef<'div'> & { value?: number }
+>(({ className, value, ...props }, ref) => (
+    <div
+        ref={ref}
+        className={cn("relative h-4 w-full overflow-hidden rounded-full bg-secondary", className)}
+        {...props}
+    >
+        <div
+            className="h-full w-full flex-1 bg-primary transition-all"
+            style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+        />
+    </div>
+))
+Progress.displayName = "Progress"
+
+// --- Dialog Bileşenleri ---
+const Dialog = ({ open, onOpenChange, children }) => {
+    if (!open) return null
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-in fade-in-0" onClick={() => onOpenChange(false)}>
+        <div className="relative bg-background p-6 rounded-lg shadow-lg w-full max-w-lg border" onClick={(e) => e.stopPropagation()}>
+            {children}
+        </div>
+      </div>
+    )
+}
+const DialogHeader = ({ className, ...props }) => <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
+const DialogFooter = ({ className, ...props }) => <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} {...props} />
+const DialogTitle = ({ className, ...props }) => <h2 className={cn("text-lg font-semibold leading-none tracking-tight", className)} {...props} />
+const DialogDescription = ({ className, ...props }) => <p className={cn("text-sm text-muted-foreground", className)} {...props} />
+const DialogContent = ({ className, ...props }) => <div className={cn(className)} {...props} />
+const DialogTrigger = ({ children }) => children;
+
+// --- Select Bileşenleri ---
+const Select = ({ children, ...props }) => <select className={cn("flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50")} {...props}>{children}</select>
+const SelectValue = () => null
+const SelectTrigger = ({ children }) => children
+const SelectContent = ({ children }) => children
+const SelectItem = ({ value, children }) => <option value={value}>{children}</option>
+
+// --- DropdownMenu Bileşenleri ---
+const DropdownMenu = ({ children }) => <div className="relative inline-block text-left">{children}</div>
+const DropdownMenuTrigger = ({ children }) => children
+const DropdownMenuContent = ({ children, ...props }) => <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-popover ring-1 ring-black ring-opacity-5 focus:outline-none z-10" {...props}>{children}</div>
+const DropdownMenuLabel = ({ className, ...props }) => <div className={cn("px-4 py-2 text-sm font-semibold", className)} {...props} />
+const DropdownMenuSeparator = ({ className, ...props }) => <div className={cn("-mx-1 my-1 h-px bg-muted", className)} {...props} />
+const DropdownMenuCheckboxItem = ({ checked, onCheckedChange, children, ...props }) => (
+    <label className="flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-accent cursor-pointer">
+        <Checkbox checked={checked} onChange={e => onCheckedChange(e.target.checked)} className="mr-2" />
+        {children}
+    </label>
+)
+// --- Tooltip Bileşenleri ---
+const TooltipContext = createContext(null);
+const TooltipProvider = ({ children }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return <TooltipContext.Provider value={{ isOpen, setIsOpen }}>{children}</TooltipContext.Provider>
+}
+const Tooltip = ({ children }) => <div className="relative flex items-center">{children}</div>
+const TooltipTrigger = ({ children }) => {
+    const { setIsOpen } = useContext(TooltipContext);
+    return <div onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>{children}</div>
+}
+const TooltipContent = ({ children, side = 'right', className, ...props }) => {
+    const { isOpen } = useContext(TooltipContext);
+    if (!isOpen) return null;
+    const sideClasses = {
+        right: 'left-full ml-2',
+        top: 'bottom-full mb-2',
+        bottom: 'top-full mt-2',
+        left: 'right-full mr-2'
+    }
+    return <div className={cn("absolute z-10 whitespace-nowrap bg-popover text-popover-foreground px-3 py-1.5 text-sm rounded-md shadow-md animate-in fade-in-0 zoom-in-95", sideClasses[side], className)} {...props}>{children}</div>
+}
+
+
+// --- SplashScreen Bileşeni ---
+import SplashScreen from "@/public/SplashScreen";
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -144,6 +393,9 @@ interface AssignmentItem {
 interface AppSettings {
   netflex_username: string
   netflex_password: string
+  orkim_username: string
+  orkim_password: string
+  OCR_API_KEY: string
   tci_coefficient: number
   sigma_coefficient_us: number
   sigma_coefficient_de: number
@@ -243,7 +495,7 @@ const cleanAndDecodeHtml = (html: string | null | undefined): string => {
 const calculateProductPrices = (product: ProductResult, settings: AppSettings, parities: any): ProductResult => {
   // Orkim gibi önceden fiyatı formatlanmış kaynaklar için hesaplamayı atla
   if (product.source === "Orkim") {
-      return product;
+    return product
   }
 
   if (!product || !settings || !parities || parities.error) {
@@ -352,7 +604,7 @@ const calculateProductPrices = (product: ProductResult, settings: AppSettings, p
 
   return newProduct
 }
-import SplashScreen from "@/public/SplashScreen"
+
 // --------------------------------------------------------------------------------
 // Tema Yönetimi
 // --------------------------------------------------------------------------------
@@ -401,10 +653,11 @@ const ModeToggle = () => {
 // Bildirimler Bileşeni
 // --------------------------------------------------------------------------------
 const NotificationBell = ({ notifications, onToggleComplete, onGoToDate }) => {
+    const [isOpen, setIsOpen] = useState(false);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
+        <Button variant="outline" size="icon" className="relative" onClick={() => setIsOpen(!isOpen)}>
           <Bell className="h-5 w-5" />
           {notifications.length > 0 && (
             <span className="absolute top-0 right-0 flex h-3 w-3">
@@ -415,6 +668,7 @@ const NotificationBell = ({ notifications, onToggleComplete, onGoToDate }) => {
           <span className="sr-only">Bildirimler</span>
         </Button>
       </DropdownMenuTrigger>
+      {isOpen && (
       <DropdownMenuContent align="center" side="right" className="w-96">
         <DropdownMenuLabel className="flex justify-between items-center">
           <span>Bugünün Bildirimleri</span>
@@ -455,6 +709,7 @@ const NotificationBell = ({ notifications, onToggleComplete, onGoToDate }) => {
           )}
         </div>
       </DropdownMenuContent>
+      )}
     </DropdownMenu>
   )
 }
@@ -482,7 +737,7 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
         <TooltipProvider>
           {navItems.map((item) => (
             <Tooltip key={item.name}>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <a
                   href={item.href}
                   onClick={(e) => {
@@ -498,7 +753,7 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
                   <span className="sr-only">{item.label}</span>
                 </a>
               </TooltipTrigger>
-              <TooltipContent side="right">{item.label}</TooltipContent>
+              <TooltipContent>{item.label}</TooltipContent>
             </Tooltip>
           ))}
         </TooltipProvider>
@@ -624,6 +879,45 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" /> Orkim Market Bilgileri
+          </CardTitle>
+          <CardDescription>
+            Orkim Market sistemine giriş ve CAPTCHA çözümü için gerekli bilgiler.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="orkim_username">Kullanıcı Adı</Label>
+            <Input
+              id="orkim_username"
+              value={settings.orkim_username || ""}
+              onChange={(e) => handleChange("orkim_username", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="orkim_password">Şifre</Label>
+            <Input
+              id="orkim_password"
+              type="password"
+              value={settings.orkim_password || ""}
+              onChange={(e) => handleChange("orkim_password", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="OCR_API_KEY">OpenAI API Anahtarı (CAPTCHA için)</Label>
+            <Input
+              id="OCR_API_KEY"
+              type="password"
+              value={settings.OCR_API_KEY || ""}
+              onChange={(e) => handleChange("OCR_API_KEY", e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button type="submit" disabled={isSaving}>
           {isSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -633,17 +927,17 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
     </form>
   )
 }
-const SettingsPage = ({ authError, settings, onSaveSettings }) => {
+const SettingsPage = ({ authError, settings, onSaveSettings, toast }) => {
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async (newSettings: AppSettings) => {
     setIsSaving(true)
     const cleanup = window.electronAPI.onSettingsSaved((result) => {
       if (result.status === "success") {
-        toast.success("Ayarlar başarıyla kaydedildi.")
+        toast("success", "Ayarlar başarıyla kaydedildi.")
         onSaveSettings(newSettings)
       } else {
-        toast.error(`Ayarlar kaydedilemedi: ${result.message}`)
+        toast("error", `Ayarlar kaydedilemedi: ${result.message}`)
       }
       setIsSaving(false)
       cleanup()
@@ -655,7 +949,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings }) => {
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Uygulama Ayarları</h1>
       {authError && (
-        <Alert variant="destructive" className="mb-4">
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Kimlik Doğrulama Hatası!</AlertTitle>
           <AlertDescription>
@@ -701,6 +995,9 @@ const InitialSetupScreen = ({ setAppStatus }) => {
               initialSettings={{
                 netflex_username: "",
                 netflex_password: "",
+                orkim_username: "",
+                orkim_password: "",
+                OCR_API_KEY: "",
                 tci_coefficient: 1.4,
                 sigma_coefficient_us: 1.0,
                 sigma_coefficient_de: 1.0,
@@ -720,7 +1017,7 @@ const InitialSetupScreen = ({ setAppStatus }) => {
 // --------------------------------------------------------------------------------
 // Müşteri (Ana Sayfa)
 // --------------------------------------------------------------------------------
-const CustomerPage = ({ assignments, setAssignments }) => {
+const CustomerPage = ({ assignments, setAssignments, toast }) => {
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
   const [exportCustomerName, setExportCustomerName] = useState("")
   const [selectedForDeletion, setSelectedForDeletion] = useState<AssignmentItem[]>([])
@@ -729,14 +1026,14 @@ const CustomerPage = ({ assignments, setAssignments }) => {
     setAssignments((prev) =>
       prev.filter((p) => !(p.product_code === productToRemove.product_code && p.source === productToRemove.source)),
     )
-    toast.warning(`'${stripHtml(productToRemove.product_name)}' listeden kaldırıldı.`)
+    toast("warning", `'${stripHtml(productToRemove.product_name)}' listeden kaldırıldı.`)
   }
 
   const handleBulkDelete = () => {
     if (selectedForDeletion.length === 0) return
     const itemsToDeleteKeys = new Set(selectedForDeletion.map((p) => `${p.product_code}-${p.source}`))
     setAssignments((prev) => prev.filter((p) => !itemsToDeleteKeys.has(`${p.product_code}-${p.source}`)))
-    toast.warning(`${selectedForDeletion.length} ürün listeden kaldırıldı.`)
+    toast("warning", `${selectedForDeletion.length} ürün listeden kaldırıldı.`)
     setSelectedForDeletion([])
   }
 
@@ -763,10 +1060,10 @@ const CustomerPage = ({ assignments, setAssignments }) => {
 
   const handleExport = () => {
     if (!exportCustomerName.trim()) {
-      toast.error("Lütfen bir müşteri adı girin.")
+      toast("error", "Lütfen bir müşteri adı girin.")
       return
     }
-    toast.info("Excel dosyası oluşturuluyor...")
+    toast("info", "Excel dosyası oluşturuluyor...")
     window.electronAPI.exportToExcel({ customerName: exportCustomerName, products: assignments })
     setIsExportDialogOpen(false)
     setExportCustomerName("")
@@ -783,7 +1080,7 @@ const CustomerPage = ({ assignments, setAssignments }) => {
 
           <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
             <DialogTrigger asChild>
-              <Button disabled={assignments.length === 0}>
+              <Button disabled={assignments.length === 0} onClick={() => setIsExportDialogOpen(true)}>
                 <FileDown className="mr-2 h-4 w-4" /> Excel'e Aktar
               </Button>
             </DialogTrigger>
@@ -821,7 +1118,7 @@ const CustomerPage = ({ assignments, setAssignments }) => {
                   <TableHead className="w-[50px]">
                     <Checkbox
                       checked={isAllSelected}
-                      onCheckedChange={handleSelectAll}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
                       aria-label="Tümünü seç"
                     />
                   </TableHead>
@@ -843,7 +1140,7 @@ const CustomerPage = ({ assignments, setAssignments }) => {
                       <TableCell>
                         <Checkbox
                           checked={isRowSelected}
-                          onCheckedChange={() => handleRowSelect(product)}
+                          onChange={() => handleRowSelect(product)}
                           aria-label="Satırı seç"
                         />
                       </TableCell>
@@ -858,7 +1155,7 @@ const CustomerPage = ({ assignments, setAssignments }) => {
                       <TableCell className="text-right">
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger>
                               <Button variant="ghost" size="icon" onClick={() => handleDeleteAssignment(product)}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -1066,7 +1363,7 @@ const ProductResultItem = ({
                               <div className="flex items-center gap-2">
                                 <Checkbox
                                   id={`cb-netflex-${item.material_number}`}
-                                  onCheckedChange={() => handleSelectNetflex(product, item)}
+                                  onChange={() => handleSelectNetflex(product, item)}
                                   checked={selectedForAssignment.some(
                                     (p) => p.product_code === item.material_number && p.source === "Netflex",
                                   )}
@@ -1113,7 +1410,7 @@ const ProductResultItem = ({
                                   <div className="flex items-start gap-2">
                                     <Checkbox
                                       id={`cb-${code}-${item.material_number}`}
-                                      onCheckedChange={() => handleSelectSigma(product, item, code, item.sigma[code])}
+                                      onChange={() => handleSelectSigma(product, item, code, item.sigma[code])}
                                       checked={selectedForAssignment.some(
                                         (p) =>
                                           p.product_code === item.material_number &&
@@ -1170,7 +1467,7 @@ const ProductResultItem = ({
                       <TableCell>
                         <Checkbox
                           id={`cb-tci-${product.product_number}-${vIndex}`}
-                          onCheckedChange={() => handleSelectTCI(product, variation)}
+                          onChange={() => handleSelectTCI(product, variation)}
                           checked={selectedForAssignment.some(
                             (p) =>
                               p.product_code === `${product.product_number}-${variation.unit}` && p.source === "TCI",
@@ -1212,6 +1509,7 @@ const SearchPage = ({
   settings,
   initialSearchTerm,
   onSearchExecuted,
+  toast
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "")
   const [filterTerm, setFilterTerm] = useState("")
@@ -1223,14 +1521,27 @@ const SearchPage = ({
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const isMounted = useRef(false);
 
   useEffect(() => {
-    if (initialSearchTerm) {
-      setSearchTerm(initialSearchTerm)
-      handleSearch(initialSearchTerm)
-      onSearchExecuted()
+    // Bu effect'in yalnızca component mount edildikten sonra çalışmasını sağlıyoruz
+    // Arama geçmişinden gelindiğinde ilk render'da aramayı tetiklememek için
+    if (isMounted.current) {
+        if (initialSearchTerm) {
+            setSearchTerm(initialSearchTerm);
+            handleSearch(initialSearchTerm);
+            onSearchExecuted();
+        }
+    } else {
+        // Component mount olduğunda, initialSearchTerm'i state'e ata
+        if(initialSearchTerm) {
+            setSearchTerm(initialSearchTerm);
+        }
+        isMounted.current = true;
     }
-  }, [initialSearchTerm])
+}, [initialSearchTerm, handleSearch, onSearchExecuted]);
+
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1283,7 +1594,7 @@ const SearchPage = ({
 
   const handleAssignConfirm = (products: AssignmentItem[]) => {
     onAssignProducts(products)
-    toast.success(`${products.length} ürün, müşteri listesine atandı!`)
+    toast("success", `${products.length} ürün, müşteri listesine atandı!`)
     setSelectedForAssignment([])
   }
 
@@ -1396,7 +1707,7 @@ const SearchPage = ({
 
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <Button variant="outline" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
                   <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
                   {showOriginalPrices ? <Euro className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
@@ -1407,7 +1718,7 @@ const SearchPage = ({
               </TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger>
                 <Button variant="outline" size="icon" onClick={() => setIsProductNameVisible(!isProductNameVisible)}>
                   <span className="sr-only">Ürün Adını Gizle/Göster</span>
                   {isProductNameVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1421,10 +1732,11 @@ const SearchPage = ({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
                 <ListFilter className="mr-2 h-4 w-4" /> Marka Filtrele
               </Button>
             </DropdownMenuTrigger>
+            {isDropdownOpen && (
             <DropdownMenuContent align="end" side="bottom" className="w-56">
               <DropdownMenuLabel>Marka</DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -1450,12 +1762,13 @@ const SearchPage = ({
                 Orkim
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
+            )}
           </DropdownMenu>
         </div>
       </div>
 
       {error && (
-        <Alert variant="destructive" className="flex-shrink-0">
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Hata</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
@@ -1527,7 +1840,7 @@ const SearchPage = ({
 // --------------------------------------------------------------------------------
 // Toplu Proforma Arama Sayfası
 // --------------------------------------------------------------------------------
-const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState }) => {
+const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState, toast }) => {
   const {
     pageState,
     filePath,
@@ -1591,9 +1904,9 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
       window.electronAPI.onBatchSearchComplete((summary) => {
         setBatchState((prev) => ({ ...prev, searchProgress: { ...prev.searchProgress, running: false } }))
         if (summary.status === "cancelled") {
-          toast.warning("Toplu arama iptal edildi.")
+          toast("warning", "Toplu arama iptal edildi.")
         } else if (summary.status === "complete") {
-          toast.success("Toplu arama tamamlandı!")
+          toast("success", "Toplu arama tamamlandı!")
         }
       }),
     ]
@@ -1610,7 +1923,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
 
   const handleStartSearch = () => {
     if (!filePath || !customerName.trim()) {
-      toast.error("Lütfen dosya seçip müşteri adı girin.")
+      toast("error", "Lütfen dosya seçip müşteri adı girin.")
       return
     }
     setIsCustomerDialogOpen(false)
@@ -1628,7 +1941,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
     window.electronAPI.cancelBatchSearch()
   }
   const handleSkipTerm = () => {
-    toast.info(`'${searchProgress.term}' araması atlanıyor...`)
+    toast("info", `'${searchProgress.term}' araması atlanıyor...`)
     window.electronAPI.cancelCurrentTermSearch()
   }
   const handleResetBatchSearch = () => {
@@ -1659,7 +1972,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
 
   const handleAssignConfirm = (products: AssignmentItem[]) => {
     onAssignProducts(products)
-    toast.success(`${products.length} ürün, ${customerName} adlı müşteriye atandı!`)
+    toast("success", `${products.length} ürün, ${customerName} adlı müşteriye atandı!`)
     updateState({ selectedForAssignment: [] })
   }
 
@@ -1726,7 +2039,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Müşteri Bilgisi</DialogTitle>
-            <CardDescription>Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.</CardDescription>
+            <DialogDescription>Arama sonuçlarının atanacağı müşterinin adını ve soyadını girin.</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-2">
             <Label htmlFor="customerName">Müşteri Adı Soyadı</Label>
@@ -1823,7 +2136,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
                     <div className="flex items-center gap-2">
                       <TooltipProvider>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1838,7 +2151,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
                           </TooltipContent>
                         </Tooltip>
                         <Tooltip>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1943,7 +2256,7 @@ const FrequentlySearchedPage = ({ searchHistory, onReSearch, onShowHistoryAssign
                       <div className="flex items-center justify-end gap-2">
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger>
                               <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
                                 <FileText className="h-4 w-4" />
                               </Button>
@@ -2012,16 +2325,11 @@ const SearchHistoryPage = ({ searchHistory, onReSearch, onShowHistoryAssignments
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Arama Geçmişi</h1>
         <div className="w-[200px]">
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filtrele..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="daily">Son 24 Saat</SelectItem>
-              <SelectItem value="weekly">Son 1 Hafta</SelectItem>
-              <SelectItem value="monthly">Son 1 Ay</SelectItem>
-              <SelectItem value="yearly">Son 1 Yıl</SelectItem>
-            </SelectContent>
+          <Select value={filter} onChange={e => setFilter(e.target.value)}>
+            <SelectItem value="daily">Son 24 Saat</SelectItem>
+            <SelectItem value="weekly">Son 1 Hafta</SelectItem>
+            <SelectItem value="monthly">Son 1 Ay</SelectItem>
+            <SelectItem value="yearly">Son 1 Yıl</SelectItem>
           </Select>
         </div>
       </div>
@@ -2045,7 +2353,7 @@ const SearchHistoryPage = ({ searchHistory, onReSearch, onShowHistoryAssignments
                       <div className="flex items-center justify-end gap-2">
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger>
                               <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
                                 <FileText className="h-4 w-4" />
                               </Button>
@@ -2084,7 +2392,7 @@ const HistoryResultsDialog = ({ historyResults, onClose, onReSearchAndAssign }) 
 
   return (
     <Dialog open={historyResults !== null} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>"{historyResults.term}" Araması İçin Atanmış Ürünler</DialogTitle>
           <DialogDescription>
@@ -2136,7 +2444,7 @@ const HistoryResultsDialog = ({ historyResults, onClose, onReSearchAndAssign }) 
   )
 }
 
-const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
+const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [meetings, setMeetings] = useState<Meeting[]>([])
@@ -2173,13 +2481,13 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
 
   // Etkinlik tipi değiştiğinde hatırlatma seçeneklerini sıfırla
   useEffect(() => {
-    if (newMeeting.type === 'görüşme') {
-      setNewMeeting(prev => ({ ...prev, notificationFrequency: 'for_3_days' }));
-    } else { // toplantı
-      setNewMeeting(prev => ({ ...prev, notificationFrequency: '1_day_before' }));
+    if (newMeeting.type === "görüşme") {
+      setNewMeeting((prev) => ({ ...prev, notificationFrequency: "for_3_days" }))
+    } else {
+      // toplantı
+      setNewMeeting((prev) => ({ ...prev, notificationFrequency: "1_day_before" }))
     }
-  }, [newMeeting.type]);
-
+  }, [newMeeting.type])
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear()
@@ -2221,8 +2529,8 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
     const existingIndex = updatedNotes.findIndex((n) => n.date === selectedDate)
 
     // Sadece not metni ve meetings'i al, diğer notları koru
-    const noteOnThisDate = calendarNotes.find(n => n.date === selectedDate);
-    const otherNotes = noteOnThisDate ? noteOnThisDate.note : "";
+    const noteOnThisDate = calendarNotes.find((n) => n.date === selectedDate)
+    const otherNotes = noteOnThisDate ? noteOnThisDate.note : ""
 
     const noteData: CalendarNote = {
       id: existingIndex >= 0 ? updatedNotes[existingIndex].id : Date.now().toString(),
@@ -2239,27 +2547,27 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
     if (window.electronAPI) {
       window.electronAPI.saveCalendarNotes(updatedNotes)
     }
-    toast.success("Gün kaydedildi!")
+    toast("success", "Gün kaydedildi!")
   }
 
   const handleAddMeeting = () => {
-     if (!selectedDate) {
-      toast.error("Lütfen önce bir gün seçin!");
-      return;
+    if (!selectedDate) {
+      toast("error", "Lütfen önce bir gün seçin!")
+      return
     }
     if (!newMeeting.companyName.trim()) {
-      toast.error("Lütfen firma adı girin!")
+      toast("error", "Lütfen firma adı girin!")
       return
     }
     const meeting: Meeting = {
       id: Date.now().toString(),
       ...newMeeting,
-      nextMeetingDate: newMeeting.type === 'görüşme' ? selectedDate : (newMeeting.nextMeetingDate || null),
+      nextMeetingDate: newMeeting.type === "görüşme" ? selectedDate : newMeeting.nextMeetingDate || null,
       completed: false,
     }
     setMeetings([...meetings, meeting])
     setNewMeeting({
-      type: 'görüşme',
+      type: "görüşme",
       companyName: "",
       authorizedPerson: "",
       department: "",
@@ -2284,10 +2592,10 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
 
   const handleExportMeetings = () => {
     if (!exportDates.startDate || !exportDates.endDate) {
-      toast.error("Lütfen başlangıç ve bitiş tarihlerini seçin.")
+      toast("error", "Lütfen başlangıç ve bitiş tarihlerini seçin.")
       return
     }
-    toast.info("Görüşmeler Excel'e aktarılıyor...")
+    toast("info", "Görüşmeler Excel'e aktarılıyor...")
     window.electronAPI.exportMeetings({
       notes: calendarNotes,
       startDate: exportDates.startDate,
@@ -2297,19 +2605,18 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
   }
 
   const hasEventsOnDate = (dateStr: string) => {
-    const note = calendarNotes.find((n) => n.date === dateStr);
-    return note && note.meetings.length > 0;
-  };
+    const note = calendarNotes.find((n) => n.date === dateStr)
+    return note && note.meetings.length > 0
+  }
 
   const hasUpcomingMeetingOnDate = (dateStr: string) => {
-    const note = calendarNotes.find((n) => n.date === dateStr);
+    const note = calendarNotes.find((n) => n.date === dateStr)
     if (note) {
-      return note.meetings.some((m) => !m.completed);
+      return note.meetings.some((m) => !m.completed)
     }
     // Ayrıca, başka bir güne kaydedilmiş ama toplantı tarihi bu gün olanları da kontrol et
-    return calendarNotes.some((n) => n.meetings.some(m => m.nextMeetingDate === dateStr && !m.completed));
-  };
-
+    return calendarNotes.some((n) => n.meetings.some((m) => m.nextMeetingDate === dateStr && !m.completed))
+  }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -2339,8 +2646,18 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
 
   const days = getDaysInMonth(currentDate)
   const monthNames = [
-    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
   ]
   const dayNames = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
 
@@ -2350,7 +2667,7 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
         <h1 className="text-2xl font-bold">Dijital Ajanda</h1>
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => setIsExportDialogOpen(true)}>
               <FileDown className="mr-2 h-4 w-4" /> Raporu Dışa Aktar
             </Button>
           </DialogTrigger>
@@ -2420,7 +2737,8 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                 }
                 const dateStr = formatDate(currentDate.getFullYear(), currentDate.getMonth(), day)
                 const isSelected = selectedDate === dateStr
-                const isToday = dateStr === formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+                const isToday =
+                  dateStr === formatDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
                 const hasEvent = hasEventsOnDate(dateStr)
                 const hasUpcoming = hasUpcomingMeetingOnDate(dateStr)
                 return (
@@ -2475,15 +2793,10 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                     <Card className="p-4 space-y-4">
                       <Select
                         value={newMeeting.type}
-                        onValueChange={(value: "görüşme" | "toplantı") => setNewMeeting({ ...newMeeting, type: value })}
+                        onChange={(e) => setNewMeeting({ ...newMeeting, type: e.target.value as any })}
                       >
-                         <SelectTrigger>
-                          <SelectValue placeholder="Etkinlik Tipi" />
-                        </SelectTrigger>
-                        <SelectContent>
                           <SelectItem value="görüşme">Görüşme</SelectItem>
                           <SelectItem value="toplantı">Toplantı</SelectItem>
-                        </SelectContent>
                       </Select>
 
                       <Input
@@ -2501,12 +2814,12 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                         value={newMeeting.department}
                         onChange={(e) => setNewMeeting({ ...newMeeting, department: e.target.value })}
                       />
-                       <Input
+                      <Input
                         placeholder="E-mail Adresi"
                         value={newMeeting.email}
                         onChange={(e) => setNewMeeting({ ...newMeeting, email: e.target.value })}
                       />
-                       <Input
+                      <Input
                         placeholder="Telefon"
                         value={newMeeting.phone}
                         onChange={(e) => setNewMeeting({ ...newMeeting, phone: e.target.value })}
@@ -2518,7 +2831,7 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                         onChange={(e) => setNewMeeting({ ...newMeeting, meetingNotes: e.target.value })}
                       />
 
-                      {newMeeting.type === 'toplantı' && (
+                      {newMeeting.type === "toplantı" && (
                         <div className="space-y-2">
                           <Label>Toplantı Tarihi</Label>
                           <Input
@@ -2531,51 +2844,39 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
 
                       <Select
                         value={newMeeting.priority}
-                        onValueChange={(value: "low" | "medium" | "high") =>
-                          setNewMeeting({ ...newMeeting, priority: value })
+                        onChange={(e) =>
+                          setNewMeeting({ ...newMeeting, priority: e.target.value as any })
                         }
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Öncelik" />
-                        </SelectTrigger>
-                        <SelectContent>
                           <SelectItem value="low">Düşük Öncelik</SelectItem>
                           <SelectItem value="medium">Orta Öncelik</SelectItem>
                           <SelectItem value="high">Yüksek Öncelik</SelectItem>
-                        </SelectContent>
                       </Select>
 
                       <div className="space-y-2">
                         <Label htmlFor="notificationFrequency">Hatırlatma Şekli</Label>
-                        {newMeeting.type === 'görüşme' ? (
+                        {newMeeting.type === "görüşme" ? (
                           <Select
                             value={newMeeting.notificationFrequency}
-                            onValueChange={(value) => setNewMeeting({ ...newMeeting, notificationFrequency: value })}
+                            onChange={(e) => setNewMeeting({ ...newMeeting, notificationFrequency: e.target.value })}
+                            id="notificationFrequency"
                           >
-                            <SelectTrigger id="notificationFrequency">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
                                <SelectItem value="none">Bildirme</SelectItem>
                                <SelectItem value="for_1_day">1 Gün Boyunca</SelectItem>
                                <SelectItem value="for_3_days">3 Gün Boyunca</SelectItem>
                                <SelectItem value="for_1_week">1 Hafta Boyunca</SelectItem>
-                            </SelectContent>
                           </Select>
-                        ) : ( // Toplantı
+                        ) : (
+                          // Toplantı
                           <Select
                             value={newMeeting.notificationFrequency}
-                            onValueChange={(value) => setNewMeeting({ ...newMeeting, notificationFrequency: value })}
+                            onChange={(e) => setNewMeeting({ ...newMeeting, notificationFrequency: e.target.value })}
+                            id="notificationFrequency"
                           >
-                            <SelectTrigger id="notificationFrequency">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
                               <SelectItem value="none">Bildirme</SelectItem>
                               <SelectItem value="on_day">Olay Günü</SelectItem>
                               <SelectItem value="1_day_before">1 Gün Önce</SelectItem>
                               <SelectItem value="1_week_before">1 Hafta Önce</SelectItem>
-                            </SelectContent>
                           </Select>
                         )}
                       </div>
@@ -2584,21 +2885,17 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                         <Label htmlFor="notificationDailyFrequency">Gün İçi Sıklık</Label>
                         <Select
                           value={newMeeting.notificationDailyFrequency}
-                          onValueChange={(value) =>
-                            setNewMeeting({ ...newMeeting, notificationDailyFrequency: value as any })
+                          onChange={(e) =>
+                            setNewMeeting({ ...newMeeting, notificationDailyFrequency: e.target.value as any })
                           }
+                          id="notificationDailyFrequency"
                         >
-                          <SelectTrigger id="notificationDailyFrequency">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
                             <SelectItem value="once">Günde 1 Kez (Sabah)</SelectItem>
                             <SelectItem value="twice">Günde 2 Kez (Sabah, Akşam)</SelectItem>
                             <SelectItem value="thrice">Günde 3 Kez (Sabah, Öğle, Akşam)</SelectItem>
                             <SelectItem value="five_times">Günde 5 Kez</SelectItem>
                             <SelectItem value="ten_times">Günde 10 Kez</SelectItem>
                             <SelectItem value="hourly">Saat Başı (Mesai Saatleri)</SelectItem>
-                          </SelectContent>
                         </Select>
                       </div>
 
@@ -2623,28 +2920,41 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
                               <div className="flex items-center gap-2">
                                 <Checkbox
                                   checked={meeting.completed}
-                                  onCheckedChange={() => handleToggleMeetingComplete(meeting.id)}
+                                  onChange={() => handleToggleMeetingComplete(meeting.id)}
                                 />
                                 <p className={cn("font-semibold text-sm", meeting.completed && "line-through")}>
-                                  {meeting.companyName} <span className="text-xs font-normal text-muted-foreground">({meeting.type})</span>
+                                  {meeting.companyName}{" "}
+                                  <span className="text-xs font-normal text-muted-foreground">
+                                    ({meeting.type})
+                                  </span>
                                 </p>
                               </div>
                               <div className="pl-6 space-y-1.5 text-xs text-muted-foreground">
                                 {meeting.authorizedPerson && (
-                                   <div className="flex items-center gap-2"><Users className="h-3 w-3"/><span>{meeting.authorizedPerson}</span></div>
+                                  <div className="flex items-center gap-2">
+                                    <Users className="h-3 w-3" />
+                                    <span>{meeting.authorizedPerson}</span>
+                                  </div>
                                 )}
                                 {meeting.department && (
-                                   <div className="flex items-center gap-2"><Briefcase className="h-3 w-3"/><span>{meeting.department}</span></div>
+                                  <div className="flex items-center gap-2">
+                                    <Briefcase className="h-3 w-3" />
+                                    <span>{meeting.department}</span>
+                                  </div>
                                 )}
-                                 {meeting.email && (
-                                   <div className="flex items-center gap-2"><Mail className="h-3 w-3"/><span>{meeting.email}</span></div>
+                                {meeting.email && (
+                                  <div className="flex items-center gap-2">
+                                    <Mail className="h-3 w-3" />
+                                    <span>{meeting.email}</span>
+                                  </div>
                                 )}
-                                  {meeting.phone && (
-                                   <div className="flex items-center gap-2"><Phone className="h-3 w-3"/><span>{meeting.phone}</span></div>
+                                {meeting.phone && (
+                                  <div className="flex items-center gap-2">
+                                    <Phone className="h-3 w-3" />
+                                    <span>{meeting.phone}</span>
+                                  </div>
                                 )}
-                                {meeting.meetingNotes && (
-                                  <p className="pt-1">{meeting.meetingNotes}</p>
-                                )}
+                                {meeting.meetingNotes && <p className="pt-1">{meeting.meetingNotes}</p>}
                               </div>
                               {meeting.nextMeetingDate && (
                                 <div className="flex items-center gap-1 pl-6 text-xs pt-1">
@@ -2702,6 +3012,37 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes }) => {
 // --------------------------------------------------------------------------------
 // Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
+const calculateRelevance = (product: ProductResult, term: string): number => {
+  let score = 0
+  const termLower = term.toLowerCase().trim()
+  if (!termLower) return 0
+  const name = stripHtml(product.product_name || "").toLowerCase()
+  const number = (product.product_number || "").toLowerCase()
+  const cas = (product.cas_number || "").toLowerCase()
+  if (termLower === number) score += 10000
+  if (termLower === cas) score += 5000
+  if (termLower === name) score += 2000
+  if (name.startsWith(termLower)) score += 500
+  if (number.startsWith(termLower)) score += 500
+  if (name.includes(termLower)) score += 100 + 50 / (name.length + 1)
+  const termWords = new Set(termLower.split(" ").filter((w) => w))
+  const nameWords = new Set(name.split(" ").filter((w) => w))
+  let allWordsPresent = true
+  for (const word of termWords) {
+    if (!nameWords.has(word)) {
+      allWordsPresent = false
+      break
+    }
+  }
+  if (allWordsPresent && termWords.size > 0) {
+    score += termWords.size * 50
+  }
+  const commonWords = new Set([...termWords].filter((x) => nameWords.has(x)))
+  score += commonWords.size * 10
+  return score
+}
+
+
 function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("calendar")
   const [assignments, setAssignments] = useState<AssignmentItem[]>([])
@@ -2710,6 +3051,15 @@ function MainApplication({ appStatus, setAppStatus }) {
   const [isDataLoaded, setIsDataLoaded] = useState(false)
   const [parities, setParities] = useState(null)
   const [activeNotifications, setActiveNotifications] = useState<any[]>([])
+
+  const [toasts, setToasts] = useState([])
+  const toast = (type, message) => {
+      const id = Date.now() + Math.random();
+      setToasts(prev => [...prev, { id, type, message }]);
+      setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== id));
+      }, 5000);
+  };
 
   const [batchSearchState, setBatchSearchState] = useState({
     pageState: "idle",
@@ -2729,10 +3079,9 @@ function MainApplication({ appStatus, setAppStatus }) {
       if (savedAssignments) setAssignments(JSON.parse(savedAssignments))
       const savedHistory = localStorage.getItem("search_history")
       if (savedHistory) setSearchHistory(JSON.parse(savedHistory))
-      // Takvim notları artık sadece Electron'dan yüklenecek, bu yüzden başlangıçta localStorage'dan okumayı kaldırıyoruz.
     } catch (error) {
       console.error("localStorage'dan veri yüklenirken hata:", error)
-      toast.error("Kaydedilmiş veriler yüklenemedi.")
+      toast("error", "Kaydedilmiş veriler yüklenemedi.")
     } finally {
       setIsDataLoaded(true)
     }
@@ -2755,14 +3104,14 @@ function MainApplication({ appStatus, setAppStatus }) {
         }
       })
       const cleanupExport = window.electronAPI.onExportMeetingsResult((result) => {
-         if (result.status === "success") {
-          toast.success(`Excel dosyası başarıyla oluşturuldu: ${result.path}`)
+        if (result.status === "success") {
+          toast("success", `Excel dosyası başarıyla oluşturuldu: ${result.path}`)
         } else if (result.status === "info") {
-           toast.info(result.message)
+          toast("info", result.message)
         } else {
-          toast.error(`Excel oluşturulurken bir hata oluştu: ${result.message}`)
+          toast("error", `Excel oluşturulurken bir hata oluştu: ${result.message}`)
         }
-      });
+      })
 
       return () => {
         cleanupSettings()
@@ -2778,7 +3127,6 @@ function MainApplication({ appStatus, setAppStatus }) {
       try {
         localStorage.setItem("assignments_single", JSON.stringify(assignments))
         localStorage.setItem("search_history", JSON.stringify(searchHistory))
-        // Takvim notlarını artık Electron tarafı JSON dosyasına kaydediyor, localStorage'a kaydetmeye gerek yok.
       } catch (error) {
         console.error("Veriler kaydedilirken hata:", error)
       }
@@ -2843,49 +3191,30 @@ function MainApplication({ appStatus, setAppStatus }) {
     }
     const priced = rawSearchResults.map((p) => calculateProductPrices(p, settings, parities))
     priced.sort((a, b) => {
+      const scoreA = calculateRelevance(a, currentSearchTerm)
+      const scoreB = calculateRelevance(b, currentSearchTerm)
+
+      // Primary sort: by relevance score, descending
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA
+      }
+
+      // Secondary sort: by price, ascending
       const getNumericPrice = (priceStr: string | undefined): number => {
-        if (!priceStr || priceStr === "N/A") return Number.POSITIVE_INFINITY
-        return Number.parseFloat(priceStr.replace(/€/g, "").replace(/\./g, "").replace(/,/g, "."))
+        if (!priceStr || priceStr === "N/A" || priceStr === "Teklif İsteyiniz") return Number.POSITIVE_INFINITY
+        const cleanedPrice = priceStr.replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, ".")
+        const numericValue = Number.parseFloat(cleanedPrice)
+        return isNaN(numericValue) ? Number.POSITIVE_INFINITY : numericValue
       }
       const priceA = getNumericPrice(a.cheapest_eur_price_str)
       const priceB = getNumericPrice(b.cheapest_eur_price_str)
       return priceA - priceB
     })
     return priced
-  }, [rawSearchResults, settings, parities])
+  }, [rawSearchResults, settings, parities, currentSearchTerm])
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
-
-    const calculateRelevance = (product: ProductResult, term: string): number => {
-      let score = 0
-      const termLower = term.toLowerCase().trim()
-      if (!termLower) return 0
-      const name = stripHtml(product.product_name || "").toLowerCase()
-      const number = (product.product_number || "").toLowerCase()
-      const cas = (product.cas_number || "").toLowerCase()
-      if (termLower === number) score += 10000
-      if (termLower === cas) score += 5000
-      if (termLower === name) score += 2000
-      if (name.startsWith(termLower)) score += 500
-      if (number.startsWith(termLower)) score += 500
-      if (name.includes(termLower)) score += 100 + 50 / (name.length + 1)
-      const termWords = new Set(termLower.split(" ").filter((w) => w))
-      const nameWords = new Set(name.split(" ").filter((w) => w))
-      let allWordsPresent = true
-      for (const word of termWords) {
-        if (!nameWords.has(word)) {
-          allWordsPresent = false
-          break
-        }
-      }
-      if (allWordsPresent && termWords.size > 0) {
-        score += termWords.size * 50
-      }
-      const commonWords = new Set([...termWords].filter((x) => nameWords.has(x)))
-      score += commonWords.size * 10
-      return score
-    }
 
     const cleanups = [
       window.electronAPI.onProductFound(({ product, context }) => {
@@ -2905,11 +3234,7 @@ function MainApplication({ appStatus, setAppStatus }) {
                 }
               })
               productQueueRef.current = []
-              const sortedProducts = Array.from(newProductsMap.values())
-              sortedProducts.sort(
-                (a, b) => calculateRelevance(b, currentSearchTerm) - calculateRelevance(a, currentSearchTerm),
-              )
-              return sortedProducts
+              return Array.from(newProductsMap.values())
             })
           }, 200)
         }
@@ -2917,9 +3242,9 @@ function MainApplication({ appStatus, setAppStatus }) {
       window.electronAPI.onSearchComplete((summary) => {
         setIsLoading(false)
         if (summary.status === "cancelled") {
-          toast.warning("Arama iptal edildi.")
+          toast("warning", "Arama iptal edildi.")
         } else {
-          toast.success(`Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
+          toast("success", `Arama tamamlandı! ${summary.total_found} eşleşme bulundu.`)
         }
       }),
       window.electronAPI.onSearchError((errorMessage) => {
@@ -2928,9 +3253,9 @@ function MainApplication({ appStatus, setAppStatus }) {
       }),
       window.electronAPI.onExportResult((result) => {
         if (result.status === "success") {
-          toast.success(`Excel dosyası kaydedildi: ${result.path}`)
+          toast("success", `Excel dosyası kaydedildi: ${result.path}`)
         } else {
-          toast.error(`Excel hatası: ${result.message}`)
+          toast("error", `Excel hatası: ${result.message}`)
         }
       }),
       window.electronAPI.onAuthenticationError(() => {
@@ -2948,7 +3273,7 @@ function MainApplication({ appStatus, setAppStatus }) {
         clearTimeout(updateTimeoutRef.current)
       }
     }
-  }, [setAppStatus, currentSearchTerm])
+  }, [setAppStatus])
 
   const handleAssignProducts = (products: AssignmentItem[]) => {
     setAssignments((prev) => {
@@ -2959,23 +3284,24 @@ function MainApplication({ appStatus, setAppStatus }) {
     })
   }
 
-  const handleSearch = (searchTerm: string) => {
-    if (!searchTerm.trim() || isLoading) return
+ const handleSearch = (searchTerm: string) => {
+    if (!searchTerm.trim()) return;
+    // isLoading'i burada kontrol etmiyoruz çünkü yeni bir arama her zaman başlatılabilmeli
     if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current)
+      clearTimeout(updateTimeoutRef.current);
     }
-    productQueueRef.current = []
-    setIsLoading(true)
-    setRawSearchResults([])
-    setError(null)
-    setCurrentSearchTerm(searchTerm)
+    productQueueRef.current = [];
+    setIsLoading(true);
+    setRawSearchResults([]);
+    setError(null);
+    setCurrentSearchTerm(searchTerm);
     if (window.electronAPI) {
-      window.electronAPI.performSearch(searchTerm)
+      window.electronAPI.performSearch(searchTerm);
     } else {
-      console.error("Electron API bulunamadı, arama yapılamıyor.")
-      setIsLoading(false)
+      console.error("Electron API bulunamadı, arama yapılamıyor.");
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleReSearch = (term: string) => {
     setSearchTermForPage(term)
@@ -2984,10 +3310,15 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const handleCancel = () => {
     if (isLoading && window.electronAPI) {
-      toast.info("Arama iptal ediliyor...")
+      toast("info", "Arama iptal ediliyor...")
       window.electronAPI.cancelSearch()
     }
   }
+
+  const onSearchExecuted = () => {
+    setSearchTermForPage(null);
+  };
+
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -3029,7 +3360,7 @@ function MainApplication({ appStatus, setAppStatus }) {
     })
     setCalendarNotes(newNotes)
     window.electronAPI.saveCalendarNotes(newNotes)
-    toast.success("Görüşme durumu güncellendi.")
+    toast("success", "Görüşme durumu güncellendi.")
   }
 
   const handleGoToDate = (date: string) => {
@@ -3038,7 +3369,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const renderPage = () => {
     if (appStatus === "auth_error") {
-      return <SettingsPage authError={true} settings={settings} onSaveSettings={handleSaveSettings} />
+      return <SettingsPage authError={true} settings={settings} onSaveSettings={handleSaveSettings} toast={toast} />
     }
 
     switch (page) {
@@ -3053,7 +3384,8 @@ function MainApplication({ appStatus, setAppStatus }) {
             onAssignProducts={handleAssignProducts}
             settings={settings}
             initialSearchTerm={searchTermForPage}
-            onSearchExecuted={() => setSearchTermForPage(null)}
+            onSearchExecuted={onSearchExecuted}
+            toast={toast}
           />
         )
       case "batch-search":
@@ -3063,6 +3395,7 @@ function MainApplication({ appStatus, setAppStatus }) {
             settings={settings}
             batchState={batchSearchState}
             setBatchState={setBatchSearchState}
+            toast={toast}
           />
         )
       case "frequent-searches":
@@ -3082,12 +3415,12 @@ function MainApplication({ appStatus, setAppStatus }) {
           />
         )
       case "calendar":
-        return <CalendarPage calendarNotes={calendarNotes} setCalendarNotes={setCalendarNotes} />
+        return <CalendarPage calendarNotes={calendarNotes} setCalendarNotes={setCalendarNotes} toast={toast} />
       case "settings":
-        return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} />
+        return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} toast={toast} />
       case "home":
       default:
-        return <CustomerPage assignments={assignments} setAssignments={setAssignments} />
+        return <CustomerPage assignments={assignments} setAssignments={setAssignments} toast={toast} />
     }
   }
 
@@ -3104,7 +3437,30 @@ function MainApplication({ appStatus, setAppStatus }) {
         <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
           <main className="flex-1 items-start gap-4 sm:px-6 sm:py-0 md:gap-8">{renderPage()}</main>
         </div>
-        <Toaster position="bottom-right" />
+
+        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+            {toasts.map(t => {
+                const colors = {
+                    success: "bg-green-600 border-green-700",
+                    error: "bg-red-600 border-red-700",
+                    warning: "bg-yellow-500 border-yellow-600",
+                    info: "bg-blue-600 border-blue-700",
+                }
+                return (
+                    <motion.div
+                        key={t.id}
+                        layout
+                        initial={{ opacity: 0, y: 50, scale: 0.3 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+                        className={cn("text-white p-4 rounded-md shadow-lg border text-sm font-medium", colors[t.type] || colors.info)}
+                    >
+                        {t.message}
+                    </motion.div>
+                )
+            })}
+        </div>
+
         <HistoryResultsDialog
           historyResults={historyResults}
           onClose={() => setHistoryResults(null)}
@@ -3120,6 +3476,15 @@ function MainApplication({ appStatus, setAppStatus }) {
 // --------------------------------------------------------------------------------
 export default function App() {
   const [appStatus, setAppStatus] = useState("initializing")
+  const [toasts, setToasts] = useState([])
+
+  const toast = (type, message) => {
+      const id = Date.now() + Math.random();
+      setToasts(prev => [...prev, { id, type, message }]);
+      setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== id));
+      }, 5000);
+  };
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -3131,13 +3496,13 @@ export default function App() {
     const cleanups = [
       window.electronAPI.onServicesReady((isReady) => {
         setAppStatus(isReady ? "ready" : "error")
-        if (!isReady) toast.error("Arka plan servisleri başlatılamadı.")
+        if (!isReady) toast("error", "Arka plan servisleri başlatılamadı.")
       }),
       window.electronAPI.onInitialSetupRequired(() => setAppStatus("setup_required")),
       window.electronAPI.onAuthenticationError(() => setAppStatus("auth_error")),
       window.electronAPI.onPythonCrashed(() => {
         setAppStatus("error")
-        toast.error("Kritik hata: Arka plan servisi çöktü.")
+        toast("error", "Kritik hata: Arka plan servisi çöktü.")
       }),
     ]
 
@@ -3164,7 +3529,7 @@ export default function App() {
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-      <style jsx global>{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
           height: 8px;
@@ -3194,7 +3559,29 @@ export default function App() {
           {renderContent()}
         </motion.div>
       </AnimatePresence>
-      <Toaster position="bottom-right" />
+        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+            {toasts.map(t => {
+                 const colors = {
+                    success: "bg-green-600 border-green-700",
+                    error: "bg-red-600 border-red-700",
+                    warning: "bg-yellow-500 border-yellow-600",
+                    info: "bg-blue-600 border-blue-700",
+                }
+                return (
+                    <motion.div
+                        key={t.id}
+                        layout
+                        initial={{ opacity: 0, y: 50, scale: 0.3 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+                        className={cn("text-white p-4 rounded-md shadow-lg border text-sm font-medium", colors[t.type] || colors.info)}
+                    >
+                        {t.message}
+                    </motion.div>
+                )
+            })}
+        </div>
     </ThemeProvider>
   )
 }
+
