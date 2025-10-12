@@ -97,5 +97,6 @@ class CurrencyConverter:
         print(f"1 USD = {parities['usd_eur']} EUR")
         print(f"1 GBP = {parities['gbp_eur']} EUR")
         print(f"Son Güncelleme: {parities['last_updated']}")
+        print(f"1 USD = {58*parities['usd_eur']} EUR")
     else:
         print(f"\nHata: {parities['error']}")"""
