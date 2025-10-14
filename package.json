@@ -19,18 +19,18 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "electron": "^38.0.0",
-    "electron-builder": "^26.0.12",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.9.1",
     "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.npc-ai-erp.app",
     "productName": "NPC-AI ERP",
-    "copyright": "NPC-AI",
+    "copyright": "Copyright © 2024 NPC-AI",
     "asar": true,
     "win": {
       "target": "nsis",
-      "icon": "icon.png"
+      "icon": "assets/icon.png"
     },
     "files": [
       "package.json",
@@ -43,11 +43,12 @@
     ],
     "extraResources": [
       {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
         "from": "bin",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
+        "to": "bin"
       }
     ]
   }

@@ -12,6 +12,12 @@ let handshakeComplete = false
 
 const isDev = !app.isPackaged
 
+// --- MERKEZİ İKON YOLU TANIMI ---
+// Bu değişken, uygulamanın paketlenmiş olup olmamasına göre doğru yolu kendisi bulur.
+const iconPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets', 'icon.png') // Kurulum sonrası
+  : path.join(__dirname, 'assets', 'icon.png');            // Geliştirme sırasında
+
 function startPythonService() {
   if (pythonProcess) {
     console.log("Python servisi zaten çalışıyor.")
@@ -94,13 +100,12 @@ function startPythonService() {
                   title: data.title || "Görüşme Hatırlatması",
                   subtitle: data.subtitle || "",
                   body: data.body || "",
-                  icon: path.join(__dirname, "icon.png"),
+                  icon: iconPath, // <-- GÜNCELLENDİ
                   actions: [{ type: "button", text: "Tamamlandı Olarak İşaretle" }],
                 })
 
                 notification.on("action", (event, index) => {
                   if (index === 0) {
-                    // "Tamamlandı" butonuna tıklandı
                     sendCommandToPython({
                       action: "mark_meeting_complete",
                       data: {
@@ -154,7 +159,7 @@ function createWindow() {
     height: 800,
     backgroundColor: "#FFFFFF",
     show: false,
-    icon: path.join(__dirname, "icon.png"),
+    icon: iconPath, // <-- GÜNCELLENDİ
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -174,8 +179,8 @@ function createWindow() {
       if (Notification.isSupported()) {
         const notification = new Notification({
             title: 'Uygulama Arka Planda',
-            body: 'Tales Job ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
-            icon: path.join(__dirname, "icon.png")
+            body: 'NPC-AI ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
+            icon: iconPath // <-- GÜNCELLENDİ
         });
         notification.show();
       }
@@ -186,7 +191,6 @@ function createWindow() {
   win.setMenu(null)
 
   if (isDev) {
-
     loadDevUrlWithRetry()
   } else {
     win.loadFile(path.join(__dirname, "out", "index.html"))
@@ -215,7 +219,7 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  tray = new Tray(path.join(__dirname, 'icon.png'))
+  tray = new Tray(iconPath) // <-- GÜNCELLENDİ
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Uygulamayı Göster',
@@ -233,7 +237,7 @@ app.whenReady().then(() => {
       }
     }
   ])
-  tray.setToolTip('Tales Job ERP')
+  tray.setToolTip('NPC-AI ERP')
   tray.setContextMenu(contextMenu)
   tray.on('click', () => {
     if (win) {
@@ -242,6 +246,7 @@ app.whenReady().then(() => {
   })
 
   app.on("activate", () => {
+    // Doğru Kod ✅
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     } else if (win) {
@@ -301,18 +306,15 @@ ipcMain.on("load-calendar-notes", () => sendCommandToPython({ action: "load_cale
 ipcMain.on("save-calendar-notes", (event, notes) => sendCommandToPython({ action: "save_calendar_notes", data: notes }))
 ipcMain.on("export-meetings", (event, data) => sendCommandToPython({ action: "export_meetings", data: data }))
 
-// Bu IPC kanalı, renderer tarafından manuel tetikleme için kullanılabilir (opsiyonel)
 ipcMain.on("check-notifications-now", () => sendCommandToPython({ action: "check_notifications_now" }))
 
-// Bu IPC kanalı, bildirimden gelen bir eylemi işlemek için değil, genel amaçlı bildirim göstermek için kalabilir.
 ipcMain.on("show-notification", (event, { title, body }) => {
   if (Notification.isSupported()) {
     const notification = new Notification({
       title: title,
       body: body,
-      icon: path.join(__dirname, "icon.png"),
+      icon: iconPath, // <-- GÜNCELLENDİ
     })
     notification.show()
   }
 })
-
