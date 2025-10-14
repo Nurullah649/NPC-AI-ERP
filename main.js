@@ -1,10 +1,11 @@
 // main.js
 
-const { app, BrowserWindow, ipcMain, dialog, Notification } = require("electron")
+const { app, BrowserWindow, ipcMain, dialog, Notification, Tray, Menu } = require("electron")
 const path = require("path")
 const { spawn, exec, execSync } = require("child_process")
 
 let win
+let tray
 let pythonProcess = null
 let initialPythonStateMessage = null
 let handshakeComplete = false
@@ -166,6 +167,22 @@ function createWindow() {
     startPythonService()
   })
 
+  win.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault()
+      win.hide()
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+            title: 'Uygulama Arka Planda',
+            body: 'Tales Job ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
+            icon: path.join(__dirname, "icon.png")
+        });
+        notification.show();
+      }
+    }
+    return false
+  })
+
   win.setMenu(null)
 
   if (isDev) {
@@ -198,8 +215,38 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  tray = new Tray(path.join(__dirname, 'icon.png'))
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Uygulamayı Göster',
+      click: () => {
+        if (win) {
+          win.show()
+        }
+      }
+    },
+    {
+      label: 'Çıkış',
+      click: () => {
+        app.isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+  tray.setToolTip('Tales Job ERP')
+  tray.setContextMenu(contextMenu)
+  tray.on('click', () => {
+    if (win) {
+      win.isVisible() ? win.hide() : win.show()
+    }
+  })
+
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else if (win) {
+      win.show()
+    }
   })
 })
 
@@ -226,7 +273,8 @@ app.on("before-quit", () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    app.quit()
+    // Varsayılan app.quit() davranışını engelliyoruz çünkü artık tepsiye küçültüyoruz.
+    // app.quit()
   }
 })
 
@@ -267,3 +315,4 @@ ipcMain.on("show-notification", (event, { title, body }) => {
     notification.show()
   }
 })
+

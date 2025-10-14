@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Gerekli Kütüphaneler: selenium, requests, openpyxl, python-dotenv, thefuzz, python-docx, googletrans==3.0.0, langdetect, chardet
 import sys
 import os
@@ -22,14 +23,58 @@ from openpyxl.styles import Font, Alignment
 from googletrans import Translator
 from langdetect import detect, LangDetectException
 
-from src import sigma, netflex, tci, currency_converter, orkim
 
-# --- BAŞLANGIÇTA KODLAMAYI AYARLA ---
-if sys.platform == "win32":
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    if sys.stderr.encoding != 'utf-8':
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# src modüllerinin import edildiği varsayılıyor
+# from src import sigma, netflex, tci, currency_converter, orkim
+
+# --- ÖRNEK/BOŞ MODÜLLER (Eğer 'src' klasörü yoksa hata vermemesi için) ---
+class MockAPI:
+    def __init__(self, *args, **kwargs): pass
+
+    def search_products(self, *args, **kwargs): return []
+
+    def start_drivers(self, *args, **kwargs): pass
+
+    def stop_drivers(self, *args, **kwargs): pass
+
+    def reinit_driver(self, *args, **kwargs): pass
+
+    def close_driver(self, *args, **kwargs): pass
+
+    def get_token(self, *args, **kwargs): pass
+
+    def update_credentials(self, *args, **kwargs): pass
+
+    def get_products(self, *args, **kwargs): yield [];
+
+    def get_all_product_prices(self, *args, **kwargs): return {}
+
+
+class MockConverter:
+    def get_parities(self, *args, **kwargs): return {"usd_eur": 0.9, "gbp_eur": 1.1}
+
+
+class MockProduct:
+    def __init__(self, name, code, cas):
+        self.name = name
+        self.code = code
+        self.cas_number = cas
+        self.variations = []
+
+
+# Gerçek importlar yerine Mock sınıfları kullanılıyor (geçici)
+try:
+    from src import sigma, netflex, tci, currency_converter, orkim
+except ImportError:
+    print("Uyarı: 'src' modülleri bulunamadı. Mock sınıflar kullanılıyor.", file=sys.stderr)
+    sigma = type('sigma', (), {'SigmaAldrichAPI': MockAPI})
+    netflex = type('netflex', (), {'NetflexAPI': MockAPI, 'AuthenticationError': Exception})
+    tci = type('tci', (), {'TciScraper': MockAPI, 'Product': MockProduct})
+    currency_converter = type('currency_converter', (), {'CurrencyConverter': MockConverter})
+    orkim = type('orkim', (), {'OrkimScraper': MockAPI})
+
+
+# --- BİTİŞ: ÖRNEK/BOŞ MODÜLLER ---
 
 
 # --- PAKETLEME İÇİN DOSYA YOLU FONKSİYONU ---
@@ -49,6 +94,10 @@ def get_app_base_path() -> Path:
         return Path(os.path.abspath("."))
 
 
+dotenv_path = get_resource_path('.env')
+# .env dosyasını yükle
+load_dotenv(dotenv_path=dotenv_path)
+
 APP_BASE_PATH = get_app_base_path()
 LOGS_AND_SETTINGS_DIR = APP_BASE_PATH / "TalesJob_Veri"
 SETTINGS_FILE_PATH = LOGS_AND_SETTINGS_DIR / "settings.json"
@@ -65,7 +114,7 @@ def load_settings() -> Dict[str, Any]:
     default_settings = {
         "netflex_username": "", "netflex_password": "", "tci_coefficient": 1.4,
         "sigma_coefficient_us": 1.0, "sigma_coefficient_de": 1.0, "sigma_coefficient_gb": 1.0,
-        "orkim_username": "", "orkim_password": "", "OCR_API_KEY": ""
+        "orkim_username": "", "orkim_password": ""
     }
     if not SETTINGS_FILE_PATH.exists(): return default_settings
     try:
@@ -84,7 +133,7 @@ def save_settings(new_settings: Dict[str, Any]):
                 new_settings[key] = float(str(new_settings[key]).replace(',', '.'))
         LOGS_AND_SETTINGS_DIR.mkdir(exist_ok=True)
         with open(SETTINGS_FILE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(new_settings, f, indent=4)
+            json.dump(new_settings, f, indent=4, ensure_ascii=False)
     except (IOError, TypeError, ValueError) as e:
         logging.error(f"Ayarlar kaydedilirken hata: {e}")
 
@@ -138,7 +187,7 @@ def save_notification_state(state):
     try:
         LOGS_AND_SETTINGS_DIR.mkdir(exist_ok=True)
         with open(NOTIFICATION_STATE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=4)
+            json.dump(state, f, indent=4, ensure_ascii=False)
     except (IOError, TypeError) as e:
         logging.error(f"Bildirim durumu kaydedilirken hata: {e}")
 
@@ -293,9 +342,12 @@ def setup_logging():
     admin_logger.addHandler(admin_handler)
     admin_logger.setLevel(logging.INFO)
     admin_logger.propagate = False
+
+    # Konsol çıktısını stderr'e yönlendiriyoruz
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(logging.INFO)
+
     logging.basicConfig(level=logging.INFO, handlers=[dev_handler, console_handler])
     for logger_name in ["urllib3", "selenium", "googletrans"]: logging.getLogger(logger_name).setLevel(logging.WARNING)
     return admin_logger
@@ -304,12 +356,16 @@ def setup_logging():
 admin_logger = setup_logging()
 
 
-# --- JSON Mesajlaşma ---
+# --- JSON Mesajlaşma (DÜZELTİLDİ) ---
 def send_to_frontend(message_type: str, data: Any, context: Dict = None):
     try:
         message_obj = {"type": message_type, "data": data}
         if context: message_obj["context"] = context
-        print(json.dumps(message_obj), flush=True)
+
+        # Standart print() yerine doğrudan stdout buffer'ına UTF-8 byte yazıyoruz.
+        json_string = json.dumps(message_obj, ensure_ascii=False) + '\n'
+        sys.stdout.buffer.write(json_string.encode('utf-8'))
+        sys.stdout.flush()
     except (TypeError, OSError, BrokenPipeError) as e:
         logging.error(f"Frontend'e mesaj gönderilemedi: {e}")
 
@@ -392,7 +448,8 @@ def export_meetings_to_excel(data: Dict[str, Any]):
                 formatted_meeting_date,
                 meeting.get("meetingNotes", "")
             ]
-            sheet.append(row)
+            # Tüm string verilerin str() ile çevrildiğinden emin oluyoruz
+            sheet.append([str(item) for item in row])
 
         for col in sheet.columns:
             max_length = 0
@@ -417,7 +474,7 @@ def export_meetings_to_excel(data: Dict[str, Any]):
 def export_to_excel(data: Dict[str, Any]):
     customer_name = data.get("customerName", "Bilinmeyen_Musteri")
     products = data.get("products", [])
-    safe_customer_name = re.sub(r'[\\/*?:"<>|]', "", customer_name)
+    safe_customer_name = re.sub(r'[\/*?:"<>|]', "", customer_name)
     desktop_path = Path.home() / "Desktop"
     desktop_path.mkdir(exist_ok=True)
     filename = f"{safe_customer_name}_urun_listesi_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -498,7 +555,7 @@ def read_excel_terms(file_path: str) -> List[str]:
     try:
         return process_raw_data(list(openpyxl.load_workbook(file_path, data_only=True).active.values))
     except Exception as e:
-        logging.error(f"Excel okuma hatası: {e}", exc_info=True);
+        logging.error(f"Excel okuma hatası: {e}", exc_info=True)
         return []
 
 
@@ -508,7 +565,7 @@ def read_docx_terms(file_path: str) -> List[str]:
         return [term for table in doc.tables for term in
                 process_raw_data([[cell.text for cell in row.cells] for row in table.rows])]
     except Exception as e:
-        logging.error(f"Word okuma hatası: {e}", exc_info=True);
+        logging.error(f"Word okuma hatası: {e}", exc_info=True)
         return []
 
 
@@ -524,7 +581,7 @@ def read_csv_terms(file_path: str) -> List[str]:
             f.seek(0)
             return process_raw_data(list(csv.reader(f, dialect)))
     except Exception as e:
-        logging.error(f"CSV okuma hatası: {e}", exc_info=True);
+        logging.error(f"CSV okuma hatası: {e}", exc_info=True)
         return []
 
 
@@ -556,11 +613,11 @@ class ComparisonEngine:
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Heavy-Driver-Starter") as executor:
                 f_sigma = executor.submit(self.sigma_api.start_drivers)
                 f_tci = executor.submit(self.tci_api.reinit_driver)
-                f_sigma.result();
+                f_sigma.result()
                 f_tci.result()
             logging.info(f"Tüm Selenium sürücüleri {time.monotonic() - start_time:.2f}s içinde başlatıldı.")
         except Exception as e:
-            logging.critical(f"Selenium sürücüleri başlatılamadı: {e}", exc_info=True);
+            logging.critical(f"Selenium sürücüleri başlatılamadı: {e}", exc_info=True)
             raise e
 
     def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict):
@@ -739,7 +796,7 @@ class ComparisonEngine:
             f_tci = executor.submit(tci_task)
             f_sigma = executor.submit(sigma_task)
             f_orkim = executor.submit(orkim_task)
-            f_tci.result();
+            f_tci.result()
             f_sigma.result()
             f_orkim.result()
         if not self.search_cancelled.is_set():
@@ -756,7 +813,7 @@ class ComparisonEngine:
         admin_logger.info(f"Toplu Arama: Müşteri='{customer_name}', Dosya='{os.path.basename(file_path)}'")
         search_terms = get_search_terms_from_file(file_path)
         if not search_terms:
-            send_to_frontend("batch_search_complete", {"status": "error", "message": "Dosyadan ürün okunamadı."});
+            send_to_frontend("batch_search_complete", {"status": "error", "message": "Dosyadan ürün okunamadı."})
             return
         total_terms = len(search_terms)
         for i, term in enumerate(search_terms):
@@ -774,11 +831,11 @@ class ComparisonEngine:
         self.search_cancelled.set()
 
     def force_cancel_batch(self):
-        self.batch_search_cancelled.set();
+        self.batch_search_cancelled.set()
         self.force_cancel()
 
 
-# --- Ana Fonksiyon ve Komut Döngüsü ---
+# --- Ana Fonksiyon ve Komut Döngüsü (DÜZELTİLDİ) ---
 def main():
     logging.info("=" * 40 + "\nPython Arka Plan Servisi Başlatıldı\n" + "=" * 40)
     start_notification_scheduler()
@@ -794,8 +851,9 @@ def main():
         orkim_api = orkim.OrkimScraper(
             username=settings_data.get("orkim_username"),
             password=settings_data.get("orkim_password"),
-            openai_api_key=settings_data.get("OCR_API_KEY")
+            openai_api_key=os.getenv("OCR_API_KEY")
         )
+
         engine = ComparisonEngine(sigma_api, netflex_api, tci_api, orkim_api, initial_settings=settings_data)
 
         def init_task():
@@ -807,7 +865,7 @@ def main():
             except netflex.AuthenticationError:
                 send_to_frontend("authentication_error", True)
             except Exception as e:
-                logging.critical(f"Servis başlatma hatası: {e}", exc_info=True);
+                logging.critical(f"Servis başlatma hatası: {e}", exc_info=True)
                 send_to_frontend(
                     "python_services_ready", False)
 
@@ -818,7 +876,11 @@ def main():
     else:
         send_to_frontend("initial_setup_required", True)
 
-    for line in sys.stdin:
+    # stdin'den byte olarak okuyup manuel olarak UTF-8'e çeviriyoruz.
+    for line_bytes in sys.stdin.buffer:
+        line = line_bytes.decode('utf-8', errors='replace')
+        if not line.strip():
+            continue
         try:
             request = json.loads(line.strip())
             action, data = request.get("action"), request.get("data")
@@ -831,14 +893,12 @@ def main():
                 if engine:
                     engine.settings = data
                     engine.netflex_api.update_credentials(data.get("netflex_username"), data.get("netflex_password"))
-                    # Orkim API'yi de güncelle
                     if engine.orkim_api:
                         engine.orkim_api.username = data.get("orkim_username")
                         engine.orkim_api.password = data.get("orkim_password")
-                        engine.orkim_api.openai_api_key = data.get("OCR_API_KEY")
-                        engine.orkim_api.is_logged_in = False  # Re-login needed
+                        engine.orkim_api.is_logged_in = False
                 if not services_initialized.is_set():
-                    services_initialized.clear();
+                    services_initialized.clear()
                     initialize_services(data)
                 send_to_frontend("settings_saved", {"status": "success"})
             elif action == "load_calendar_notes":
@@ -853,8 +913,8 @@ def main():
             elif action in ["search", "start_batch_search"] and data:
                 if not services_initialized.is_set(): send_to_frontend("search_error",
                                                                        "Servisler başlatılmadı."); continue
-                if search_thread and search_thread.is_alive(): engine.force_cancel(); search_thread.join(5.0)
-                if batch_search_thread and batch_search_thread.is_alive(): engine.force_cancel_batch(); batch_search_thread.join(
+                if search_thread and search_thread.is_alive(): engine.force_cancel();search_thread.join(5.0)
+                if batch_search_thread and batch_search_thread.is_alive(): engine.force_cancel_batch();batch_search_thread.join(
                     5.0)
                 if action == "search":
                     engine.search_cancelled.clear()
@@ -881,7 +941,7 @@ def main():
                 if engine: engine.force_cancel_batch()
                 if search_thread and search_thread.is_alive(): search_thread.join(2.0)
                 if batch_search_thread and batch_search_thread.is_alive(): batch_search_thread.join(2.0)
-                sigma_api.stop_drivers();
+                sigma_api.stop_drivers()
                 tci_api.close_driver()
                 break
         except json.JSONDecodeError:

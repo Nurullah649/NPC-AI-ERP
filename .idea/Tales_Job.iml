@@ -6,6 +6,9 @@
       <excludeFolder url="file://$MODULE_DIR$/medical-chemical-sales/node_modules" />
       <excludeFolder url="file://$MODULE_DIR$/node_modules" />
       <excludeFolder url="file://$MODULE_DIR$/config" />
+      <excludeFolder url="file://$MODULE_DIR$/TalesJob_Veri" />
+      <excludeFolder url="file://$MODULE_DIR$/bin" />
+      <excludeFolder url="file://$MODULE_DIR$/medical-chemical-sales/out" />
     </content>
     <orderEntry type="jdk" jdkName="npcai" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
