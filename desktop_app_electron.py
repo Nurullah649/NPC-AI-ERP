@@ -33,6 +33,8 @@ class MockAPI:
 
     def search_products(self, *args, **kwargs): return []
 
+    def get_all_products(self, *args, **kwargs): return []  # for ITK
+
     def start_drivers(self, *args, **kwargs): pass
 
     def stop_drivers(self, *args, **kwargs): pass
@@ -64,7 +66,7 @@ class MockProduct:
 
 # Gerçek importlar yerine Mock sınıfları kullanılıyor (geçici)
 try:
-    from src import sigma, netflex, tci, currency_converter, orkim
+    from src import sigma, netflex, tci, currency_converter, orkim, itk
 except ImportError:
     print("Uyarı: 'src' modülleri bulunamadı. Mock sınıflar kullanılıyor.", file=sys.stderr)
     sigma = type('sigma', (), {'SigmaAldrichAPI': MockAPI})
@@ -72,6 +74,7 @@ except ImportError:
     tci = type('tci', (), {'TciScraper': MockAPI, 'Product': MockProduct})
     currency_converter = type('currency_converter', (), {'CurrencyConverter': MockConverter})
     orkim = type('orkim', (), {'OrkimScraper': MockAPI})
+    itk = type('itk', (), {'ItkScraper': MockAPI})
 
 
 # --- BİTİŞ: ÖRNEK/BOŞ MODÜLLER ---
@@ -108,13 +111,18 @@ NOTIFICATION_STATE_FILE = LOGS_AND_SETTINGS_DIR / "notification_state.json"
 notification_thread = None
 notification_running = False
 
+# ITK ürünleri için global önbellek
+itk_product_cache = []
+itk_cache_lock = threading.Lock()
+
 
 # --- Ayarları Yükleme/Kaydetme Fonksiyonları ---
 def load_settings() -> Dict[str, Any]:
     default_settings = {
         "netflex_username": "", "netflex_password": "", "tci_coefficient": 1.4,
         "sigma_coefficient_us": 1.0, "sigma_coefficient_de": 1.0, "sigma_coefficient_gb": 1.0,
-        "orkim_username": "", "orkim_password": ""
+        "orkim_username": "", "orkim_password": "",
+        "itk_username": "", "itk_password": ""
     }
     if not SETTINGS_FILE_PATH.exists(): return default_settings
     try:
@@ -483,19 +491,41 @@ def export_to_excel(data: Dict[str, Any]):
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Ürün Listesi"
-        headers = ["Kaynak", "Ürün Adı", "Ürün Kodu", "Fiyat", "Stok Durumu"]
+        headers = ["Kaynak", "Ürün Adı", "Marka", "Ürün Kodu", "Fiyat", "Birim", "Stok Durumu"]
         sheet.append(headers)
         for cell in sheet["1:1"]: cell.font = openpyxl.styles.Font(bold=True)
+
         for product in products:
+            # Fiyatı virgüllü formata çevirme
+            price_val = product.get("price_numeric")
+            price_str_for_excel = "N/A"
+            if isinstance(price_val, (int, float)):
+                price_str_for_excel = f"{price_val:.2f}".replace('.', ',')
+            else:
+                price_str_from_product = str(product.get("price_str", "N/A"))
+                # Para birimi gibi metinleri temizle, sadece sayısal kısım kalsın
+                price_str_from_product = re.sub(r'[^\d,.]', '', price_str_from_product).strip()
+                price_str_for_excel = price_str_from_product.replace('.', ',')
+
             row = [
-                product.get("source", "N/A"), product.get("product_name", "N/A"),
-                product.get("product_code", "N/A"), product.get("price_str", "N/A"),
+                product.get("source", "N/A"),
+                product.get("product_name", "N/A"),
+                product.get("brand", product.get("source", "N/A")),  # Marka yoksa kaynak yazılsın
+                product.get("product_code", "N/A"),
+                price_str_for_excel,
+                product.get("unit", "Adet"),  # Birim yoksa "Adet" yazılsın
                 product.get("cheapest_netflex_stock", "N/A")
             ]
             sheet.append(row)
+
         for col in sheet.columns:
-            max_length = max(len(str(cell.value)) for cell in col if cell.value)
+            max_length = 0
+            try:
+                max_length = max(len(str(cell.value)) for cell in col if cell.value)
+            except (ValueError, TypeError):
+                pass
             sheet.column_dimensions[col[0].column_letter].width = max_length + 2
+
         workbook.save(filepath)
         logging.info(f"Excel dosyası oluşturuldu: {filepath}")
         admin_logger.info(f"Müşteri Ataması ve Rapor: Müşteri='{customer_name}', Atanan Ürün Sayısı={len(products)}")
@@ -597,9 +627,9 @@ def get_search_terms_from_file(file_path):
 # --- Karşılaştırma Motoru ---
 class ComparisonEngine:
     def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI, tci_api: tci.TciScraper,
-                 orkim_api: orkim.OrkimScraper,
+                 orkim_api: orkim.OrkimScraper, itk_api: itk.ItkScraper,
                  initial_settings: Dict[str, Any], max_workers=10):
-        self.sigma_api, self.netflex_api, self.tci_api, self.orkim_api = sigma_api, netflex_api, tci_api, orkim_api
+        self.sigma_api, self.netflex_api, self.tci_api, self.orkim_api, self.itk_api = sigma_api, netflex_api, tci_api, orkim_api, itk_api
         self.currency_converter = currency_converter.CurrencyConverter()
         self.max_workers = max_workers
         self.search_cancelled = threading.Event()
@@ -740,14 +770,46 @@ class ComparisonEngine:
             "tci_variations": []
         }
 
+    def _process_itk_product(self, itk_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
+        """ITK'den gelen ürün verisini standart formata çevirir."""
+        return {
+            "source": "ITK",
+            "product_name": itk_product.get("product_name", "N/A"),
+            "product_number": itk_product.get("product_code", "N/A"),
+            "cas_number": "N/A",  # ITK arama sayfasında bu bilgi yok
+            "brand": "ITK",
+            "cheapest_eur_price_str": itk_product.get("price_str", "N/A"),
+            "cheapest_material_number": itk_product.get("product_code", "N/A"),
+            "cheapest_source_country": "ITK",
+            "cheapest_netflex_stock": itk_product.get("stock_quantity", "N/A"),
+            "sigma_variations": {},
+            "netflex_matches": [],
+            "tci_variations": [],
+            "itk_variations": [itk_product]
+        }
+
     def search_and_compare(self, search_term: str, context: Dict = None):
         start_time = time.monotonic()
         logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}'")
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
             f"Arama: '{search_term}'")
+
+        # M-kodu varyasyonlarını yönetme
+        search_term_variations = {search_term.lower()}
+        normalized_term = search_term.lower().strip()
+        is_m_code = False
+        if normalized_term.startswith('m'):
+            is_m_code = True
+            if '.' in normalized_term:
+                # M.100 ise -> M100'ü de ara
+                search_term_variations.add(normalized_term.replace('.', '', 1))
+            elif re.match(r'^m\d+$', normalized_term):
+                # M100 ise -> M.100'ü de ara
+                search_term_variations.add(f"m.{normalized_term[1:]}")
+
         total_found = 0
         total_found_lock = threading.Lock()
-        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="Source-Streamer") as executor:
+        with ThreadPoolExecutor(max_workers=5, thread_name_prefix="Source-Streamer") as executor:
             def tci_task():
                 nonlocal total_found
                 try:
@@ -781,7 +843,15 @@ class ComparisonEngine:
                 nonlocal total_found
                 try:
                     if self.orkim_api:
-                        orkim_results = self.orkim_api.search_products(search_term, self.search_cancelled)
+                        orkim_search_term = search_term
+                        if is_m_code:
+                            # Orkim sadece noktasız M kodları kullanır
+                            for term_var in search_term_variations:
+                                if '.' not in term_var:
+                                    orkim_search_term = term_var
+                                    break
+
+                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled)
                         if self.search_cancelled.is_set(): return
 
                         for product in orkim_results:
@@ -793,12 +863,49 @@ class ComparisonEngine:
                 except Exception as e:
                     logging.error(f"Orkim akış hatası: {e}", exc_info=True)
 
+            def itk_task():
+                nonlocal total_found
+                itk_search_terms = {search_term.lower()}
+                if is_m_code:
+                    itk_search_terms = search_term_variations
+
+                found_codes = set()
+                with itk_cache_lock:
+                    cache_to_search = list(itk_product_cache)
+
+                for term_var in itk_search_terms:
+                    try:
+                        for product in cache_to_search:
+                            if self.search_cancelled.is_set(): return
+
+                            code = product.get("product_code", "").lower()
+                            name = product.get("product_name", "").lower()
+
+                            score = 0
+                            if term_var == code:
+                                score = 100
+                            else:
+                                score = max(fuzz.partial_ratio(term_var, name), fuzz.partial_ratio(term_var, code))
+
+                            if score > 85:  # Eşleşme için relevantlık eşiği
+                                if code not in found_codes:
+                                    processed = self._process_itk_product(product, context)
+                                    send_to_frontend("product_found", {"product": processed}, context=context)
+                                    with total_found_lock:
+                                        total_found += 1
+                                    found_codes.add(code)
+                    except Exception as e:
+                        logging.error(f"ITK önbellek araması sırasında hata: {e}", exc_info=True)
+
             f_tci = executor.submit(tci_task)
             f_sigma = executor.submit(sigma_task)
             f_orkim = executor.submit(orkim_task)
+            f_itk = executor.submit(itk_task)
             f_tci.result()
             f_sigma.result()
             f_orkim.result()
+            f_itk.result()
+
         if not self.search_cancelled.is_set():
             logging.info(
                 f"Arama Tamamlandı: '{search_term}', Toplam={total_found}, Süre={time.monotonic() - start_time:.2f}s")
@@ -840,11 +947,23 @@ def main():
     logging.info("=" * 40 + "\nPython Arka Plan Servisi Başlatıldı\n" + "=" * 40)
     start_notification_scheduler()
     services_initialized = threading.Event()
-    sigma_api, tci_api, currency_api, orkim_api = sigma.SigmaAldrichAPI(), tci.TciScraper(), currency_converter.CurrencyConverter(), None
+    sigma_api, tci_api, currency_api, itk_api, orkim_api = sigma.SigmaAldrichAPI(), tci.TciScraper(), currency_converter.CurrencyConverter(), itk.ItkScraper(
+        username=os.getenv("ITK_USERNAME"), password=os.getenv("ITK_PASSWORD")), None
     netflex_api, engine, search_thread, batch_search_thread = None, None, None, None
 
+    def _populate_itk_cache(api_instance):
+        """ITK ürünlerini çekip global önbelleği dolduran thread fonksiyonu."""
+        logging.info("ITK ürün önbelleği oluşturuluyor...")
+        start_time = time.monotonic()
+        products = api_instance.get_all_products()
+        with itk_cache_lock:
+            global itk_product_cache
+            itk_product_cache = products
+        duration = time.monotonic() - start_time
+        logging.info(f"ITK önbelleği {len(products)} ürünle {duration:.2f} saniyede tamamlandı.")
+
     def initialize_services(settings_data: Dict[str, Any]):
-        nonlocal netflex_api, engine, orkim_api
+        nonlocal netflex_api, engine, orkim_api, itk_api
         logging.info(f"Servisler başlatılıyor...")
         netflex_api = netflex.NetflexAPI(username=settings_data.get("netflex_username"),
                                          password=settings_data.get("netflex_password"))
@@ -854,7 +973,14 @@ def main():
             openai_api_key=os.getenv("OCR_API_KEY")
         )
 
-        engine = ComparisonEngine(sigma_api, netflex_api, tci_api, orkim_api, initial_settings=settings_data)
+        # ITK scraper'ını ayarlardan gelen bilgilerle güncelle
+        itk_api.USERNAME = settings_data.get("itk_username")
+        itk_api.PASSWORD = settings_data.get("itk_password")
+
+        engine = ComparisonEngine(sigma_api, netflex_api, tci_api, orkim_api, itk_api, initial_settings=settings_data)
+
+        # Ayrı bir thread'de ITK ürünlerini çek ve önbelleğe al
+        threading.Thread(target=_populate_itk_cache, args=(itk_api,), name="ITK-Cache-Builder", daemon=True).start()
 
         def init_task():
             try:
@@ -897,6 +1023,9 @@ def main():
                         engine.orkim_api.username = data.get("orkim_username")
                         engine.orkim_api.password = data.get("orkim_password")
                         engine.orkim_api.is_logged_in = False
+                    if engine.itk_api:
+                        engine.itk_api.USERNAME = data.get("itk_username")
+                        engine.itk_api.PASSWORD = data.get("itk_password")
                 if not services_initialized.is_set():
                     services_initialized.clear()
                     initialize_services(data)
@@ -937,13 +1066,35 @@ def main():
             elif action == "get_parities":
                 send_to_frontend("parities_updated", currency_api.get_parities())
             elif action == "shutdown":
+                logging.info("Kapatma komutu alındı. Sürücüler kapatılıyor...")
                 stop_notification_scheduler()
-                if engine: engine.force_cancel_batch()
-                if search_thread and search_thread.is_alive(): search_thread.join(2.0)
-                if batch_search_thread and batch_search_thread.is_alive(): batch_search_thread.join(2.0)
-                sigma_api.stop_drivers()
-                tci_api.close_driver()
-                break
+                if engine:
+                    engine.force_cancel_batch()
+                if search_thread and search_thread.is_alive():
+                    search_thread.join(1.0)
+                if batch_search_thread and batch_search_thread.is_alive():
+                    batch_search_thread.join(1.0)
+
+                # Tüm sürücülerin düzgün kapatıldığından emin ol
+                try:
+                    if sigma_api: sigma_api.stop_drivers()
+                except Exception as e:
+                    logging.error(f"Sigma sürücüleri kapatılırken hata: {e}")
+                try:
+                    if tci_api: tci_api.close_driver()
+                except Exception as e:
+                    logging.error(f"TCI sürücüsü kapatılırken hata: {e}")
+                try:
+                    if orkim_api: orkim_api.close_driver()
+                except Exception as e:
+                    logging.error(f"Orkim sürücüsü kapatılırken hata: {e}")
+                try:
+                    if itk_api: itk_api.close_driver()
+                except Exception as e:
+                    logging.error(f"ITK sürücüsü kapatılırken hata: {e}")
+
+                logging.info("Tüm sürücüler kapatıldı. Arka plan servisinden çıkılıyor.")
+                break  # Döngüyü sonlandır ve script'in bitmesini sağla
         except json.JSONDecodeError:
             logging.error(f"Geçersiz JSON: {line}")
         except Exception as e:

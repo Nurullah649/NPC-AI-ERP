@@ -49,7 +49,6 @@ import {
   Briefcase,
   Users,
 } from "lucide-react"
-import { Toaster, toast } from "sonner"
 
 // --------------------------------------------------------------------------------
 // Yerleşik Bileşenler ve Yardımcı Fonksiyonlar (Hata Düzeltmesi)
@@ -64,7 +63,6 @@ import { twMerge } from "tailwind-merge"
 function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
-
 
 // --- UI Bileşenleri ---
 const Button = React.forwardRef(({ className, variant, size, asChild = false, ...props }, ref) => {
@@ -84,10 +82,20 @@ const Button = React.forwardRef(({ className, variant, size, asChild = false, ..
     lg: "h-11 rounded-md px-8",
     icon: "h-10 w-10",
   }
-  return <Comp className={cn(variants[variant] || variants.default, sizes[size] || sizes.default, "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50", className)} ref={ref} {...props} />
+  return (
+    <Comp
+      className={cn(
+        variants[variant] || variants.default,
+        sizes[size] || sizes.default,
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        className,
+      )}
+      ref={ref}
+      {...props}
+    />
+  )
 })
 Button.displayName = "Button"
-
 
 const Card = React.forwardRef(({ className, ...props }, ref) => (
   <div ref={ref} className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...props} />
@@ -120,7 +128,7 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
       type={type}
       className={cn(
         "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-        className
+        className,
       )}
       ref={ref}
       {...props}
@@ -130,22 +138,41 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
 Input.displayName = "Input"
 
 const Label = React.forwardRef(({ className, ...props }, ref) => (
-    <label ref={ref} className={cn("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
+  <label
+    ref={ref}
+    className={cn(
+      "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+      className,
+    )}
+    {...props}
+  />
 ))
 Label.displayName = "Label"
 
-
 const Checkbox = React.forwardRef(({ className, ...props }, ref) => (
-    <input type="checkbox" ref={ref} className={cn("h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground", className)} {...props}/>
-));
-Checkbox.displayName = "Checkbox";
-
+  <input
+    type="checkbox"
+    ref={ref}
+    className={cn(
+      "h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      className,
+    )}
+    {...props}
+  />
+))
+Checkbox.displayName = "Checkbox"
 
 const Alert = React.forwardRef(({ className, variant, ...props }, ref) => (
   <div
     ref={ref}
     role="alert"
-    className={cn("relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground", variant === "destructive" ? "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive" : "", className)}
+    className={cn(
+      "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
+      variant === "destructive"
+        ? "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive"
+        : "",
+      className,
+    )}
     {...props}
   />
 ))
@@ -161,340 +188,386 @@ const AlertDescription = React.forwardRef(({ className, ...props }, ref) => (
 ))
 AlertDescription.displayName = "AlertDescription"
 
-const DialogContext = createContext(null);
+const DialogContext = createContext(null)
 
 const Dialog = ({ children, open, onOpenChange }) => {
-    const isControlled = open !== undefined && onOpenChange !== undefined;
-    const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined && onOpenChange !== undefined
+  const [internalOpen, setInternalOpen] = useState(false)
 
-    const isOpen = isControlled ? open : internalOpen;
-    const setIsOpen = isControlled ? onOpenChange : setInternalOpen;
+  const isOpen = isControlled ? open : internalOpen
+  const setIsOpen = isControlled ? onOpenChange : setInternalOpen
 
-    return (
-        <DialogContext.Provider value={{ isOpen, setIsOpen }}>
-            {children}
-        </DialogContext.Provider>
-    );
-};
+  return <DialogContext.Provider value={{ isOpen, setIsOpen }}>{children}</DialogContext.Provider>
+}
 
 const DialogTrigger = ({ children, asChild = false }) => {
-    const { setIsOpen } = useContext(DialogContext);
-    const Comp = asChild ? React.Fragment : 'div';
-    const child = asChild ? React.Children.only(children) : children;
+  const { setIsOpen } = useContext(DialogContext)
+  const Comp = asChild ? React.Fragment : "div"
+  const child = asChild ? React.Children.only(children) : children
 
-    return (
-        <Comp>
-            {React.cloneElement(child, {
-                onClick: (e) => {
-                    e.preventDefault();
-                    setIsOpen(true);
-                    if (child.props.onClick) child.props.onClick(e);
-                }
-            })}
-        </Comp>
-    );
-};
+  return (
+    <Comp>
+      {React.cloneElement(child, {
+        onClick: (e) => {
+          e.preventDefault()
+          setIsOpen(true)
+          if (child.props.onClick) child.props.onClick(e)
+        },
+      })}
+    </Comp>
+  )
+}
 
 const DialogContent = ({ children, className, ...props }) => {
-    const { isOpen, setIsOpen } = useContext(DialogContext);
+  const { isOpen, setIsOpen } = useContext(DialogContext)
 
-    useEffect(() => {
-        const handleEsc = (event) => {
-            if (event.key === 'Escape') {
-                setIsOpen(false);
-            }
-        };
-        window.addEventListener('keydown', handleEsc);
-        return () => {
-            window.removeEventListener('keydown', handleEsc);
-        };
-    }, [setIsOpen]);
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === "Escape") {
+        setIsOpen(false)
+      }
+    }
+    window.addEventListener("keydown", handleEsc)
+    return () => {
+      window.removeEventListener("keydown", handleEsc)
+    }
+  }, [setIsOpen])
 
-
-    return (
-        <AnimatePresence>
-            {isOpen && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
-                    onClick={() => setIsOpen(false)}
-                >
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9, y: -20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: -20 }}
-                        transition={{ duration: 0.2 }}
-                        className={cn("relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg rounded-lg", className)}
-                        onClick={(e) => e.stopPropagation()}
-                        {...props}
-                    >
-                         {children}
-                         <button onClick={() => setIsOpen(false)} className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-                            <X className="h-4 w-4" />
-                            <span className="sr-only">Close</span>
-                        </button>
-                    </motion.div>
-                </motion.div>
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
+          onClick={() => setIsOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -20 }}
+            transition={{ duration: 0.2 }}
+            className={cn(
+              "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg rounded-lg",
+              className,
             )}
-        </AnimatePresence>
-    );
-};
+            onClick={(e) => e.stopPropagation()}
+            {...props}
+          >
+            {children}
+            <button
+              onClick={() => setIsOpen(false)}
+              className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
-const DialogHeader = ({ children, ...props }) => <div className="flex flex-col space-y-1.5 text-center sm:text-left" {...props}>{children}</div>;
-const DialogTitle = ({ children, ...props }) => <h2 className="text-lg font-semibold leading-none tracking-tight" {...props}>{children}</h2>;
-const DialogDescription = ({ children, ...props }) => <p className="text-sm text-muted-foreground" {...props}>{children}</p>;
-const DialogFooter = ({ children, ...props }) => <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" {...props}>{children}</div>;
+const DialogHeader = ({ children, ...props }) => (
+  <div className="flex flex-col space-y-1.5 text-center sm:text-left" {...props}>
+    {children}
+  </div>
+)
+const DialogTitle = ({ children, ...props }) => (
+  <h2 className="text-lg font-semibold leading-none tracking-tight" {...props}>
+    {children}
+  </h2>
+)
+const DialogDescription = ({ children, ...props }) => (
+  <p className="text-sm text-muted-foreground" {...props}>
+    {children}
+  </p>
+)
+const DialogFooter = ({ children, ...props }) => (
+  <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2" {...props}>
+    {children}
+  </div>
+)
 
-
-const DropdownContext = createContext(null);
+const DropdownContext = createContext(null)
 
 const DropdownMenu = ({ children }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const menuRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef(null)
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, []);
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
 
-    return (
-        <DropdownContext.Provider value={{ isOpen, setIsOpen }}>
-            <div ref={menuRef} className="relative inline-block text-left">{children}</div>
-        </DropdownContext.Provider>
-    );
-};
+  return (
+    <DropdownContext.Provider value={{ isOpen, setIsOpen }}>
+      <div ref={menuRef} className="relative inline-block text-left">
+        {children}
+      </div>
+    </DropdownContext.Provider>
+  )
+}
 
 const DropdownMenuTrigger = ({ children, asChild = false }) => {
-    const { setIsOpen } = useContext(DropdownContext);
-    const Comp = asChild ? React.Fragment : 'div';
-    const child = asChild ? React.Children.only(children) : children;
+  const { setIsOpen } = useContext(DropdownContext)
+  const Comp = asChild ? React.Fragment : "div"
+  const child = asChild ? React.Children.only(children) : children
 
-    return (
-        <Comp>
-            {React.cloneElement(child, {
-                onClick: (e) => {
-                    e.preventDefault();
-                    setIsOpen(prev => !prev);
-                    if (child.props.onClick) child.props.onClick(e);
-                }
-            })}
-        </Comp>
-    );
-};
+  return (
+    <Comp>
+      {React.cloneElement(child, {
+        onClick: (e) => {
+          e.preventDefault()
+          setIsOpen((prev) => !prev)
+          if (child.props.onClick) child.props.onClick(e)
+        },
+      })}
+    </Comp>
+  )
+}
 
+const DropdownMenuContent = ({ children, align = "start", side = "bottom", className, ...props }) => {
+  const { isOpen } = useContext(DropdownContext)
+  const alignClasses = {
+    start: "origin-top-left left-0",
+    end: "origin-top-right right-0",
+  }
+  const sideClasses = {
+    bottom: "origin-top mt-2",
+    top: "origin-bottom mb-2 bottom-full",
+    right: "origin-left ml-2 left-full top-1/2 -translate-y-1/2",
+  }
 
-const DropdownMenuContent = ({ children, align = 'start', side = 'bottom', className, ...props }) => {
-    const { isOpen } = useContext(DropdownContext);
-    const alignClasses = {
-        start: 'origin-top-left left-0',
-        end: 'origin-top-right right-0'
-    };
-    const sideClasses = {
-        bottom: 'origin-top mt-2',
-        top: 'origin-bottom mb-2 bottom-full',
-        right: 'origin-left ml-2 left-full top-1/2 -translate-y-1/2'
-    }
-
-    return (
-        <AnimatePresence>
-            {isOpen && (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    transition={{ duration: 0.1 }}
-                    className={cn(
-                        "absolute z-50 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-                        alignClasses[align],
-                        sideClasses[side],
-                        className
-                    )}
-                    {...props}
-                >
-                    {children}
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-};
-
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: -10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+          transition={{ duration: 0.1 }}
+          className={cn(
+            "absolute z-50 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+            alignClasses[align],
+            sideClasses[side],
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
 const DropdownMenuLabel = React.forwardRef(({ className, inset, ...props }, ref) => (
-  <div ref={ref} className={cn("px-2 py-1.5 text-sm font-semibold text-muted-foreground", inset && "pl-8", className)} {...props} />
-));
-DropdownMenuLabel.displayName = "DropdownMenuLabel";
+  <div
+    ref={ref}
+    className={cn("px-2 py-1.5 text-sm font-semibold text-muted-foreground", inset && "pl-8", className)}
+    {...props}
+  />
+))
+DropdownMenuLabel.displayName = "DropdownMenuLabel"
 
 const DropdownMenuSeparator = React.forwardRef(({ className, ...props }, ref) => (
   <hr ref={ref} className={cn("-mx-1 my-1 h-px bg-muted", className)} {...props} />
-));
-DropdownMenuSeparator.displayName = "DropdownMenuSeparator";
-
+))
+DropdownMenuSeparator.displayName = "DropdownMenuSeparator"
 
 const DropdownMenuCheckboxItem = ({ children, checked, onCheckedChange, onSelect, ...props }) => {
-    return (
-        <div
-            className="relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-            onClick={(e) => {
-                if (onSelect) onSelect(e);
-                if (!e.defaultPrevented) {
-                    onCheckedChange(!checked);
-                }
-            }}
-            {...props}
-        >
-            <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-                {checked && <Check className="h-4 w-4" />}
-            </span>
-            {children}
-        </div>
-    );
-};
+  return (
+    <div
+      className="relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+      onClick={(e) => {
+        if (onSelect) onSelect(e)
+        if (!e.defaultPrevented) {
+          onCheckedChange(!checked)
+        }
+      }}
+      {...props}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        {checked && <Check className="h-4 w-4" />}
+      </span>
+      {children}
+    </div>
+  )
+}
 
 // --- HoverMenu Bileşenleri ---
 const HoverMenuContext = createContext({
-    isOpen: false,
-    setIsOpen: (isOpen) => {}
-});
+  isOpen: false,
+  setIsOpen: (isOpen) => {},
+})
 
 const HoverMenu = ({ children }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const timeoutRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false)
+  const timeoutRef = useRef(null)
 
-    const openMenu = () => {
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-            timeoutRef.current = null;
-        }
-        setIsOpen(true);
-    };
+  const openMenu = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    setIsOpen(true)
+  }
 
-    const closeMenu = () => {
-        timeoutRef.current = setTimeout(() => {
-            setIsOpen(false);
-        }, 200); // 200ms gecikme
-    };
+  const closeMenu = () => {
+    timeoutRef.current = setTimeout(() => {
+      setIsOpen(false)
+    }, 200) // 200ms gecikme
+  }
 
-    return (
-        <HoverMenuContext.Provider value={{ isOpen, setIsOpen }}>
-            <div
-                className="relative inline-block"
-                onMouseEnter={openMenu}
-                onMouseLeave={closeMenu}
-            >
-                {children}
-            </div>
-        </HoverMenuContext.Provider>
-    );
-};
+  return (
+    <HoverMenuContext.Provider value={{ isOpen, setIsOpen }}>
+      <div className="relative inline-block" onMouseEnter={openMenu} onMouseLeave={closeMenu}>
+        {children}
+      </div>
+    </HoverMenuContext.Provider>
+  )
+}
 
 const HoverMenuTrigger = ({ children }) => {
-    return <>{children}</>;
-};
+  return <>{children}</>
+}
 
-const HoverMenuContent = ({ children, align = 'start', className, ...props }) => {
-    const { isOpen } = useContext(HoverMenuContext);
-    const alignClasses = {
-        start: 'origin-top-left left-0',
-        end: 'origin-top-right right-0'
-    };
+const HoverMenuContent = ({ children, align = "start", className, ...props }) => {
+  const { isOpen } = useContext(HoverMenuContext)
+  const alignClasses = {
+    start: "origin-top-left left-0",
+    end: "origin-top-right right-0",
+  }
 
-    return (
-        <AnimatePresence>
-            {isOpen && (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    transition={{ duration: 0.1 }}
-                    className={cn(
-                        "absolute z-50 mt-2 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-                        alignClasses[align],
-                        className
-                    )}
-                    {...props}
-                >
-                    {children}
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-};
-
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: -10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+          transition={{ duration: 0.1 }}
+          className={cn(
+            "absolute z-50 mt-2 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+            alignClasses[align],
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
 const Progress = ({ value, className }) => (
-    <div className={cn("relative h-4 w-full overflow-hidden rounded-full bg-secondary", className)}>
-        <div className="h-full w-full flex-1 bg-primary transition-all" style={{ transform: `translateX(-${100 - (value || 0)}%)` }} />
-    </div>
-);
+  <div className={cn("relative h-4 w-full overflow-hidden rounded-full bg-secondary", className)}>
+    <div
+      className="h-full w-full flex-1 bg-primary transition-all"
+      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+    />
+  </div>
+)
 
-const Select = ({ children, value, onChange }) => <select value={value} onChange={onChange} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">{children}</select>;
-const SelectItem = ({ value, children }) => <option value={value}>{children}</option>;
+const Select = ({ children, value, onChange }) => (
+  <select
+    value={value}
+    onChange={onChange}
+    className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    {children}
+  </select>
+)
+const SelectItem = ({ value, children }) => <option value={value}>{children}</option>
 
+const Table = React.forwardRef(({ className, ...props }, ref) => (
+  <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+))
+Table.displayName = "Table"
+const TableHeader = React.forwardRef(({ className, ...props }, ref) => (
+  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+))
+TableHeader.displayName = "TableHeader"
+const TableBody = React.forwardRef(({ className, ...props }, ref) => (
+  <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />
+))
+TableBody.displayName = "TableBody"
+const TableRow = React.forwardRef(({ className, ...props }, ref) => (
+  <tr
+    ref={ref}
+    className={cn("border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted", className)}
+    {...props}
+  />
+))
+TableRow.displayName = "TableRow"
+const TableHead = React.forwardRef(({ className, ...props }, ref) => (
+  <th
+    ref={ref}
+    className={cn(
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      className,
+    )}
+    {...props}
+  />
+))
+TableHead.displayName = "TableHead"
+const TableCell = React.forwardRef(({ className, ...props }, ref) => (
+  <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
+))
+TableCell.displayName = "TableCell"
 
-const Table = React.forwardRef(({ className, ...props }, ref) => <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />);
-Table.displayName = "Table";
-const TableHeader = React.forwardRef(({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />);
-TableHeader.displayName = "TableHeader";
-const TableBody = React.forwardRef(({ className, ...props }, ref) => <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />);
-TableBody.displayName = "TableBody";
-const TableRow = React.forwardRef(({ className, ...props }, ref) => <tr ref={ref} className={cn("border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted", className)} {...props} />);
-TableRow.displayName = "TableRow";
-const TableHead = React.forwardRef(({ className, ...props }, ref) => <th ref={ref} className={cn("h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0", className)} {...props} />);
-TableHead.displayName = "TableHead";
-const TableCell = React.forwardRef(({ className, ...props }, ref) => <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />);
-TableCell.displayName = "TableCell";
-
-const TooltipContext = React.createContext(null);
+const TooltipContext = React.createContext(null)
 
 const TooltipProvider = ({ children }) => {
-  return <div>{children}</div>;
-};
+  return <div>{children}</div>
+}
 
 const Tooltip = ({ children, content, side = "top" }) => {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(false)
 
   const sideClasses = {
     top: "left-1/2 -translate-x-1/2 bottom-full mb-2",
     right: "top-1/2 -translate-y-1/2 left-full ml-2",
     bottom: "left-1/2 -translate-x-1/2 top-full mt-2",
     left: "top-1/2 -translate-y-1/2 right-full mr-2",
-  };
+  }
 
   return (
-      <div className="relative inline-flex" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-          {children}
-          <AnimatePresence>
-            {show && content && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.1 }}
-                className={cn(
-                    "absolute whitespace-nowrap z-50 px-3 py-1.5 text-sm font-medium text-primary-foreground bg-primary rounded-md shadow-sm",
-                    sideClasses[side]
-                )}
-              >
-                {content}
-              </motion.div>
+    <div className="relative inline-flex" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      <AnimatePresence>
+        {show && content && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            className={cn(
+              "absolute whitespace-nowrap z-50 px-3 py-1.5 text-sm font-medium text-primary-foreground bg-primary rounded-md shadow-sm",
+              sideClasses[side],
             )}
-          </AnimatePresence>
-      </div>
-  );
-};
-
+          >
+            {content}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 // --- SplashScreen Bileşeni ---
-import SplashScreen from "@/public/SplashScreen";
+import SplashScreen from "@/public/SplashScreen"
 
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
@@ -528,6 +601,15 @@ interface TciVariation {
   calculated_price_eur_str?: string
 }
 
+interface ItkVariation {
+  product_code: string
+  product_name: string
+  price_str: string
+  price: number
+  currency: string
+  stock_quantity: string
+}
+
 interface ProductResult {
   source: string
   product_name: string
@@ -541,6 +623,7 @@ interface ProductResult {
   }
   netflex_matches: NetflexResult[]
   tci_variations?: TciVariation[]
+  itk_variations?: ItkVariation[]
   cheapest_eur_price_str?: string
   cheapest_material_number?: string
   cheapest_source_country?: string
@@ -554,6 +637,8 @@ interface AssignmentItem {
   price_numeric: number | null
   price_str: string
   source: string
+  brand: string
+  unit: string
   cheapest_netflex_stock?: number | string
 }
 
@@ -562,6 +647,8 @@ interface AppSettings {
   netflex_password: string
   orkim_username: string
   orkim_password: string
+  itk_username: string
+  itk_password: string
   tci_coefficient: number
   sigma_coefficient_us: number
   sigma_coefficient_de: number
@@ -641,6 +728,8 @@ const formatCurrency = (value: number | null | undefined, currency = "EUR") => {
   if (value === null || value === undefined || isNaN(value)) return "N/A"
   const currencySymbol = currency === "EUR" ? "€" : currency === "USD" ? "$" : "£"
   const locale = currency === "EUR" ? "de-DE" : currency === "USD" ? "en-US" : "en-GB"
+
+  // Fiyatı string'e çevirirken noktayı virgüle çevir
   const parts = value.toFixed(2).split(".")
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".")
   return `${parts.join(",")}${currencySymbol}`
@@ -659,8 +748,8 @@ const cleanAndDecodeHtml = (html: string | null | undefined): string => {
 }
 
 const calculateProductPrices = (product: ProductResult, settings: AppSettings, parities: any): ProductResult => {
-  // Orkim gibi önceden fiyatı formatlanmış kaynaklar için hesaplamayı atla
-  if (product.source === "Orkim") {
+  // Orkim veya ITK gibi önceden fiyatı formatlanmış kaynaklar için hesaplamayı atla
+  if (product.source === "Orkim" || product.source === "ITK") {
     return product
   }
 
@@ -822,7 +911,7 @@ const NotificationBell = ({ notifications, onToggleComplete, onGoToDate, side = 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
+        <Button variant="outline" size="icon" className="relative bg-transparent">
           <Bell className="h-5 w-5" />
           {notifications.length > 0 && (
             <span className="absolute top-0 right-0 flex h-3 w-3">
@@ -860,7 +949,7 @@ const NotificationBell = ({ notifications, onToggleComplete, onGoToDate, side = 
                   <Button
                     size="xs"
                     variant="outline"
-                    className="text-xs h-7"
+                    className="text-xs h-7 bg-transparent"
                     onClick={() => onToggleComplete(notif.parentNoteDate, notif.id)}
                   >
                     <Check className="h-3 w-3 mr-1" /> Tamamlandı
@@ -900,35 +989,33 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
 
         {navItems.map((item) => (
           <Tooltip key={item.name} content={item.label} side="right">
-              <a
-                href={item.href}
-                onClick={(e) => {
-                  e.preventDefault()
-                  setPage(item.name)
-                }}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8",
-                  { "bg-accent text-accent-foreground": currentPage === item.name },
-                )}
-              >
-                <item.icon className="h-5 w-5" />
-                <span className="sr-only">{item.label}</span>
-              </a>
+            <a
+              href={item.href}
+              onClick={(e) => {
+                e.preventDefault()
+                setPage(item.name)
+              }}
+              className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground md:h-8 md:w-8",
+                { "bg-accent text-accent-foreground": currentPage === item.name },
+              )}
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="sr-only">{item.label}</span>
+            </a>
           </Tooltip>
         ))}
-
       </nav>
       <nav className="mt-auto flex flex-col items-center gap-4 px-2 sm:py-5">
-
-            <NotificationBell
-              side="right"
-              notifications={notifications}
-              onToggleComplete={onToggleComplete}
-              onGoToDate={onGoToDate}
-            />
+        <NotificationBell
+          side="right"
+          notifications={notifications}
+          onToggleComplete={onToggleComplete}
+          onGoToDate={onGoToDate}
+        />
 
         <Tooltip content="Temayı Değiştir" side="right">
-            <ModeToggle />
+          <ModeToggle />
         </Tooltip>
       </nav>
     </aside>
@@ -1049,9 +1136,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
           <CardTitle className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-primary" /> Orkim Market Bilgileri
           </CardTitle>
-          <CardDescription>
-            Orkim Market sistemine giriş için gerekli bilgiler.
-          </CardDescription>
+          <CardDescription>Orkim Market sistemine giriş için gerekli bilgiler.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -1069,6 +1154,34 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
               type="password"
               value={settings.orkim_password || ""}
               onChange={(e) => handleChange("orkim_password", e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" /> ITK (İstanbul Teknik Kimya) Bilgileri
+          </CardTitle>
+          <CardDescription>ITK bayi sistemine giriş için gerekli bilgiler.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="itk_username">Kullanıcı Adı</Label>
+            <Input
+              id="itk_username"
+              value={settings.itk_username || ""}
+              onChange={(e) => handleChange("itk_username", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="itk_password">Şifre</Label>
+            <Input
+              id="itk_password"
+              type="password"
+              value={settings.itk_password || ""}
+              onChange={(e) => handleChange("itk_password", e.target.value)}
             />
           </div>
         </CardContent>
@@ -1153,6 +1266,8 @@ const InitialSetupScreen = ({ setAppStatus }) => {
                 netflex_password: "",
                 orkim_username: "",
                 orkim_password: "",
+                itk_username: "",
+                itk_password: "",
                 tci_coefficient: 1.4,
                 sigma_coefficient_us: 1.0,
                 sigma_coefficient_de: 1.0,
@@ -1309,9 +1424,9 @@ const CustomerPage = ({ assignments, setAssignments, toast }) => {
                       <TableCell>{product.cheapest_netflex_stock ?? "N/A"}</TableCell>
                       <TableCell className="text-right">
                         <Tooltip content="Ürünü Sil" side="left">
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteAssignment(product)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteAssignment(product)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </Tooltip>
                       </TableCell>
                     </TableRow>
@@ -1369,12 +1484,18 @@ const ProductResultItem = ({
   showOriginalPrices,
 }) => {
   const countryHeaders = { us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
+  // M-kodu mantığı kaldırıldığı için 'is_m_code_match' kontrolü kaldırıldı.
+  const hasVariations =
+    product.source === "Sigma" ||
+    product.source === "TCI" ||
+    (product.source === "ITK" && product.itk_variations && product.itk_variations.length > 0)
 
+  // Izgara (grid) yapısı, en başa bir seçim kutusu sütunu eklenerek güncellendi.
   const gridClasses = cn(
     "grid gap-x-4 items-center p-4 hover:bg-muted/50",
     isProductNameVisible
-      ? "grid-cols-[150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[auto_150px_150px_150px_150px_120px_1fr_auto]"
+      : "grid-cols-[auto_150px_150px_150px_150px_120px_auto]",
   )
 
   const getCombinedData = useMemo(() => {
@@ -1411,6 +1532,8 @@ const ProductResultItem = ({
       price_str: priceData.price_eur_str,
       source: `Sigma (${countryCode.toUpperCase()})`,
       cheapest_netflex_stock: "N/A",
+      brand: `Sigma (${product.brand})`,
+      unit: "Adet",
     }
     onSelectionChange(assignmentItem)
   }
@@ -1424,6 +1547,8 @@ const ProductResultItem = ({
       price_str: item.netflex.price_str,
       source: "Netflex",
       cheapest_netflex_stock: item.netflex.stock,
+      brand: "Netflex",
+      unit: "Adet",
     }
     onSelectionChange(assignmentItem)
   }
@@ -1437,6 +1562,31 @@ const ProductResultItem = ({
       price_str: variation.calculated_price_eur_str,
       source: "TCI",
       cheapest_netflex_stock: variation.stock_info?.map((s) => `${s.country}: ${s.stock}`).join(", ") || "N/A",
+      brand: "TCI",
+      unit: variation.unit,
+    }
+    onSelectionChange(assignmentItem)
+  }
+
+  // Bu fonksiyon artık tüm ana satırlar için kullanılacak.
+  const handleSelectMainProduct = (p: ProductResult) => {
+    // ITK ve Orkim gibi basit kaynaklar veya Sigma/TCI'nin en ucuz hali için atama verisi oluşturur.
+    const priceNumeric =
+      p.itk_variations?.[0]?.price || // ITK için
+      p.netflex_matches?.find((m) => m.price_str === p.cheapest_eur_price_str)?.price_numeric || // Netflex için
+      p.tci_variations?.find((v) => v.calculated_price_eur_str === p.cheapest_eur_price_str)?.calculated_price_eur || // TCI için
+      null // Diğerleri veya bulunamayanlar
+
+    const assignmentItem: AssignmentItem = {
+      product_name: p.product_name,
+      product_code: p.cheapest_material_number || p.product_number,
+      cas_number: p.cas_number || "N/A",
+      price_numeric: priceNumeric,
+      price_str: p.cheapest_eur_price_str,
+      source: p.cheapest_source_country || p.source,
+      cheapest_netflex_stock: p.cheapest_netflex_stock || "N/A",
+      brand: p.brand,
+      unit: "Adet", // Varsayılan, TCI gibi varyasyonlarda özelleşebilir
     }
     onSelectionChange(assignmentItem)
   }
@@ -1444,6 +1594,19 @@ const ProductResultItem = ({
   return (
     <div className="border rounded-lg">
       <div className={gridClasses}>
+        {/* Her satırın başında artık bir Checkbox var */}
+        <div className="justify-self-center">
+          <Checkbox
+            checked={selectedForAssignment.some(
+              (p) =>
+                p.product_code === (product.cheapest_material_number || product.product_number) &&
+                p.source === (product.cheapest_source_country || product.source),
+            )}
+            onChange={() => handleSelectMainProduct(product)}
+            className="h-5 w-5"
+          />
+        </div>
+
         <div>{product.cas_number}</div>
         <div className="font-mono">{product.cheapest_material_number || product.product_number}</div>
         <div className="font-semibold flex items-center gap-2 truncate" title={product.brand}>
@@ -1461,22 +1624,22 @@ const ProductResultItem = ({
             dangerouslySetInnerHTML={{ __html: cleanAndDecodeHtml(product.product_name) }}
           />
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => toggleProductExpansion(product.product_number)}
-          className="justify-self-end"
-        >
-          {expandedProducts.has(product.product_number) ? (
-            <ChevronUp className="h-4 w-4" />
-          ) : (
-            <ChevronDown className="h-4 w-4" />
+        <div className="justify-self-end">
+          {/* Sadece varyasyonu olan ürünler için detay butonu gösterilir */}
+          {hasVariations && (
+            <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)}>
+              {expandedProducts.has(product.product_number) ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       </div>
 
       <AnimatePresence>
-        {expandedProducts.has(product.product_number) && (
+        {hasVariations && expandedProducts.has(product.product_number) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -1485,6 +1648,7 @@ const ProductResultItem = ({
             className="border-t bg-muted/20 p-4 overflow-hidden"
           >
             <h4 className="font-semibold mb-3">Ürün Varyasyonları</h4>
+            {/* M-Kodu bölümü kaldırıldı, artık bu render edilmeyecek. */}
             {product.source === "Sigma" ? (
               <div className="overflow-x-auto">
                 <Table>
@@ -1598,7 +1762,7 @@ const ProductResultItem = ({
                   </TableBody>
                 </Table>
               </div>
-            ) : (
+            ) : product.source === "TCI" ? (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1635,7 +1799,7 @@ const ProductResultItem = ({
                   ))}
                 </TableBody>
               </Table>
-            )}
+            ) : null}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1657,38 +1821,37 @@ const SearchPage = ({
   settings,
   initialSearchTerm,
   onSearchExecuted,
-  toast
+  toast,
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "")
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
-  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true } })
+  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true } })
   const [isProductNameVisible, setIsProductNameVisible] = useState(false)
   const [showOriginalPrices, setShowOriginalPrices] = useState(false)
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
-  const isMounted = useRef(false);
+  const isMounted = useRef(false)
 
   useEffect(() => {
     // Bu effect'in yalnızca component mount edildikten sonra çalışmasını sağlıyoruz
     // Arama geçmişinden gelindiğinde ilk render'da aramayı tetiklememek için
     if (isMounted.current) {
-        if (initialSearchTerm) {
-            setSearchTerm(initialSearchTerm);
-            handleSearch(initialSearchTerm);
-            onSearchExecuted();
-        }
+      if (initialSearchTerm) {
+        setSearchTerm(initialSearchTerm)
+        handleSearch(initialSearchTerm)
+        onSearchExecuted()
+      }
     } else {
-        // Component mount olduğunda, initialSearchTerm'i state'e ata
-        if(initialSearchTerm) {
-            setSearchTerm(initialSearchTerm);
-        }
-        isMounted.current = true;
+      // Component mount olduğunda, initialSearchTerm'i state'e ata
+      if (initialSearchTerm) {
+        setSearchTerm(initialSearchTerm)
+      }
+      isMounted.current = true
     }
-}, [initialSearchTerm, handleSearch, onSearchExecuted]);
-
+  }, [initialSearchTerm, handleSearch, onSearchExecuted])
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1756,7 +1919,8 @@ const SearchPage = ({
       const brandMatch =
         (brand.includes("sigma") && filters.brands.sigma) ||
         (brand.includes("tci") && filters.brands.tci) ||
-        (brand.includes("orkim") && filters.brands.orkim)
+        (brand.includes("orkim") && filters.brands.orkim) ||
+        (brand.includes("itk") && filters.brands.itk)
 
       if (!brandMatch) return false
       if (lowerCaseFilter) {
@@ -1772,8 +1936,8 @@ const SearchPage = ({
   const headerGridClasses = cn(
     "grid gap-x-4 font-semibold text-sm text-muted-foreground",
     isProductNameVisible
-      ? "grid-cols-[150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[auto_150px_150px_150px_150px_120px_1fr_auto]"
+      : "grid-cols-[auto_150px_150px_150px_150px_120px_auto]",
   )
 
   return (
@@ -1809,7 +1973,7 @@ const SearchPage = ({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex-shrink-0">
+              <Button variant="outline" className="flex-shrink-0 bg-transparent">
                 <ListFilter className="mr-2 h-4 w-4" /> Marka Filtrele
               </Button>
             </DropdownMenuTrigger>
@@ -1834,6 +1998,12 @@ const SearchPage = ({
               >
                 Orkim
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={filters.brands.itk}
+                onCheckedChange={(checked) => handleFilterChange("brands", "itk", checked)}
+              >
+                ITK
+              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1845,9 +2015,7 @@ const SearchPage = ({
             onMouseLeave={() => {
               if (isLoading) setIsHovering(false)
             }}
-            className={cn(
-              "relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out",
-            )}
+            className={cn("relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out")}
             variant={isLoading && isHovering ? "destructive" : "default"}
           >
             <div className="relative z-10">
@@ -1912,9 +2080,9 @@ const SearchPage = ({
       {searchResults.length > 0 && (
         <Card className="flex-grow flex flex-col overflow-hidden mt-4">
           <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
-             <div className="flex items-baseline gap-2">
-                <CardTitle>Arama Sonuçları</CardTitle>
-                <span className="font-normal text-muted-foreground">({filteredResults.length} adet)</span>
+            <div className="flex items-baseline gap-2">
+              <CardTitle>Arama Sonuçları</CardTitle>
+              <span className="font-normal text-muted-foreground">({filteredResults.length} adet)</span>
             </div>
             <div className="relative w-full max-w-xs">
               <Input
@@ -1929,13 +2097,14 @@ const SearchPage = ({
           <CardContent className="flex-grow flex flex-col overflow-hidden p-0">
             <div className="p-4 border-b bg-muted/40 flex-shrink-0">
               <div className={headerGridClasses}>
+                <div className="w-10">Seç</div>
                 <div className="truncate">CAS</div>
                 <div className="truncate">En Ucuz Kod</div>
                 <div className="truncate">Marka</div>
                 <div className="truncate">En Ucuz Fiyat (EUR)</div>
                 <div className="truncate">Kaynak</div>
                 {isProductNameVisible && <div className="truncate">Ürün Adı</div>}
-                <div className="w-9"></div>
+                <div className="w-16 text-right">Detay</div>
               </div>
             </div>
             <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
@@ -1966,10 +2135,7 @@ const SearchPage = ({
         </div>
       )}
 
-      <AssignmentButton
-        selectedForAssignment={selectedForAssignment}
-        handleAssignConfirm={handleAssignConfirm}
-      />
+      <AssignmentButton selectedForAssignment={selectedForAssignment} handleAssignConfirm={handleAssignConfirm} />
     </div>
   )
 }
@@ -2272,24 +2438,20 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
                     </CardTitle>
                     <div className="flex items-center gap-2">
                       <Tooltip content="Orijinal Fiyatları Göster/Gizle" side="bottom">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setShowOriginalPrices(!showOriginalPrices)}
-                          >
-                            <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
-                            {showOriginalPrices ? <Euro className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
-                          </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
+                          <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
+                          {showOriginalPrices ? <Euro className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+                        </Button>
                       </Tooltip>
                       <Tooltip content="Ürün Adı Sütununu Göster/Gizle" side="bottom">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setIsProductNameVisible(!isProductNameVisible)}
-                          >
-                            <span className="sr-only">Ürün Adını Gizle/Göster</span>
-                            {isProductNameVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsProductNameVisible(!isProductNameVisible)}
+                        >
+                          <span className="sr-only">Ürün Adını Gizle/Göster</span>
+                          {isProductNameVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </Tooltip>
 
                       <div className="relative w-full max-w-xs">
@@ -2330,10 +2492,7 @@ const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBatchState
           </div>
         </div>
       )}
-      <AssignmentButton
-        selectedForAssignment={selectedForAssignment}
-        handleAssignConfirm={handleAssignConfirm}
-      />
+      <AssignmentButton selectedForAssignment={selectedForAssignment} handleAssignConfirm={handleAssignConfirm} />
     </div>
   )
 }
@@ -2380,9 +2539,9 @@ const FrequentlySearchedPage = ({ searchHistory, onReSearch, onShowHistoryAssign
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Tooltip content="Atanmış Ürünleri Göster" side="left">
-                            <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
-                              <FileText className="h-4 w-4" />
-                            </Button>
+                          <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
                         </Tooltip>
                         <Button variant="outline" size="sm" onClick={() => onReSearch(item.term)}>
                           <Search className="mr-2 h-4 w-4" /> Tekrar Ara
@@ -2443,7 +2602,7 @@ const SearchHistoryPage = ({ searchHistory, onReSearch, onShowHistoryAssignments
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Arama Geçmişi</h1>
         <div className="w-[200px]">
-          <Select value={filter} onChange={e => setFilter(e.target.value)}>
+          <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
             <SelectItem value="daily">Son 24 Saat</SelectItem>
             <SelectItem value="weekly">Son 1 Hafta</SelectItem>
             <SelectItem value="monthly">Son 1 Ay</SelectItem>
@@ -2470,9 +2629,9 @@ const SearchHistoryPage = ({ searchHistory, onReSearch, onShowHistoryAssignments
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Tooltip content="Atanmış Ürünleri Göster" side="left">
-                            <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
-                              <FileText className="h-4 w-4" />
-                            </Button>
+                          <Button variant="ghost" size="icon" onClick={() => onShowHistoryAssignments(item.term)}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
                         </Tooltip>
                         <Button variant="outline" size="sm" onClick={() => onReSearch(item.term)}>
                           <Search className="mr-2 h-4 w-4" /> Tekrar Ara
@@ -2788,9 +2947,7 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Görüşme Raporunu Dışa Aktar</DialogTitle>
-              <DialogDescription>
-                Rapor oluşturmak için lütfen bir başlangıç ve bitiş tarihi seçin.
-              </DialogDescription>
+              <DialogDescription>Rapor oluşturmak için lütfen bir başlangıç ve bitiş tarihi seçin.</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4 py-4">
               <div className="space-y-2">
@@ -2909,8 +3066,8 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                         value={newMeeting.type}
                         onChange={(e) => setNewMeeting({ ...newMeeting, type: e.target.value as any })}
                       >
-                          <SelectItem value="görüşme">Görüşme</SelectItem>
-                          <SelectItem value="toplantı">Toplantı</SelectItem>
+                        <SelectItem value="görüşme">Görüşme</SelectItem>
+                        <SelectItem value="toplantı">Toplantı</SelectItem>
                       </Select>
 
                       <Input
@@ -2958,13 +3115,11 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
 
                       <Select
                         value={newMeeting.priority}
-                        onChange={(e) =>
-                          setNewMeeting({ ...newMeeting, priority: e.target.value as any })
-                        }
+                        onChange={(e) => setNewMeeting({ ...newMeeting, priority: e.target.value as any })}
                       >
-                          <SelectItem value="low">Düşük Öncelik</SelectItem>
-                          <SelectItem value="medium">Orta Öncelik</SelectItem>
-                          <SelectItem value="high">Yüksek Öncelik</SelectItem>
+                        <SelectItem value="low">Düşük Öncelik</SelectItem>
+                        <SelectItem value="medium">Orta Öncelik</SelectItem>
+                        <SelectItem value="high">Yüksek Öncelik</SelectItem>
                       </Select>
 
                       <div className="space-y-2">
@@ -2975,10 +3130,10 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                             onChange={(e) => setNewMeeting({ ...newMeeting, notificationFrequency: e.target.value })}
                             id="notificationFrequency"
                           >
-                               <SelectItem value="none">Bildirme</SelectItem>
-                               <SelectItem value="for_1_day">1 Gün Boyunca</SelectItem>
-                               <SelectItem value="for_3_days">3 Gün Boyunca</SelectItem>
-                               <SelectItem value="for_1_week">1 Hafta Boyunca</SelectItem>
+                            <SelectItem value="none">Bildirme</SelectItem>
+                            <SelectItem value="for_1_day">1 Gün Boyunca</SelectItem>
+                            <SelectItem value="for_3_days">3 Gün Boyunca</SelectItem>
+                            <SelectItem value="for_1_week">1 Hafta Boyunca</SelectItem>
                           </Select>
                         ) : (
                           // Toplantı
@@ -2987,10 +3142,10 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                             onChange={(e) => setNewMeeting({ ...newMeeting, notificationFrequency: e.target.value })}
                             id="notificationFrequency"
                           >
-                              <SelectItem value="none">Bildirme</SelectItem>
-                              <SelectItem value="on_day">Olay Günü</SelectItem>
-                              <SelectItem value="1_day_before">1 Gün Önce</SelectItem>
-                              <SelectItem value="1_week_before">1 Hafta Önce</SelectItem>
+                            <SelectItem value="none">Bildirme</SelectItem>
+                            <SelectItem value="on_day">Olay Günü</SelectItem>
+                            <SelectItem value="1_day_before">1 Gün Önce</SelectItem>
+                            <SelectItem value="1_week_before">1 Hafta Önce</SelectItem>
                           </Select>
                         )}
                       </div>
@@ -3004,12 +3159,12 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                           }
                           id="notificationDailyFrequency"
                         >
-                            <SelectItem value="once">Günde 1 Kez (Sabah)</SelectItem>
-                            <SelectItem value="twice">Günde 2 Kez (Sabah, Akşam)</SelectItem>
-                            <SelectItem value="thrice">Günde 3 Kez (Sabah, Öğle, Akşam)</SelectItem>
-                            <SelectItem value="five_times">Günde 5 Kez</SelectItem>
-                            <SelectItem value="ten_times">Günde 10 Kez</SelectItem>
-                            <SelectItem value="hourly">Saat Başı (Mesai Saatleri)</SelectItem>
+                          <SelectItem value="once">Günde 1 Kez (Sabah)</SelectItem>
+                          <SelectItem value="twice">Günde 2 Kez (Sabah, Akşam)</SelectItem>
+                          <SelectItem value="thrice">Günde 3 Kez (Sabah, Öğle, Akşam)</SelectItem>
+                          <SelectItem value="five_times">Günde 5 Kez</SelectItem>
+                          <SelectItem value="ten_times">Günde 10 Kez</SelectItem>
+                          <SelectItem value="hourly">Saat Başı (Mesai Saatleri)</SelectItem>
                         </Select>
                       </div>
 
@@ -3038,9 +3193,7 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                                 />
                                 <p className={cn("font-semibold text-sm", meeting.completed && "line-through")}>
                                   {meeting.companyName}{" "}
-                                  <span className="text-xs font-normal text-muted-foreground">
-                                    ({meeting.type})
-                                  </span>
+                                  <span className="text-xs font-normal text-muted-foreground">({meeting.type})</span>
                                 </p>
                               </div>
                               <div className="pl-6 space-y-1.5 text-xs text-muted-foreground">
@@ -3074,8 +3227,7 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
                                 <div className="flex items-center gap-1 pl-6 text-xs pt-1">
                                   <Clock className="h-3 w-3" />
                                   <span>
-                                    Tarih:{" "}
-                                    {new Date(meeting.nextMeetingDate + "T00:00:00").toLocaleDateString("tr-TR")}
+                                    Tarih: {new Date(meeting.nextMeetingDate + "T00:00:00").toLocaleDateString("tr-TR")}
                                   </span>
                                 </div>
                               )}
@@ -3130,6 +3282,7 @@ const calculateRelevance = (product: ProductResult, term: string): number => {
   let score = 0
   const termLower = term.toLowerCase().trim()
   if (!termLower) return 0
+
   const name = stripHtml(product.product_name || "").toLowerCase()
   const number = (product.product_number || "").toLowerCase()
   const cas = (product.cas_number || "").toLowerCase()
@@ -3156,7 +3309,6 @@ const calculateRelevance = (product: ProductResult, term: string): number => {
   return score
 }
 
-
 function MainApplication({ appStatus, setAppStatus }) {
   const [page, setPage] = useState("calendar")
   const [assignments, setAssignments] = useState<AssignmentItem[]>([])
@@ -3168,12 +3320,12 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const [toasts, setToasts] = useState([])
   const toast = (type, message) => {
-      const id = Date.now() + Math.random();
-      setToasts(prev => [...prev, { id, type, message }]);
-      setTimeout(() => {
-          setToasts(prev => prev.filter(t => t.id !== id));
-      }, 5000);
-  };
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, type, message }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 5000)
+  }
 
   const [batchSearchState, setBatchSearchState] = useState({
     pageState: "idle",
@@ -3202,37 +3354,37 @@ function MainApplication({ appStatus, setAppStatus }) {
   }, [])
 
   useEffect(() => {
-    if (window.electronAPI) {
-      window.electronAPI.loadSettings()
-      const cleanupSettings = window.electronAPI.onSettingsLoaded((loadedSettings) => {
-        setSettings(loadedSettings)
-      })
-      window.electronAPI.getParities()
-      const cleanupParities = window.electronAPI.onParitiesUpdated((updatedParities) => {
-        setParities(updatedParities)
-      })
-      window.electronAPI.loadCalendarNotes()
-      const cleanupCalendarNotes = window.electronAPI.onCalendarNotesLoaded((loadedNotes) => {
-        if (loadedNotes && Array.isArray(loadedNotes)) {
-          setCalendarNotes(loadedNotes)
-        }
-      })
-      const cleanupExport = window.electronAPI.onExportMeetingsResult((result) => {
-        if (result.status === "success") {
-          toast("success", `Excel dosyası başarıyla oluşturuldu: ${result.path}`)
-        } else if (result.status === "info") {
-          toast("info", result.message)
-        } else {
-          toast("error", `Excel oluşturulurken bir hata oluştu: ${result.message}`)
-        }
-      })
-
-      return () => {
-        cleanupSettings()
-        cleanupParities()
-        cleanupCalendarNotes()
-        cleanupExport()
+    if (typeof window === "undefined" || !window.electronAPI) return
+    // Settings ve Parities yükleme işlemleri App.tsx'den buraya taşındı.
+    window.electronAPI.loadSettings()
+    const cleanupSettings = window.electronAPI.onSettingsLoaded((loadedSettings) => {
+      setSettings(loadedSettings)
+    })
+    window.electronAPI.getParities()
+    const cleanupParities = window.electronAPI.onParitiesUpdated((updatedParities) => {
+      setParities(updatedParities)
+    })
+    window.electronAPI.loadCalendarNotes()
+    const cleanupCalendarNotes = window.electronAPI.onCalendarNotesLoaded((loadedNotes) => {
+      if (loadedNotes && Array.isArray(loadedNotes)) {
+        setCalendarNotes(loadedNotes)
       }
+    })
+    const cleanupExport = window.electronAPI.onExportMeetingsResult((result) => {
+      if (result.status === "success") {
+        toast("success", `Excel dosyası başarıyla oluşturuldu: ${result.path}`)
+      } else if (result.status === "info") {
+        toast("info", result.message)
+      } else {
+        toast("error", `Excel oluşturulurken bir hata oluştu: ${result.message}`)
+      }
+    })
+
+    return () => {
+      cleanupSettings()
+      cleanupParities()
+      cleanupCalendarNotes()
+      cleanupExport()
     }
   }, [])
 
@@ -3256,7 +3408,7 @@ function MainApplication({ appStatus, setAppStatus }) {
           return
         }
         const meetingDate = new Date(meeting.nextMeetingDate + "T00:00:00")
-        let notificationDate = new Date(meetingDate)
+        const notificationDate = new Date(meetingDate)
         switch (meeting.notificationFrequency) {
           case "on_day":
             break
@@ -3295,6 +3447,7 @@ function MainApplication({ appStatus, setAppStatus }) {
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const searchResults = useMemo(() => {
+    // M-kodu gruplama mantığı kaldırıldı. Tüm ürünler doğrudan işlenecek.
     if (!settings || !parities) {
       return rawSearchResults.map((p) => ({
         ...p,
@@ -3303,19 +3456,21 @@ function MainApplication({ appStatus, setAppStatus }) {
         cheapest_source_country: "...",
       }))
     }
+
     const priced = rawSearchResults.map((p) => calculateProductPrices(p, settings, parities))
+
     priced.sort((a, b) => {
       const scoreA = calculateRelevance(a, currentSearchTerm)
       const scoreB = calculateRelevance(b, currentSearchTerm)
 
-      // Primary sort: by relevance score, descending
+      // 1. Öncelik: Alaka skoruna göre (yüksekten düşüğe)
       if (scoreA !== scoreB) {
         return scoreB - scoreA
       }
 
-      // Secondary sort: by price, ascending
+      // 2. Öncelik: Fiyata göre (düşükten yükseğe)
       const getNumericPrice = (priceStr: string | undefined): number => {
-        if (!priceStr || priceStr === "N/A" || priceStr === "Teklif İsteyiniz") return Number.POSITIVE_INFINITY
+        if (!priceStr || priceStr === "N/A" || priceStr.includes("/")) return Number.POSITIVE_INFINITY
         const cleanedPrice = priceStr.replace(/€/g, "").replace(/\s/g, "").replace(/\./g, "").replace(/,/g, ".")
         const numericValue = Number.parseFloat(cleanedPrice)
         return isNaN(numericValue) ? Number.POSITIVE_INFINITY : numericValue
@@ -3324,6 +3479,7 @@ function MainApplication({ appStatus, setAppStatus }) {
       const priceB = getNumericPrice(b.cheapest_eur_price_str)
       return priceA - priceB
     })
+
     return priced
   }, [rawSearchResults, settings, parities, currentSearchTerm])
 
@@ -3398,24 +3554,24 @@ function MainApplication({ appStatus, setAppStatus }) {
     })
   }
 
- const handleSearch = (searchTerm: string) => {
-    if (!searchTerm.trim()) return;
+  const handleSearch = (searchTerm: string) => {
+    if (!searchTerm.trim()) return
     // isLoading'i burada kontrol etmiyoruz çünkü yeni bir arama her zaman başlatılabilmeli
     if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
+      clearTimeout(updateTimeoutRef.current)
     }
-    productQueueRef.current = [];
-    setIsLoading(true);
-    setRawSearchResults([]);
-    setError(null);
-    setCurrentSearchTerm(searchTerm);
+    productQueueRef.current = []
+    setIsLoading(true)
+    setRawSearchResults([])
+    setError(null)
+    setCurrentSearchTerm(searchTerm)
     if (window.electronAPI) {
-      window.electronAPI.performSearch(searchTerm);
+      window.electronAPI.performSearch(searchTerm)
     } else {
-      console.error("Electron API bulunamadı, arama yapılamıyor.");
-      setIsLoading(false);
+      console.error("Electron API bulunamadı, arama yapılamıyor.")
+      setIsLoading(false)
     }
-  };
+  }
 
   const handleReSearch = (term: string) => {
     setSearchTermForPage(term)
@@ -3430,9 +3586,8 @@ function MainApplication({ appStatus, setAppStatus }) {
   }
 
   const onSearchExecuted = () => {
-    setSearchTermForPage(null);
-  };
-
+    setSearchTermForPage(null)
+  }
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -3553,26 +3708,33 @@ function MainApplication({ appStatus, setAppStatus }) {
         </div>
 
         <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-            {toasts.map(t => {
-                const colors = {
-                    success: "bg-green-600 border-green-700",
-                    error: "bg-red-600 border-red-700",
-                    warning: "bg-yellow-500 border-yellow-600",
-                    info: "bg-blue-600 border-blue-700",
-                }
-                return (
-                    <motion.div
-                        key={t.id}
-                        layout
-                        initial={{ opacity: 0, y: 50, scale: 0.3 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                        className={cn("text-white p-4 rounded-md shadow-lg border text-sm font-medium", colors[t.type] || colors.info)}
-                    >
-                        {t.message}
-                    </motion.div>
-                )
-            })}
+          {toasts.map((t) => {
+            const colors = {
+              success: "bg-green-600 border-green-700",
+              error: "bg-red-600 border-red-700",
+              warning: "bg-yellow-500 border-yellow-600",
+              info: "bg-blue-600 border-blue-700",
+            }
+            return (
+              <motion.div
+                key={t.id}
+                initial={{ opacity: 0, x: 100 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 100 }}
+                className={`${colors[t.type]} text-white px-4 py-3 rounded-lg shadow-lg border-l-4 min-w-[300px]`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span>{t.message}</span>
+                  <button
+                    onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}
+                    className="text-white hover:text-gray-200"
+                  >
+                    ×
+                  </button>
+                </div>
+              </motion.div>
+            )
+          })}
         </div>
 
         <HistoryResultsDialog
@@ -3593,12 +3755,12 @@ export default function App() {
   const [toasts, setToasts] = useState([])
 
   const toast = (type, message) => {
-      const id = Date.now() + Math.random();
-      setToasts(prev => [...prev, { id, type, message }]);
-      setTimeout(() => {
-          setToasts(prev => prev.filter(t => t.id !== id));
-      }, 5000);
-  };
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, type, message }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 5000)
+  }
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -3622,7 +3784,7 @@ export default function App() {
 
     window.electronAPI.rendererReady()
 
-    return () => cleanups.forEach((c) => c())
+    return () => cleanups.forEach((cleanup) => cleanup())
   }, [])
 
   const renderContent = () => {
@@ -3713,22 +3875,18 @@ export default function App() {
           height: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          /* Kaydırma yolu için hafif bir arka plan ekler */
           background: hsl(var(--secondary));
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          /* Başparmağı varsayılan olarak daha görünür hale getirir */
           background-color: hsl(var(--border));
           border-radius: 10px;
-          border: 2px solid hsl(var(--secondary)); /* Track ile aynı renkte bir kenarlık ekleyerek daha ince görünmesini sağlar */
+          border: 2px solid hsl(var(--secondary));
         }
         .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-            /* Fare alanın üzerine geldiğinde rengi daha belirgin bir renkle değiştirir */
             background-color: hsl(var(--muted-foreground));
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          /* Fare direkt başparmağın üzerine geldiğinde ana renge döner */
           background-color: hsl(var(--primary));
         }
       `}</style>
@@ -3743,28 +3901,35 @@ export default function App() {
           {renderContent()}
         </motion.div>
       </AnimatePresence>
-        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-            {toasts.map(t => {
-                 const colors = {
-                    success: "bg-green-600 border-green-700",
-                    error: "bg-red-600 border-red-700",
-                    warning: "bg-yellow-500 border-yellow-600",
-                    info: "bg-blue-600 border-blue-700",
-                }
-                return (
-                    <motion.div
-                        key={t.id}
-                        layout
-                        initial={{ opacity: 0, y: 50, scale: 0.3 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                        className={cn("text-white p-4 rounded-md shadow-lg border text-sm font-medium", colors[t.type] || colors.info)}
-                    >
-                        {t.message}
-                    </motion.div>
-                )
-            })}
-        </div>
+      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+        {toasts.map((t) => {
+          const colors = {
+            success: "bg-green-600 border-green-700",
+            error: "bg-red-600 border-red-700",
+            warning: "bg-yellow-500 border-yellow-600",
+            info: "bg-blue-600 border-blue-700",
+          }
+          return (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 100 }}
+              className={`${colors[t.type]} text-white px-4 py-3 rounded-lg shadow-lg border-l-4 min-w-[300px]`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span>{t.message}</span>
+                <button
+                  onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}
+                  className="text-white hover:text-gray-200"
+                >
+                  ×
+                </button>
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
     </ThemeProvider>
   )
 }

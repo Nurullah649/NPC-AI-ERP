@@ -258,22 +258,31 @@ app.whenReady().then(() => {
 app.on("before-quit", () => {
   console.log("Uygulama kapanıyor, Python servisi ve alt işlemleri sonlandırılıyor...")
 
+  // Python'a sürücüleri kapatması için komut gönder
   sendCommandToPython({ action: "shutdown" })
 
-  if (pythonProcess && !pythonProcess.killed) {
-    console.log(`Python işlemini (PID: ${pythonProcess.pid}) ve tüm alt işlemlerini sonlandırma garantisi alınıyor.`)
-    try {
-      if (process.platform === "win32") {
-        execSync(`taskkill /PID ${pythonProcess.pid} /T /F`)
-        console.log("taskkill komutu başarıyla çalıştırıldı ve tamamlandı.")
-      } else {
-        process.kill(-pythonProcess.pid, "SIGKILL")
+  // Python'un sürücüleri kapatması için kısa bir süre bekle, sonra işlemi zorla sonlandır.
+  // Bu, başıboş chrome.exe/chromedriver süreçlerini önlemeye yardımcı olur.
+  setTimeout(() => {
+    if (pythonProcess && !pythonProcess.killed) {
+      console.log(`Zaman aşımı sonrası Python işlemini (PID: ${pythonProcess.pid}) ve alt işlemlerini sonlandırma garantisi alınıyor.`)
+      try {
+        if (process.platform === "win32") {
+          // /T alt süreçleri de sonlandırır, /F ise zorla kapatır.
+          execSync(`taskkill /PID ${pythonProcess.pid} /T /F`)
+          console.log("taskkill komutu başarıyla çalıştırıldı.")
+        } else {
+          // Linux/macOS'ta, ana sürece SIGKILL sinyali göndererek alt süreçlerin de sonlanmasını sağlamaya çalışırız.
+          // -process.pid ile tüm süreç grubunu hedef alırız.
+          process.kill(-pythonProcess.pid, "SIGKILL")
+        }
+      } catch (e) {
+        console.error("Python işlemi sonlandırılırken bir hata oluştu:", e.message)
+      } finally {
+        pythonProcess = null
       }
-    } catch (e) {
-      console.error("Python işlemi sonlandırılırken bir hata oluştu:", e.message)
     }
-    pythonProcess = null
-  }
+  }, 1500) // Python'a temizlik için 1.5 saniye ver
 })
 
 app.on("window-all-closed", () => {
