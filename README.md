@@ -1,5 +1,5 @@
 <div align="center">
-<img src="icon.png" alt="Tales Job Logo" width="150" style="border-radius: 50%; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"/>
+<img src="assets/icon.png" alt="Tales Job Logo" width="150" style="border-radius: 50%; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"/>
 <h1 style="font-size: 3em; font-weight: bold; color: #2c3e50; margin-top: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">Tales Job</h1>
 <p style="font-size: 1.2em; color: #34495e;">
 Medikal ve Kimyasal Tedarikçiler için Gelişmiş Ürün Arama Motoru
