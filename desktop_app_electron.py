@@ -833,6 +833,26 @@ class ComparisonEngine:
             "itk_variations": [itk_product]
         }
 
+    def _process_netflex_product(self, netflex_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
+        """Doğrudan Netflex aramasından gelen bir ürünü standart formata çevirir."""
+        price_str = netflex_product.get("price_str", "N/A")
+        return {
+            "source": "Netflex",
+            "product_name": netflex_product.get("product_name", "N/A"),
+            "product_number": netflex_product.get("product_code", "N/A"),
+            "cas_number": "N/A",  # Netflex arama sonucu CAS döndürmez
+            "brand": netflex_product.get("brand", "Netflex"),
+            "cheapest_eur_price_str": price_str,
+            "cheapest_material_number": netflex_product.get("product_code", "N/A"),
+            "cheapest_source_country": "Netflex",
+            "cheapest_netflex_stock": netflex_product.get("stock", "N/A"),
+            # Diğer kaynaklarla uyumluluk için boş listeler
+            "sigma_variations": {},
+            "netflex_matches": [],
+            "tci_variations": [],
+            "itk_variations": []
+        }
+
     def search_and_compare(self, search_term: str, context: Dict = None):
         start_time = time.monotonic()
         logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}'")
@@ -846,14 +866,17 @@ class ComparisonEngine:
         if normalized_term.startswith('m'):
             is_m_code = True
             if '.' in normalized_term:
-                # M.100 ise -> M100'ü de ara
                 search_term_variations.add(normalized_term.replace('.', '', 1))
             elif re.match(r'^m\d+$', normalized_term):
-                # M100 ise -> M.100'ü de ara
                 search_term_variations.add(f"m.{normalized_term[1:]}")
 
         total_found = 0
         total_found_lock = threading.Lock()
+        # YENİ: Sadece Sigma sonuçlarını saymak için yeni bir sayaç ve kilidi oluşturuldu.
+        sigma_found_count = 0
+        sigma_found_lock = threading.Lock()
+
+        # 1. Aşama: Sigma, TCI, Orkim ve ITK'da paralel arama
         with ThreadPoolExecutor(max_workers=5, thread_name_prefix="Source-Streamer") as executor:
             def tci_task():
                 nonlocal total_found
@@ -870,7 +893,8 @@ class ComparisonEngine:
                     logging.error(f"TCI akış hatası: {e}", exc_info=True)
 
             def sigma_task():
-                nonlocal total_found
+                # DEĞİŞİKLİK: 'sigma_found_count' değişkeninin bu fonksiyonda değiştirileceği belirtildi.
+                nonlocal total_found, sigma_found_count
                 with ThreadPoolExecutor(max_workers=self.max_workers,
                                         thread_name_prefix="Sigma-Processor") as processor:
                     try:
@@ -880,7 +904,9 @@ class ComparisonEngine:
                                    if not self.search_cancelled.is_set()]
                         for future in as_completed(futures):
                             if future.result():
+                                # DEĞİŞİKLİK: Hem genel sayaç hem de Sigma'ya özel sayaç artırılıyor.
                                 with total_found_lock: total_found += 1
+                                with sigma_found_lock: sigma_found_count += 1
                     except Exception as e:
                         logging.error(f"Sigma akış hatası: {e}", exc_info=True)
 
@@ -890,15 +916,10 @@ class ComparisonEngine:
                     if self.orkim_api:
                         orkim_search_term = search_term
                         if is_m_code:
-                            # Orkim sadece noktasız M kodları kullanır
                             for term_var in search_term_variations:
-                                if '.' not in term_var:
-                                    orkim_search_term = term_var
-                                    break
-
+                                if '.' not in term_var: orkim_search_term = term_var; break
                         orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled)
                         if self.search_cancelled.is_set(): return
-
                         for product in orkim_results:
                             if self.search_cancelled.is_set(): break
                             processed = self._process_orkim_product(product, context)
@@ -911,34 +932,23 @@ class ComparisonEngine:
             def itk_task():
                 nonlocal total_found
                 itk_search_terms = {search_term.lower()}
-                if is_m_code:
-                    itk_search_terms = search_term_variations
-
+                if is_m_code: itk_search_terms = search_term_variations
                 found_codes = set()
                 with itk_cache_lock:
                     cache_to_search = list(itk_product_cache)
-
                 for term_var in itk_search_terms:
                     try:
                         for product in cache_to_search:
                             if self.search_cancelled.is_set(): return
-
                             code = product.get("product_code", "").lower()
                             name = product.get("product_name", "").lower()
-
-                            score = 0
-                            if term_var == code:
-                                score = 100
-                            else:
-                                score = max(fuzz.partial_ratio(term_var, name), fuzz.partial_ratio(term_var, code))
-
-                            if score > 85:  # Eşleşme için relevantlık eşiği
-                                if code not in found_codes:
-                                    processed = self._process_itk_product(product, context)
-                                    send_to_frontend("product_found", {"product": processed}, context=context)
-                                    with total_found_lock:
-                                        total_found += 1
-                                    found_codes.add(code)
+                            score = 100 if term_var == code else max(fuzz.partial_ratio(term_var, name),
+                                                                     fuzz.partial_ratio(term_var, code))
+                            if score > 85 and code not in found_codes:
+                                processed = self._process_itk_product(product, context)
+                                send_to_frontend("product_found", {"product": processed}, context=context)
+                                with total_found_lock: total_found += 1
+                                found_codes.add(code)
                     except Exception as e:
                         logging.error(f"ITK önbellek araması sırasında hata: {e}", exc_info=True)
 
@@ -946,11 +956,28 @@ class ComparisonEngine:
             f_sigma = executor.submit(sigma_task)
             f_orkim = executor.submit(orkim_task)
             f_itk = executor.submit(itk_task)
-            f_tci.result()
-            f_sigma.result()
-            f_orkim.result()
+            f_tci.result();
+            f_sigma.result();
+            f_orkim.result();
             f_itk.result()
 
+        # 2. Aşama: Eğer SADECE SİGMA'DA sonuç bulunamadıysa Netflex'te ara
+        # Koşul, 'sigma_found_count == 0' olarak güncellendi.
+        if sigma_found_count == 0 and not self.search_cancelled.is_set():
+            logging.info(f"Sigma'da sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
+            try:
+                netflex_results = self.netflex_api.search_products(search_term, self.search_cancelled)
+                if not self.search_cancelled.is_set():
+                    for product in netflex_results:
+                        if self.search_cancelled.is_set(): break
+                        processed = self._process_netflex_product(product, context)
+                        send_to_frontend("product_found", {"product": processed}, context=context)
+                        with total_found_lock:
+                            total_found += 1
+            except Exception as e:
+                logging.error(f"İkincil Netflex araması sırasında hata: {e}", exc_info=True)
+
+        # Arama tamamlama mesajını en sonda gönder
         if not self.search_cancelled.is_set():
             logging.info(
                 f"Arama Tamamlandı: '{search_term}', Toplam={total_found}, Süre={time.monotonic() - start_time:.2f}s")
@@ -1151,4 +1178,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

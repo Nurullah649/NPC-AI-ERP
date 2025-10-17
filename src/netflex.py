@@ -9,9 +9,11 @@ import requests
 from requests.adapters import HTTPAdapter
 import os
 
+
 class AuthenticationError(Exception):
     """Netflex kimlik doğrulama başarısız olduğunda fırlatılacak özel hata."""
     pass
+
 
 class NetflexAPI:
     def __init__(self, username: str, password: str):
@@ -29,7 +31,7 @@ class NetflexAPI:
         self.token_last_updated = 0
         self.token_lock = threading.Lock()
 
-    # --- YENİ: Ayarlar değiştiğinde kimlik bilgilerini güncellemek için fonksiyon ---
+        # --- YENİ: Ayarlar değiştiğinde kimlik bilgilerini güncellemek için fonksiyon ---
         self.token_lock = threading.Lock()
 
     def update_credentials(self, username: str, password: str):
@@ -37,7 +39,7 @@ class NetflexAPI:
         with self.token_lock:
             logging.info("Netflex kimlik bilgileri güncelleniyor.")
             self.credentials = {"adi": username, "sifre": password}
-            self.token = None # Token'ı geçersiz kıl, bir sonraki istekte yenisi alınsın
+            self.token = None  # Token'ı geçersiz kıl, bir sonraki istekte yenisi alınsın
             self.token_last_updated = 0
 
     def get_token(self) -> str:
@@ -126,10 +128,17 @@ class NetflexAPI:
                 if isinstance(stock_value, (int, float)):
                     stock_info = int(stock_value)
 
+                # GÜNCELLEME: Marka bilgisini al ve varsayılan olarak "Netflex" kullan
+                brand = product.get('urn_Marka', 'Netflex').strip()
+                if not brand:  # Eğer marka boş bir string ise yine varsayılanı kullan
+                    brand = "Netflex"
+
+
                 found_products.append({
                     "source": "Netflex",
                     "product_name": product.get('urn_Adi'),
                     "product_code": product.get('urn_Kodu'),
+                    "brand": brand,
                     "price_numeric": price_numeric,
                     "price_str": price_str,
                     "stock": stock_info,
@@ -147,4 +156,3 @@ class NetflexAPI:
                 response_text = response.text if 'response' in locals() else 'Yanıt alınamadı'
                 logging.error(f"Hatalı yanıt içeriği: {response_text[:500]}...")
         return []
-

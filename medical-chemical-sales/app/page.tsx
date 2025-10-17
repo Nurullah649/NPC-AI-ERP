@@ -1573,7 +1573,7 @@ const ProductResultItem = ({
       price_str: item.netflex.price_str,
       source: "Netflex",
       cheapest_netflex_stock: item.netflex.stock,
-      brand: "Netflex",
+      brand: item.netflex.brand || "Netflex",
       unit: "Adet",
     }
     onSelectionChange(assignmentItem)
@@ -3954,4 +3954,5 @@ export default function App() {
     </ThemeProvider>
   )
 }
+
 
