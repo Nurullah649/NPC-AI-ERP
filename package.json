@@ -1,10 +1,10 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "NPC-AI ERP Electron Uygulaması",
   "main": "main.js",
   "homepage": "./",
-  "author": "Nurullah Kurnaz",
+  "author": "Nurullah Kurnaz & Adem TURGUT",
   "license": "ISC",
   "scripts": {
     "postinstall": "cd medical-chemical-sales && npm install --legacy-peer-deps",
