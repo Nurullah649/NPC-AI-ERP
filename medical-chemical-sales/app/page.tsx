@@ -1156,6 +1156,34 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" /> Orkim Market Bilgileri
+          </CardTitle>
+          <CardDescription>Orkim Market sistemine giriş için gerekli bilgiler.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="orkim_username">Kullanıcı Adı</Label>
+            <Input
+              id="orkim_username"
+              value={settings.orkim_username || ""}
+              onChange={(e) => handleChange("orkim_username", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="orkim_password">Şifre</Label>
+            <Input
+              id="orkim_password"
+              type="password"
+              value={settings.orkim_password || ""}
+              onChange={(e) => handleChange("orkim_password", e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-primary" /> ITK (İstanbul Teknik Kimya) Bilgileri
           </CardTitle>
           <CardDescription>ITK bayi sistemine giriş için gerekli bilgiler.</CardDescription>
@@ -3926,3 +3954,4 @@ export default function App() {
     </ThemeProvider>
   )
 }
+
