@@ -154,7 +154,7 @@ const Checkbox = React.forwardRef(({ className, ...props }, ref) => (
     type="checkbox"
     ref={ref}
     className={cn(
-      "h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      "h-4 w-4 shrink-0 rounded-sm border border-muted-foreground/50 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary",
       className,
     )}
     {...props}
@@ -443,7 +443,7 @@ const HoverMenuTrigger = ({ children }) => {
 }
 
 const HoverMenuContent = ({ children, align = "start", className, ...props }) => {
-  const { isOpen } = useContext(HoverMenuContext)
+  const { isOpen } = useContext(DropdownContext)
   const alignClasses = {
     start: "origin-top-left left-0",
     end: "origin-top-right right-0",
@@ -506,7 +506,10 @@ TableBody.displayName = "TableBody"
 const TableRow = React.forwardRef(({ className, ...props }, ref) => (
   <tr
     ref={ref}
-    className={cn("border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted", className)}
+    className={cn(
+      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted dark:border-[#393937]",
+      className,
+    )}
     {...props}
   />
 ))
@@ -650,6 +653,7 @@ interface AppSettings {
   itk_username: string
   itk_password: string
   tci_coefficient: number
+  itk_coefficient: number
   sigma_coefficient_us: number
   sigma_coefficient_de: number
   sigma_coefficient_gb: number
@@ -748,8 +752,8 @@ const cleanAndDecodeHtml = (html: string | null | undefined): string => {
 }
 
 const calculateProductPrices = (product: ProductResult, settings: AppSettings, parities: any): ProductResult => {
-  // Orkim veya ITK gibi önceden fiyatı formatlanmış kaynaklar için hesaplamayı atla
-  if (product.source === "Orkim" || product.source === "ITK") {
+  // Orkim gibi önceden fiyatı formatlanmış kaynaklar için hesaplamayı atla
+  if (product.source === "Orkim") {
     return product
   }
 
@@ -798,20 +802,17 @@ const calculateProductPrices = (product: ProductResult, settings: AppSettings, p
     })
   }
 
-  if (newProduct.source === "TCI" && newProduct.tci_variations) {
-    newProduct.tci_variations.forEach((varItem) => {
-      const calculatedPrice =
-        varItem.original_price_numeric != null
-          ? varItem.original_price_numeric * (settings.tci_coefficient || 1.4)
-          : null
-      varItem.calculated_price_eur = calculatedPrice
-      varItem.calculated_price_eur_str = formatCurrency(calculatedPrice, "EUR")
-
-      if (calculatedPrice !== null) {
+  if (newProduct.source === "ITK" && newProduct.itk_variations) {
+    newProduct.itk_variations.forEach((varItem) => {
+      const rawPrice = varItem.price // bu, python'dan gelen orijinal sayısal fiyattır
+      if (rawPrice != null) {
+        const finalPrice = rawPrice * (settings.itk_coefficient || 1.0)
+        varItem.price = finalPrice
+        varItem.price_str = formatCurrency(finalPrice, varItem.currency || "EUR")
         allPriceOptions.push({
-          price: calculatedPrice,
-          code: `${newProduct.product_number}-${varItem.unit}`,
-          source: "TCI",
+          price: finalPrice,
+          code: varItem.product_code,
+          source: "ITK",
         })
       }
     })
@@ -980,7 +981,7 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
     { name: "settings", href: "#", icon: Settings, label: "Ayarlar" },
   ]
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-14 flex-col border-r bg-background sm:flex">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-14 flex-col border-r bg-background sm:flex dark:border-[#393937]">
       <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
         <div className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base">
           <Package2 className="h-4 w-4 transition-all group-hover:scale-110" />
@@ -1134,26 +1135,19 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" /> Orkim Market Bilgileri
+            <Calculator className="h-5 w-5 text-primary" /> ITK Fiyatlandırma
           </CardTitle>
-          <CardDescription>Orkim Market sistemine giriş için gerekli bilgiler.</CardDescription>
+          <CardDescription>ITK ürünlerinin orijinal fiyatı ile çarpılacak katsayı.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           <div className="space-y-2">
-            <Label htmlFor="orkim_username">Kullanıcı Adı</Label>
+            <Label htmlFor="itk_coefficient">Fiyat Katsayısı</Label>
             <Input
-              id="orkim_username"
-              value={settings.orkim_username || ""}
-              onChange={(e) => handleChange("orkim_username", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="orkim_password">Şifre</Label>
-            <Input
-              id="orkim_password"
-              type="password"
-              value={settings.orkim_password || ""}
-              onChange={(e) => handleChange("orkim_password", e.target.value)}
+              id="itk_coefficient"
+              type="number"
+              step="0.1"
+              value={settings.itk_coefficient || 1.0}
+              onChange={(e) => handleChange("itk_coefficient", Number.parseFloat(e.target.value) || 0)}
             />
           </div>
         </CardContent>
@@ -1269,6 +1263,7 @@ const InitialSetupScreen = ({ setAppStatus }) => {
                 itk_username: "",
                 itk_password: "",
                 tci_coefficient: 1.4,
+                itk_coefficient: 1.0,
                 sigma_coefficient_us: 1.0,
                 sigma_coefficient_de: 1.0,
                 sigma_coefficient_gb: 1.0,
@@ -1484,18 +1479,21 @@ const ProductResultItem = ({
   showOriginalPrices,
 }) => {
   const countryHeaders = { us: "Amerika (US)", de: "Almanya (DE)", gb: "İngiltere (GB)" }
-  // M-kodu mantığı kaldırıldığı için 'is_m_code_match' kontrolü kaldırıldı.
-  const hasVariations =
-    product.source === "Sigma" ||
-    product.source === "TCI" ||
-    (product.source === "ITK" && product.itk_variations && product.itk_variations.length > 0)
 
-  // Izgara (grid) yapısı, en başa bir seçim kutusu sütunu eklenerek güncellendi.
+  const hasActualSigmaVariations = useMemo(() => {
+    if (product.source !== "Sigma" || !product.sigma_variations) return false
+    return Object.values(product.sigma_variations).some((vars) => vars && vars.length > 0)
+  }, [product])
+
+  const hasVariations =
+    (product.source === "Sigma" && hasActualSigmaVariations) ||
+    (product.source === "TCI" && product.tci_variations && product.tci_variations.length > 0)
+
   const gridClasses = cn(
-    "grid gap-x-4 items-center p-4 hover:bg-muted/50",
+    "grid gap-x-4 items-center p-4",
     isProductNameVisible
-      ? "grid-cols-[auto_150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[auto_150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[60px_150px_150px_150px_150px_120px_1fr_auto]"
+      : "grid-cols-[60px_150px_150px_150px_150px_120px_auto]",
   )
 
   const getCombinedData = useMemo(() => {
@@ -1568,14 +1566,12 @@ const ProductResultItem = ({
     onSelectionChange(assignmentItem)
   }
 
-  // Bu fonksiyon artık tüm ana satırlar için kullanılacak.
   const handleSelectMainProduct = (p: ProductResult) => {
-    // ITK ve Orkim gibi basit kaynaklar veya Sigma/TCI'nin en ucuz hali için atama verisi oluşturur.
     const priceNumeric =
-      p.itk_variations?.[0]?.price || // ITK için
-      p.netflex_matches?.find((m) => m.price_str === p.cheapest_eur_price_str)?.price_numeric || // Netflex için
-      p.tci_variations?.find((v) => v.calculated_price_eur_str === p.cheapest_eur_price_str)?.calculated_price_eur || // TCI için
-      null // Diğerleri veya bulunamayanlar
+      p.itk_variations?.[0]?.price ||
+      p.netflex_matches?.find((m) => m.price_str === p.cheapest_eur_price_str)?.price_numeric ||
+      p.tci_variations?.find((v) => v.calculated_price_eur_str === p.cheapest_eur_price_str)?.calculated_price_eur ||
+      null
 
     const assignmentItem: AssignmentItem = {
       product_name: p.product_name,
@@ -1586,16 +1582,15 @@ const ProductResultItem = ({
       source: p.cheapest_source_country || p.source,
       cheapest_netflex_stock: p.cheapest_netflex_stock || "N/A",
       brand: p.brand,
-      unit: "Adet", // Varsayılan, TCI gibi varyasyonlarda özelleşebilir
+      unit: "Adet",
     }
     onSelectionChange(assignmentItem)
   }
 
   return (
-    <div className="border rounded-lg">
+    <div className="border rounded-lg bg-card hover:bg-muted/50">
       <div className={gridClasses}>
-        {/* Her satırın başında artık bir Checkbox var */}
-        <div className="justify-self-center">
+        <div className="flex items-center justify-center">
           <Checkbox
             checked={selectedForAssignment.some(
               (p) =>
@@ -1625,7 +1620,6 @@ const ProductResultItem = ({
           />
         )}
         <div className="justify-self-end">
-          {/* Sadece varyasyonu olan ürünler için detay butonu gösterilir */}
           {hasVariations && (
             <Button variant="outline" size="sm" onClick={() => toggleProductExpansion(product.product_number)}>
               {expandedProducts.has(product.product_number) ? (
@@ -1645,10 +1639,9 @@ const ProductResultItem = ({
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
-            className="border-t bg-muted/20 p-4 overflow-hidden"
+            className="border-t bg-muted/20 p-4 overflow-hidden dark:border-[#393937]"
           >
             <h4 className="font-semibold mb-3">Ürün Varyasyonları</h4>
-            {/* M-Kodu bölümü kaldırıldı, artık bu render edilmeyecek. */}
             {product.source === "Sigma" ? (
               <div className="overflow-x-auto">
                 <Table>
@@ -1679,7 +1672,7 @@ const ProductResultItem = ({
                                   checked={selectedForAssignment.some(
                                     (p) => p.product_code === item.material_number && p.source === "Netflex",
                                   )}
-                                  className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
+                                  className="h-5 w-5"
                                 />
                                 <Label
                                   htmlFor={`cb-netflex-${item.material_number}`}
@@ -1728,7 +1721,7 @@ const ProductResultItem = ({
                                           p.product_code === item.material_number &&
                                           p.source === `Sigma (${code.toUpperCase()})`,
                                       )}
-                                      className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary mt-1"
+                                      className="h-5 w-5 mt-1"
                                     />
                                     <Label
                                       htmlFor={`cb-${code}-${item.material_number}`}
@@ -1784,7 +1777,7 @@ const ProductResultItem = ({
                             (p) =>
                               p.product_code === `${product.product_number}-${variation.unit}` && p.source === "TCI",
                           )}
-                          className="h-5 w-5 border-slate-400 data-[state=checked]:border-primary"
+                          className="h-5 w-5"
                         />
                       </TableCell>
                       <TableCell>{variation.unit}</TableCell>
@@ -1934,10 +1927,10 @@ const SearchPage = ({
   }, [searchResults, filters, debouncedFilterTerm])
 
   const headerGridClasses = cn(
-    "grid gap-x-4 font-semibold text-sm text-muted-foreground",
+    "grid gap-x-4 font-semibold text-sm text-muted-foreground items-center",
     isProductNameVisible
-      ? "grid-cols-[auto_150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[auto_150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[60px_150px_150px_150px_150px_120px_1fr_auto]"
+      : "grid-cols-[60px_150px_150px_150px_150px_120px_auto]",
   )
 
   return (
@@ -2097,7 +2090,7 @@ const SearchPage = ({
           <CardContent className="flex-grow flex flex-col overflow-hidden p-0">
             <div className="p-4 border-b bg-muted/40 flex-shrink-0">
               <div className={headerGridClasses}>
-                <div className="w-10">Seç</div>
+                <div className="text-center">Seç</div>
                 <div className="truncate">CAS</div>
                 <div className="truncate">En Ucuz Kod</div>
                 <div className="truncate">Marka</div>
@@ -3828,24 +3821,24 @@ export default function App() {
             --ring: 222.2 84% 4.9%;
         }
         .dark {
-            --background: 240 10% 3.9%;
+            --background: 60 2% 14%; /* #242323 */
             --foreground: 0 0% 98%;
-            --card: 240 10% 3.9%;
+            --card: 60 2% 14%; /* #242323 */
             --card-foreground: 0 0% 98%;
-            --popover: 240 10% 3.9%;
+            --popover: 60 2% 14%; /* #242323 */
             --popover-foreground: 0 0% 98%;
             --primary: 217.2 91.2% 59.8%;
             --primary-foreground: 210 40% 98%;
-            --secondary: 240 3.7% 15.9%;
+            --secondary: 60 2% 18%;
             --secondary-foreground: 0 0% 98%;
-            --muted: 240 3.7% 15.9%;
-            --muted-foreground: 240 5% 64.9%;
-            --accent: 240 3.7% 15.9%;
+            --muted: 60 2% 18%;
+            --muted-foreground: 60 2% 65%;
+            --accent: 60 2% 18%;
             --accent-foreground: 0 0% 98%;
             --destructive: 0 62.8% 30.6%;
             --destructive-foreground: 0 0% 98%;
-            --border: 240 3.7% 15.9%;
-            --input: 240 3.7% 15.9%;
+            --border: 0 0% 22%; /* #393937 */
+            --input: 0 0% 22%; /* #393937 */
             --ring: 217.2 91.2% 59.8%;
         }
         .bg-background { background-color: hsl(var(--background)); }

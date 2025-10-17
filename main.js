@@ -9,6 +9,8 @@ let tray
 let pythonProcess = null
 let initialPythonStateMessage = null
 let handshakeComplete = false
+let shutdownInProgress = false
+let killTimer = null
 
 const isDev = !app.isPackaged
 
@@ -17,6 +19,33 @@ const isDev = !app.isPackaged
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'assets', 'icon.png') // Kurulum sonrası
   : path.join(__dirname, 'assets', 'icon.png');            // Geliştirme sırasında
+
+function executeFinalShutdown() {
+    if (killTimer) {
+        clearTimeout(killTimer)
+        killTimer = null
+    }
+
+    console.log("Son kapatma işlemleri başlatılıyor.")
+
+    if (pythonProcess && !pythonProcess.killed) {
+        console.log(`Python işlemini (PID: ${pythonProcess.pid}) ve tüm alt işlemlerini zorla sonlandırılıyor.`)
+        try {
+            if (process.platform === "win32") {
+                execSync(`taskkill /PID ${pythonProcess.pid} /T /F`)
+                console.log("Python işlem ağacı başarıyla sonlandırıldı.")
+            } else {
+                process.kill(-pythonProcess.pid, "SIGKILL")
+            }
+        } catch (e) {
+            console.error("Python işlem ağacı sonlandırılırken bir hata oluştu:", e.message)
+        } finally {
+            pythonProcess = null
+        }
+    }
+
+    app.quit()
+}
 
 function startPythonService() {
   if (pythonProcess) {
@@ -62,6 +91,13 @@ function startPythonService() {
           if (message && typeof message === "object" && message.type) {
             const { type, data, context } = message
 
+            // Intercept shutdown message from Python
+            if (type === 'python_shutdown_complete') {
+                console.log("Python'dan 'shutdown complete' onayı alındı.");
+                executeFinalShutdown();
+                continue; // Don't forward this to renderer.
+            }
+
             const channels = {
               python_services_ready: "services-ready",
               initial_setup_required: "initial-setup-required",
@@ -100,7 +136,7 @@ function startPythonService() {
                   title: data.title || "Görüşme Hatırlatması",
                   subtitle: data.subtitle || "",
                   body: data.body || "",
-                  icon: iconPath, // <-- GÜNCELLENDİ
+                  icon: iconPath,
                   actions: [{ type: "button", text: "Tamamlandı Olarak İşaretle" }],
                 })
 
@@ -136,7 +172,7 @@ function startPythonService() {
 
   pythonProcess.on("close", (code) => {
     console.error(`Python servisi ${code} koduyla sonlandı.`)
-    if (win && !win.isDestroyed() && code !== 0) {
+    if (win && !win.isDestroyed() && code !== 0 && !shutdownInProgress) {
       initialPythonStateMessage = { channel: "python-crashed", data: null }
       if (win.webContents) {
         win.webContents.send("python-crashed")
@@ -159,7 +195,7 @@ function createWindow() {
     height: 800,
     backgroundColor: "#FFFFFF",
     show: false,
-    icon: iconPath, // <-- GÜNCELLENDİ
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -173,20 +209,21 @@ function createWindow() {
   })
 
   win.on("close", (event) => {
-    if (!app.isQuitting) {
-      event.preventDefault()
-      win.hide()
-      if (Notification.isSupported()) {
-        const notification = new Notification({
-            title: 'Uygulama Arka Planda',
-            body: 'NPC-AI ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
-            icon: iconPath // <-- GÜNCELLENDİ
-        });
-        notification.show();
-      }
+    if (app.isQuitting) {
+        win = null;
+    } else {
+        event.preventDefault();
+        win.hide();
+        if (Notification.isSupported()) {
+            const notification = new Notification({
+                title: 'Uygulama Arka Planda',
+                body: 'NPC-AI ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
+                icon: iconPath
+            });
+            notification.show();
+        }
     }
-    return false
-  })
+  });
 
   win.setMenu(null)
 
@@ -219,7 +256,7 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  tray = new Tray(iconPath) // <-- GÜNCELLENDİ
+  tray = new Tray(iconPath)
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Uygulamayı Göster',
@@ -232,7 +269,6 @@ app.whenReady().then(() => {
     {
       label: 'Çıkış',
       click: () => {
-        app.isQuitting = true
         app.quit()
       }
     }
@@ -246,7 +282,6 @@ app.whenReady().then(() => {
   })
 
   app.on("activate", () => {
-    // Doğru Kod ✅
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     } else if (win) {
@@ -255,40 +290,32 @@ app.whenReady().then(() => {
   })
 })
 
-app.on("before-quit", () => {
-  console.log("Uygulama kapanıyor, Python servisi ve alt işlemleri sonlandırılıyor...")
+app.on("before-quit", (event) => {
+  if (shutdownInProgress) {
+    return; // Already handling shutdown, let it finish.
+  }
 
-  // Python'a sürücüleri kapatması için komut gönder
-  sendCommandToPython({ action: "shutdown" })
+  console.log("Uygulama kapatma işlemi başlatıldı ('before-quit' olayı).");
+  shutdownInProgress = true;
+  app.isQuitting = true; // Signal intent to quit for other event handlers like 'close'.
 
-  // Python'un sürücüleri kapatması için kısa bir süre bekle, sonra işlemi zorla sonlandır.
-  // Bu, başıboş chrome.exe/chromedriver süreçlerini önlemeye yardımcı olur.
-  setTimeout(() => {
-    if (pythonProcess && !pythonProcess.killed) {
-      console.log(`Zaman aşımı sonrası Python işlemini (PID: ${pythonProcess.pid}) ve alt işlemlerini sonlandırma garantisi alınıyor.`)
-      try {
-        if (process.platform === "win32") {
-          // /T alt süreçleri de sonlandırır, /F ise zorla kapatır.
-          execSync(`taskkill /PID ${pythonProcess.pid} /T /F`)
-          console.log("taskkill komutu başarıyla çalıştırıldı.")
-        } else {
-          // Linux/macOS'ta, ana sürece SIGKILL sinyali göndererek alt süreçlerin de sonlanmasını sağlamaya çalışırız.
-          // -process.pid ile tüm süreç grubunu hedef alırız.
-          process.kill(-pythonProcess.pid, "SIGKILL")
-        }
-      } catch (e) {
-        console.error("Python işlemi sonlandırılırken bir hata oluştu:", e.message)
-      } finally {
-        pythonProcess = null
-      }
-    }
-  }, 1500) // Python'a temizlik için 1.5 saniye ver
-})
+  // Prevent immediate quitting to allow for cleanup.
+  event.preventDefault();
+
+  // 1. Send graceful shutdown command to Python
+  console.log("Python'a graceful shutdown komutu gönderiliyor...");
+  sendCommandToPython({ action: "shutdown" });
+
+  // 2. Set a fallback timer in case Python becomes unresponsive
+  killTimer = setTimeout(() => {
+    console.log("Python'dan zamanında yanıt alınamadı. Zorla kapatma işlemi tetikleniyor.");
+    executeFinalShutdown();
+  }, 4000); // 4 seconds timeout
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    // Varsayılan app.quit() davranışını engelliyoruz çünkü artık tepsiye küçültüyoruz.
-    // app.quit()
+    // This is handled by the tray icon logic now.
   }
 })
 
@@ -310,20 +337,18 @@ ipcMain.on("start-batch-search", (event, data) => sendCommandToPython({ action: 
 ipcMain.on("cancel-batch-search", () => sendCommandToPython({ action: "cancel_batch_search" }))
 ipcMain.on("cancel-current-term-search", () => sendCommandToPython({ action: "cancel_current_term_search" }))
 ipcMain.on("get-parities", () => sendCommandToPython({ action: "get_parities" }))
-
 ipcMain.on("load-calendar-notes", () => sendCommandToPython({ action: "load_calendar_notes" }))
 ipcMain.on("save-calendar-notes", (event, notes) => sendCommandToPython({ action: "save_calendar_notes", data: notes }))
 ipcMain.on("export-meetings", (event, data) => sendCommandToPython({ action: "export_meetings", data: data }))
-
 ipcMain.on("check-notifications-now", () => sendCommandToPython({ action: "check_notifications_now" }))
-
 ipcMain.on("show-notification", (event, { title, body }) => {
   if (Notification.isSupported()) {
     const notification = new Notification({
       title: title,
       body: body,
-      icon: iconPath, // <-- GÜNCELLENDİ
+      icon: iconPath,
     })
     notification.show()
   }
 })
+

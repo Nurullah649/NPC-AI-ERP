@@ -122,7 +122,7 @@ def load_settings() -> Dict[str, Any]:
         "netflex_username": "", "netflex_password": "", "tci_coefficient": 1.4,
         "sigma_coefficient_us": 1.0, "sigma_coefficient_de": 1.0, "sigma_coefficient_gb": 1.0,
         "orkim_username": "", "orkim_password": "",
-        "itk_username": "", "itk_password": ""
+        "itk_username": "", "itk_password": "", "itk_coefficient": 1.0
     }
     if not SETTINGS_FILE_PATH.exists(): return default_settings
     try:
@@ -136,7 +136,8 @@ def load_settings() -> Dict[str, Any]:
 
 def save_settings(new_settings: Dict[str, Any]):
     try:
-        for key in ['tci_coefficient', 'sigma_coefficient_us', 'sigma_coefficient_de', 'sigma_coefficient_gb']:
+        for key in ['tci_coefficient', 'sigma_coefficient_us', 'sigma_coefficient_de', 'sigma_coefficient_gb',
+                    'itk_coefficient']:
             if key in new_settings and new_settings.get(key):
                 new_settings[key] = float(str(new_settings[key]).replace(',', '.'))
         LOGS_AND_SETTINGS_DIR.mkdir(exist_ok=True)
@@ -491,29 +492,41 @@ def export_to_excel(data: Dict[str, Any]):
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Ürün Listesi"
-        headers = ["Kaynak", "Ürün Adı", "Marka", "Ürün Kodu", "Fiyat", "Birim", "Stok Durumu"]
+        headers = ["Kaynak", "Ürün Adı", "Marka", "Ürün Kodu", "Fiyat", "Para Birimi", "Birim", "Stok Durumu"]
         sheet.append(headers)
         for cell in sheet["1:1"]: cell.font = openpyxl.styles.Font(bold=True)
 
         for product in products:
-            # Fiyatı virgüllü formata çevirme
+            price_str_from_product = str(product.get("price_str", "N/A"))
+
+            # Para birimi sembolünü belirle
+            currency_symbol = ""
+            price_str_lower = price_str_from_product.lower()
+            if '€' in price_str_lower or 'eur' in price_str_lower:
+                currency_symbol = "€"
+            elif '$' in price_str_lower or 'usd' in price_str_lower:
+                currency_symbol = "$"
+            elif '£' in price_str_lower or 'gbp' in price_str_lower:
+                currency_symbol = "£"
+
+            # Fiyatı sayısal formata çevir ve Excel için hazırla
             price_val = product.get("price_numeric")
             price_str_for_excel = "N/A"
             if isinstance(price_val, (int, float)):
                 price_str_for_excel = f"{price_val:.2f}".replace('.', ',')
             else:
-                price_str_from_product = str(product.get("price_str", "N/A"))
-                # Para birimi gibi metinleri temizle, sadece sayısal kısım kalsın
-                price_str_from_product = re.sub(r'[^\d,.]', '', price_str_from_product).strip()
-                price_str_for_excel = price_str_from_product.replace('.', ',')
+                # Sayısal değer yoksa, string'den sembolleri temizle
+                cleaned_price = re.sub(r'[^\d,.]', '', price_str_from_product).strip()
+                price_str_for_excel = cleaned_price.replace('.', ',')
 
             row = [
                 product.get("source", "N/A"),
                 product.get("product_name", "N/A"),
-                product.get("brand", product.get("source", "N/A")),  # Marka yoksa kaynak yazılsın
+                product.get("brand", product.get("source", "N/A")),
                 product.get("product_code", "N/A"),
                 price_str_for_excel,
-                product.get("unit", "Adet"),  # Birim yoksa "Adet" yazılsın
+                currency_symbol,
+                product.get("unit", "Adet"),
                 product.get("cheapest_netflex_stock", "N/A")
             ]
             sheet.append(row)
@@ -771,14 +784,46 @@ class ComparisonEngine:
         }
 
     def _process_itk_product(self, itk_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
-        """ITK'den gelen ürün verisini standart formata çevirir."""
+        """ITK'den gelen ürün verisini standart formata çevirir ve para birimini EUR'ya dönüştürür."""
+
+        # Orijinal fiyat ve para birimini al
+        original_price = itk_product.get("price")  # Scraper'dan gelen sayısal fiyat
+        original_currency = itk_product.get("currency", "EUR").upper()
+
+        eur_price = None
+
+        if original_price is not None:
+            # Pariteleri al
+            parities = self.currency_converter.get_parities()
+            if "error" in parities:
+                logging.warning("ITK fiyat dönüşümü için pariteler alınamadı.")
+
+            # Fiyatı EUR'ya çevir
+            if original_currency == "EUR":
+                eur_price = original_price
+            elif original_currency == "USD" and parities.get("usd_eur"):
+                eur_price = original_price * parities["usd_eur"]
+            elif original_currency == "GBP" and parities.get("gbp_eur"):
+                eur_price = original_price * parities["gbp_eur"]
+            # Diğer para birimleri için dönüşüm kuralları eklenebilir
+            else:
+                if original_currency != "EUR":
+                    logging.warning(
+                        f"ITK için {original_currency} -> EUR dönüşüm oranı bulunamadı. Fiyat dönüştürülemedi.")
+                eur_price = original_price
+
+                # Frontend'e gönderilecek ürün verisini güncelle
+        if eur_price is not None:
+            itk_product["price"] = eur_price
+            itk_product["currency"] = "EUR"
+
         return {
             "source": "ITK",
             "product_name": itk_product.get("product_name", "N/A"),
             "product_number": itk_product.get("product_code", "N/A"),
-            "cas_number": "N/A",  # ITK arama sayfasında bu bilgi yok
+            "cas_number": "N/A",
             "brand": "ITK",
-            "cheapest_eur_price_str": itk_product.get("price_str", "N/A"),
+            "cheapest_eur_price_str": "Hesaplanıyor...",
             "cheapest_material_number": itk_product.get("product_code", "N/A"),
             "cheapest_source_country": "ITK",
             "cheapest_netflex_stock": itk_product.get("stock_quantity", "N/A"),
@@ -1106,3 +1151,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
