@@ -1,6 +1,6 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "1.4.2",
+  "version": "1.4.1",
   "description": "NPC-AI ERP Electron Uygulaması",
   "main": "main.js",
   "homepage": "./",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "electron-is-dev": "^3.0.1",
+    "electron-log": "^5.1.2",
     "electron-updater": "^6.1.1"
   },
   "devDependencies": {
