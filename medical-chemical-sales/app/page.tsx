@@ -764,6 +764,7 @@ declare global {
       onUpdateDownloaded: (callback: (info: any) => void) => () => void
       onNewSettingsAvailable: (callback: () => void) => () => void
       onUpdateNotAvailable: (callback: (info: any) => void) => () => void
+      onUpdateError: (callback: (error: any) => void) => () => void
       restartAppAndUpdate: () => void
     }
   }
@@ -1325,6 +1326,9 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
           </Button>
         )
         break
+      case "error":
+        statusText = `Güncelleme hatası: ${updateInfo.error?.message || "Bilinmeyen bir hata oluştu."}`
+        statusColor = "text-destructive"
     }
 
     return (
@@ -1338,7 +1342,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Uygulama Ayarları</h1>
-      {authError && (
+      {authError && !isSaving && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Kimlik Doğrulama Hatası!</AlertTitle>
@@ -3497,6 +3501,7 @@ function MainApplication({ appStatus, setAppStatus }) {
   // --- YENİ: Güncelleme Durumları ---
   const [updateStatus, setUpdateStatus] = useState("checking") // checking, up_to_date, available, downloading, ready_to_install
   const [updateInfo, setUpdateInfo] = useState({ version: "", percent: 0 })
+  const [appVersion, setAppVersion] = useState("")
 
   // --- Bitiş: Güncelleme Durumları ---
 
@@ -3516,6 +3521,14 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
+
+    // YENİ: Uygulama versiyonunu al
+    const getVersion = async () => {
+      const version = await window.electronAPI.getAppVersion()
+      setAppVersion(version)
+    }
+    getVersion()
+
     // Settings ve Parities yükleme işlemleri App.tsx'den buraya taşındı.
     window.electronAPI.loadSettings()
     const cleanupSettings = window.electronAPI.onSettingsLoaded((loadedSettings) => {
@@ -3593,9 +3606,13 @@ function MainApplication({ appStatus, setAppStatus }) {
         setUpdateStatus("up_to_date")
         setUpdateInfo((prev) => ({ ...prev, version: info.version }))
       }),
+      window.electronAPI.onUpdateError((error) => {
+        setUpdateStatus("error")
+        setUpdateInfo((prev) => ({ ...prev, error: error }))
+      }),
     ]
 
-    return () => cleanups.forEach((c) => c())
+    return () => cleanups.forEach((c) => c && c())
   }, [])
 
   useEffect(() => {
@@ -3927,7 +3944,7 @@ function MainApplication({ appStatus, setAppStatus }) {
         <Sidebar
           setPage={setPage}
           currentPage={page}
-          notifications={activeNotifications}
+          notifications={[]} // Bildirimler şimdilik devre dışı
           onToggleComplete={handleToggleMeetingCompleteForNotification}
           updateStatus={updateStatus}
           onGoToDate={handleGoToDate}
@@ -3986,6 +4003,7 @@ export default function App() {
   const [startupUpdateState, setStartupUpdateState] = useState({ status: "checking", progress: 0 })
   const [isUpdateConfirmationVisible, setIsUpdateConfirmationVisible] = useState(false)
 
+
   useEffect(() => {
     if (!window.electronAPI) {
       console.warn("Electron API bulunamadı. Geliştirme modu varsayılıyor.")
@@ -4025,9 +4043,13 @@ export default function App() {
         // Güncelleme yoksa ve servisler hazırsa, ana uygulamaya geç.
         if (appStatus === "initializing") setAppStatus("ready")
       }),
+      window.electronAPI.onUpdateError((error) => {
+        setStartupUpdateState({ status: "error", progress: 0, error: error })
+        if (appStatus === "initializing") setAppStatus("ready") // Hata olsa bile uygulamayı açmaya çalış
+      }),
     ]
 
-    window.electronAPI.rendererReady()
+    if (window.electronAPI.rendererReady) window.electronAPI.rendererReady()
 
     return () => cleanups.forEach((cleanup) => cleanup())
   }, [])

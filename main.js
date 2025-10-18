@@ -286,6 +286,9 @@ function sendCommandToPython(command) {
 // --- YENİ: Uygulama versiyonunu döndüren handler ---
 ipcMain.handle('get-app-version', () => app.getVersion());
 
+// YENİ: Güncelleme hatası olayı
+autoUpdater.on('error', (err) => win.webContents.send('update-error', err));
+
 // IPC Komutları...
 ipcMain.on("perform-search", (event, searchTerm) => sendCommandToPython({ action: "search", data: searchTerm }))
 ipcMain.on("cancel-search", () => sendCommandToPython({ action: "cancel_search" }))
