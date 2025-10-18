@@ -571,8 +571,44 @@ const Tooltip = ({ children, content, side = "top" }) => {
 }
 
 // --- SplashScreen Bileşeni ---
-import SplashScreen from "@/public/SplashScreen"
+const SplashScreen = ({ hasError, updateState }) => {
+  const { status, progress } = updateState || { status: "none", progress: 0 }
 
+  const handleRestart = () => {
+    if (window.electronAPI) {
+      window.electronAPI.restartAppAndUpdate()
+    }
+  }
+
+  const statusMessages = {
+    checking: "Güncellemeler kontrol ediliyor...",
+    available: "Yeni sürüm bulundu, indiriliyor...",
+    downloading: `Güncelleme indiriliyor... %${progress.toFixed(0)}`,
+  }
+
+  return (
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4 text-center">
+      <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
+        <Package2 className="h-24 w-24 text-primary" />
+      </motion.div>
+      <motion.h1
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="mt-6 text-4xl font-bold tracking-tight"
+      >
+        NPC-AI ERP
+      </motion.h1>
+      <div className="mt-8 h-10">
+        {hasError ? (
+          <p className="text-destructive">Kritik bir hata oluştu. Lütfen uygulamayı yeniden başlatın.</p>
+        ) : (
+          <p className="text-muted-foreground">{statusMessages[status] || "Servisler başlatılıyor..."}</p>
+        )}
+      </div>
+    </div>
+  )
+}
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
 // --------------------------------------------------------------------------------
@@ -727,6 +763,7 @@ declare global {
       onUpdateDownloadProgress: (callback: (progressInfo: any) => void) => () => void
       onUpdateDownloaded: (callback: (info: any) => void) => () => void
       onNewSettingsAvailable: (callback: () => void) => () => void
+      onUpdateNotAvailable: (callback: (info: any) => void) => () => void
       restartAppAndUpdate: () => void
     }
   }
@@ -3944,8 +3981,10 @@ function MainApplication({ appStatus, setAppStatus }) {
 // Ana Uygulama Yönlendiricisi
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [appStatus, setAppStatus] = useState("initializing")
+  const [appStatus, setAppStatus] = = useState("initializing")
   const { toasts, setToasts, toast } = useToast()
+  const [startupUpdateState, setStartupUpdateState] = useState({ status: "checking", progress: 0 })
+  const [isUpdateConfirmationVisible, setIsUpdateConfirmationVisible] = useState(false)
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -3954,9 +3993,14 @@ export default function App() {
       return () => clearTimeout(timer)
     }
 
+    const handleRestart = () => window.electronAPI.restartAppAndUpdate()
+
     const cleanups = [
       window.electronAPI.onServicesReady((isReady) => {
-        setAppStatus(isReady ? "ready" : "error")
+        // Eğer güncelleme onayı beklemiyorsak durumu değiştir.
+        if (!isUpdateConfirmationVisible) {
+          setAppStatus(isReady ? "ready" : "error")
+        }
         if (!isReady) toast("error", "Arka plan servisleri başlatılamadı.")
       }),
       window.electronAPI.onInitialSetupRequired(() => setAppStatus("setup_required")),
@@ -3965,6 +4009,22 @@ export default function App() {
         setAppStatus("error")
         toast("error", "Kritik hata: Arka plan servisi çöktü.")
       }),
+      // Açılışta güncelleme olaylarını dinle
+      window.electronAPI.onUpdateAvailable(() => {
+        setStartupUpdateState((prev) => ({ ...prev, status: "available" }))
+      }),
+      window.electronAPI.onUpdateDownloadProgress((progressInfo) => {
+        setStartupUpdateState({ status: "downloading", progress: progressInfo.percent })
+      }),
+      window.electronAPI.onUpdateDownloaded(() => {
+        setStartupUpdateState({ status: "ready_to_install", progress: 100 })
+        setIsUpdateConfirmationVisible(true) // Onay penceresini göster
+      }),
+      window.electronAPI.onUpdateNotAvailable(() => {
+        setStartupUpdateState({ status: "up_to_date", progress: 0 })
+        // Güncelleme yoksa ve servisler hazırsa, ana uygulamaya geç.
+        if (appStatus === "initializing") setAppStatus("ready")
+      }),
     ]
 
     window.electronAPI.rendererReady()
@@ -3972,19 +4032,52 @@ export default function App() {
     return () => cleanups.forEach((cleanup) => cleanup())
   }, [])
 
+  const handleUpdateConfirm = () => {
+    if (window.electronAPI) {
+      window.electronAPI.restartAppAndUpdate()
+    }
+  }
+
+  const handleUpdateDecline = () => {
+    setIsUpdateConfirmationVisible(false)
+    setAppStatus("ready") // Onay verilmedi, ana uygulamaya devam et
+  }
+
   const renderContent = () => {
+    if (isUpdateConfirmationVisible) {
+      return (
+        <div className="fixed inset-0 z-[300] bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md"
+          >
+            <Card>
+              <CardHeader className="text-center">
+                <CardTitle>Güncelleme Hazır!</CardTitle>
+                <CardDescription>Yeni sürüm indirildi ve kuruluma hazır. Şimdi yeniden başlatıp güncellemek ister misiniz?</CardDescription>
+              </CardHeader>
+              <CardFooter className="flex justify-end gap-2">
+                <Button variant="outline" onClick={handleUpdateDecline}>Daha Sonra</Button>
+                <Button onClick={handleUpdateConfirm}>Yeniden Başlat ve Güncelle</Button>
+              </CardFooter>
+            </Card>
+          </motion.div>
+        </div>
+      )
+    }
     switch (appStatus) {
       case "initializing":
-        return <SplashScreen key="splash" hasError={false} />
+        return <SplashScreen key="splash" hasError={false} updateState={startupUpdateState} />
       case "setup_required":
         return <InitialSetupScreen key="setup" setAppStatus={setAppStatus} />
       case "ready":
       case "auth_error":
         return <MainApplication key="main_app" appStatus={appStatus} setAppStatus={setAppStatus} />
       case "error":
-        return <SplashScreen key="splash-error" hasError={true} />
+        return <SplashScreen key="splash-error" hasError={true} updateState={null} />
       default:
-        return <SplashScreen key="splash-default" hasError={false} />
+        return <SplashScreen key="splash-default" hasError={false} updateState={startupUpdateState} />
     }
   }
 
