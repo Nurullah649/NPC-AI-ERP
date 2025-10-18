@@ -1262,7 +1262,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
       }
     }
 
-    let statusText = "Güncellemeler kontrol ediliyor..."
+    let statusText = "Güncellemeler kontrol ediliyor... deneme"
     let statusColor = "text-muted-foreground"
     let actionButton = null
 
