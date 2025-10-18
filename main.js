@@ -1,332 +1,330 @@
 // main.js
 
 const { app, BrowserWindow, ipcMain, dialog, Notification, Tray, Menu } = require("electron")
+// YENİ: autoUpdater eklendi
 const { autoUpdater } = require("electron-updater")
 const path = require("path")
-const isDev = require("electron-is-dev")
-const { spawn, execFile } = require("child_process")
-const fs = require("fs")
+const { spawn, exec, execSync } = require("child_process")
 
-// --- Globals ---
-let win = null
-let pythonService = null
-let splash = null
-let tray = null
-const appDataPath = app.getPath("userData")
+let win
+let tray
+let pythonProcess = null
+let initialPythonStateMessage = null
+let handshakeComplete = false
+let shutdownInProgress = false
+let killTimer = null
+
+const isDev = !app.isPackaged
+
+const iconPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets', 'icon.png')
+  : path.join(__dirname, 'assets', 'icon.png');
 
 // --- YENİ: Güncelleme loglaması ---
 autoUpdater.logger = require("electron-log")
 autoUpdater.logger.transports.file.level = "info"
 
-// --- YENİ VE KRİTİK BÖLÜM: GİZLİ REPO İÇİN KİMLİK DOĞRULAMA ---
-// Sizin verdiğiniz token buraya eklendi.
-const GITHUB_READ_ONLY_TOKEN = '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';
-
-autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'Nurullah649',
-  repo: 'NPC-AI-ERP',
-  private: true,
-  token: GITHUB_READ_ONLY_TOKEN
-});
-// --- YENİ BÖLÜM BİTİŞ ---
-
-
-// --- Python Servisini Başlatma Fonksiyonu ---
-const startPythonService = () => {
-  try {
-    const scriptPath = isDev
-      ? path.join(__dirname, "..", "desktop_app_electron.py")
-      : path.join(process.resourcesPath, "bin", "desktop_app_electron.exe")
-
-    // GÜVENLİ VERİ YOLU: appDataPath'i Python'a argüman olarak gönder
-    // Python scriptinin bu argümanı alacak şekilde ayarlandığından emin olun (sys.argv[1])
-    pythonService = spawn(scriptPath, [appDataPath])
-
-    pythonService.stdout.on("data", (data) => {
-      const messages = data.toString().split('\n')
-      for (const message of messages) {
-        if (message.trim()) {
-          try {
-            const parsed = JSON.parse(message)
-            if (win) {
-              win.webContents.send(parsed.type, parsed.data)
-            }
-          } catch (e) {
-            autoUpdater.logger.info(`Python: ${message}`)
-          }
-        }
-      }
-    })
-
-    pythonService.stderr.on("data", (data) => {
-      autoUpdater.logger.error(`Python Hata Çıktısı: ${data.toString()}`)
-      if (win) {
-        win.webContents.send("python-crashed")
-      }
-    })
-
-    pythonService.on('close', (code)Code => {
-      autoUpdater.logger.warn(`Python servisi kapandı, çıkış kodu: ${code}`)
-      pythonService = null
-      if (win) {
-        win.webContents.send("python-crashed")
-      }
-    })
-  } catch (err) {
-    autoUpdater.logger.error(`Python başlatılamadı: ${err}`)
-    if (win) {
-      win.webContents.send("python-crashed")
+function executeFinalShutdown() {
+    if (killTimer) {
+        clearTimeout(killTimer)
+        killTimer = null
     }
-  }
+    console.log("Son kapatma işlemleri başlatılıyor.")
+    if (pythonProcess && !pythonProcess.killed) {
+        console.log(`Python işlemini (PID: ${pythonProcess.pid}) ve tüm alt işlemlerini zorla sonlandırılıyor.`)
+        try {
+            if (process.platform === "win32") {
+                execSync(`taskkill /PID ${pythonProcess.pid} /T /F`)
+            } else {
+                process.kill(-pythonProcess.pid, "SIGKILL")
+            }
+        } catch (e) {
+            console.error("Python işlem ağacı sonlandırılırken bir hata oluştu:", e.message)
+        } finally {
+            pythonProcess = null
+        }
+    }
+    app.quit()
 }
 
-// --- Pencere Oluşturma Fonksiyonu ---
-function createWindow() {
-  // Splash ekranı oluştur
-  splash = new BrowserWindow({
-    width: 600,
-    height: 400,
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    icon: path.join(__dirname, "assets", "icon.png"),
-  })
-  splash.loadFile(path.join(__dirname, "splash.html"))
+function startPythonService() {
+  if (pythonProcess) {
+    console.log("Python servisi zaten çalışıyor.")
+    return
+  }
+  const userDataPath = app.getPath('userData');
+  let scriptPath
+  if (isDev) {
+    scriptPath = path.join(__dirname, "desktop_app_electron.py")
+    pythonProcess = spawn("python", ["-u", scriptPath, userDataPath])
+  } else {
+    scriptPath = path.join(process.resourcesPath, "bin", "desktop_app.exe")
+    pythonProcess = spawn(scriptPath, [userDataPath])
+  }
+  console.log(`Python arka plan servisi başlatılıyor: ${scriptPath}`)
+  console.log(`Güvenli veri kayıt yolu: ${userDataPath}`);
 
-  // Ana pencereyi oluştur (başlangıçta gizli)
+  pythonProcess.on("error", (err) => {
+    console.error("Python servisi başlatılamadı:", err)
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("python-crashed", `Python başlatılamadı: ${err.message}`)
+    }
+  })
+  console.log(`Python arka plan servisi başlatıldı. PID: ${pythonProcess.pid}`)
+  pythonProcess.stderr.on("data", (data) => {
+    console.error(`[PYTHON HATA]: ${data.toString()}`)
+  })
+  let buffer = ""
+  pythonProcess.stdout.on("data", (data) => {
+    buffer += data.toString()
+    let boundary = buffer.indexOf("\n")
+    while (boundary !== -1) {
+      const completeJsonString = buffer.substring(0, boundary).trim()
+      buffer = buffer.substring(boundary + 1)
+      if (completeJsonString) {
+        try {
+          const message = JSON.parse(completeJsonString)
+          if (message && typeof message === "object" && message.type) {
+            const { type, data, context } = message
+            if (type === 'python_shutdown_complete') {
+                executeFinalShutdown();
+                continue;
+            }
+            const channels = {
+              python_services_ready: "services-ready",
+              initial_setup_required: "initial-setup-required",
+              authentication_error: "authentication-error",
+              product_found: "search-product-found",
+              search_complete: "search-complete",
+              export_result: "export-result",
+              error: "search-error",
+              settings_loaded: "settings-loaded",
+              settings_saved: "settings-saved",
+              batch_search_progress: "batch-search-progress",
+              batch_search_complete: "batch-search-complete",
+              log_search_term: "log-search-term",
+              parities_updated: "parities-updated",
+              calendar_notes_loaded: "calendar-notes-loaded",
+              calendar_notes_saved: "calendar-notes-saved",
+              show_notification: "show-notification",
+              export_meetings_result: "export-meetings-result",
+              // YENİ: Akıllı ayar yükseltme bildirimi
+              new_settings_available: "new-settings-available",
+            }
+            const channel = channels[type]
+            const isStartupMessage = ["initial_setup_required", "python_services_ready", "authentication_error"].includes(type)
+            if (isStartupMessage) {
+              initialPythonStateMessage = { channel, data }
+              if (handshakeComplete && win && !win.isDestroyed()) {
+                win.webContents.send(channel, data)
+              }
+            } else if (type === "show_notification" && data) {
+              if (Notification.isSupported()) {
+                const notification = new Notification({
+                  title: data.title || "Görüşme Hatırlatması",
+                  body: data.body || "",
+                  icon: iconPath,
+                  actions: [{ type: "button", text: "Tamamlandı Olarak İşaretle" }],
+                })
+                notification.on("action", (event, index) => {
+                  if (index === 0) {
+                    sendCommandToPython({ action: "mark_meeting_complete", data: { noteDate: data.noteDate, meetingId: data.meetingId }})
+                  }
+                })
+                notification.show()
+              }
+            } else if (win && !win.isDestroyed() && channel) {
+              if (type === "product_found" && context) {
+                win.webContents.send(channel, { product: data.product, context: context })
+              } else {
+                win.webContents.send(channel, data)
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Python'dan gelen JSON parse edilemedi:", completeJsonString, error)
+        }
+      }
+      boundary = buffer.indexOf("\n")
+    }
+  })
+  pythonProcess.on("close", (code) => {
+    console.error(`Python servisi ${code} koduyla sonlandı.`)
+    if (win && !win.isDestroyed() && code !== 0 && !shutdownInProgress) {
+      initialPythonStateMessage = { channel: "python-crashed", data: null }
+      if (win.webContents) {
+        win.webContents.send("python-crashed")
+      }
+    }
+    pythonProcess = null
+  })
+}
+
+const loadDevUrlWithRetry = () => {
+  win.loadURL("http://localhost:3000").catch((err) => {
+    console.log("Geliştirme sunucusu henüz hazır değil, 2 saniye sonra tekrar denenecek...")
+    setTimeout(loadDevUrlWithRetry, 2000)
+  })
+}
+
+function createWindow() {
   win = new BrowserWindow({
-    width: 1280,
-    height: 720,
-    minWidth: 940,
-    minHeight: 560,
+    width: 1200,
+    height: 800,
+    backgroundColor: "#FFFFFF",
     show: false,
-    icon: path.join(__dirname, "assets", "icon.png"),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
-      nodeIntegration: false,
+      enableRemoteModule: false,
     },
   })
-
-  // Next.js (veya React) build dosyasını yükle
-  const startUrl = isDev
-    ? "http://localhost:3000"
-    : `file://${path.join(__dirname, "out", "index.html")}`
-  win.loadURL(startUrl)
-
-  // Geliştirme araçlarını aç (sadece geliştirme modunda)
-  if (isDev) {
-    win.webContents.openDevTools()
-  }
-
-  // --- ANA PENCERE HAZIR OLDUĞUNDA ---
   win.once("ready-to-show", () => {
-    // Python servisini başlat
+    win.show()
     startPythonService()
-
-    // Güncellemeleri kontrol et (Artık gizli repoya erişebilecek)
-    autoUpdater.checkForUpdates()
-
-    // Splash ekranını kapat ve ana pencereyi göster
-    // NOT: Python servisinden "ready" mesajı beklemek daha iyi bir yöntemdir
-    // Şimdilik 4 saniye bekliyoruz.
-    setTimeout(() => {
-        if(splash) {
-            splash.close()
-            splash = null
-        }
-        win.show()
-    }, 4000)
+    // --- GÜNCELLEME: Daha fazla kontrol için manuel kontrolü tercih ediyoruz ---
+    // autoUpdater.checkForUpdatesAndNotify(); // Bu satır yerine aşağıdaki kullanılır.
+    autoUpdater.checkForUpdates();
   })
-
-  // Pencere kapatıldığında
-  win.on("closed", () => {
-    win = null
-  })
-
-  // Bildirim tepsisi (Tray)
-  createTray()
-}
-
-// --- Tray (Sistem Tepsisi) Fonksiyonu ---
-function createTray() {
-  const iconName = "icon.png"
-  const iconPath = path.join(__dirname, "assets", iconName);
-  tray = new Tray(iconPath);
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Göster',
-      click: () => {
-        if (win) {
-          win.show();
+  win.on("close", (event) => {
+    if (app.isQuitting) {
+        win = null;
+    } else {
+        event.preventDefault();
+        win.hide();
+        if (Notification.isSupported()) {
+            const notification = new Notification({
+                title: 'Uygulama Arka Planda',
+                body: 'NPC-AI ERP arka planda çalışmaya devam ediyor. Tamamen kapatmak için sistem tepsisindeki ikona sağ tıklayın.',
+                icon: iconPath
+            });
+            notification.show();
         }
-      },
-    },
-    {
-      label: 'Çıkış',
-      click: () => {
-        app.quit(); // Bu, 'before-quit' event'ini tetikler
-      },
-    },
-  ]);
-
-  tray.setToolTip('NPC-AI ERP');
-  tray.setContextMenu(contextMenu);
-
-  tray.on('click', () => {
-    if (win) {
-      win.isVisible() ? win.hide() : win.show();
     }
   });
+  win.setMenu(null)
+  if (isDev) {
+    loadDevUrlWithRetry()
+  } else {
+    win.loadFile(path.join(__dirname, "out", "index.html"))
+  }
 }
 
-
-// --- Uygulama Yaşam Döngüsü ---
-
-app.on("ready", () => {
+app.whenReady().then(() => {
   createWindow()
+
+  tray = new Tray(iconPath)
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Uygulamayı Göster', click: () => { if (win) { win.show() } } },
+    { label: 'Çıkış', click: () => { app.isQuitting = true; app.quit() } }
+  ])
+  tray.setToolTip('NPC-AI ERP')
+  tray.setContextMenu(contextMenu)
+  tray.on('click', () => { if (win) { win.isVisible() ? win.hide() : win.show() } })
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else if (win) {
+      win.show()
+    }
+  })
 })
+
+// --- YENİ: GÜNCELLEME OLAYLARI ---
+// Bu olayları dinleyerek arayüze bilgi gönderiyoruz.
+autoUpdater.on('update-available', (info) => {
+  if(win) win.webContents.send('update-available', info);
+});
+autoUpdater.on('update-not-available', (info) => {
+  if(win) win.webContents.send('update-not-available', info);
+});
+autoUpdater.on('download-progress', (progressObj) => {
+  if(win) win.webContents.send('update-download-progress', progressObj);
+});
+autoUpdater.on('update-downloaded', (info) => {
+  if(win) win.webContents.send('update-downloaded', info);
+});
+autoUpdater.on('error', (err) => {
+  if(win) win.webContents.send('update-error', err);
+});
+// Arayüzden gelen yeniden başlatma komutunu dinle
+ipcMain.on('restart-app-and-update', () => {
+  autoUpdater.quitAndInstall();
+});
+// --- GÜNCELLEME OLAYLARI BİTİŞ ---
+
+app.on("before-quit", (event) => {
+  if (shutdownInProgress) return;
+  console.log("Uygulama kapatma işlemi başlatıldı ('before-quit' olayı).");
+  shutdownInProgress = true;
+  app.isQuitting = true;
+  event.preventDefault();
+  sendCommandToPython({ action: "shutdown" });
+  killTimer = setTimeout(() => {
+    console.log("Python'dan zamanında yanıt alınamadı. Zorla kapatma işlemi tetikleniyor.");
+    executeFinalShutdown();
+  }, 4000);
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    // Python servisi çalıştığı için hemen kapatmıyoruz
-    // Tray icon'dan çıkış yapılmasını bekliyoruz
+    // Tray icon mantığı yönetiyor
   }
 })
 
-app.on("activate", () => {
-  if (win === null) {
-    createWindow()
-  }
-})
-
-// --- UYGULAMA KAPANIRKEN ---
-app.on('before-quit', (e) => {
-    if (pythonService) {
-        autoUpdater.logger.info("Uygulama kapanıyor, Python servisi durduruluyor...")
-
-        // Python'a JSON mesajı göndererek düzgün kapanmasını sağla
-        try {
-          pythonService.stdin.write(JSON.stringify({ action: "shutdown", data: null }) + '\n');
-        } catch (err) {
-           autoUpdater.logger.error("Python shutdown mesajı gönderilemedi, zorla kapatılıyor.");
-           pythonService.kill('SIGTERM');
-        }
-
-        // Gerekirse bir süre bekleyip sonra zorla kapat
-        setTimeout(() => {
-          if (pythonService) {
-             autoUpdater.logger.warn("Python servisi zamanında kapanmadı, zorla kapatılıyor.");
-             pythonService.kill('SIGTERM');
-          }
-        }, 3000); // 3 saniye bekle
-    }
-});
-
-
-// --- Auto-Updater Eventleri ---
-
-autoUpdater.on("checking-for-update", () => {
-  if (win) win.webContents.send("update-status", "checking")
-})
-
-autoUpdater.on("update-available", (info) => {
-  if (win) win.webContents.send("update-available", info)
-})
-
-autoUpdater.on("update-not-available", (info) => {
-  if (win) win.webContents.send("update-not-available", info)
-})
-
-autoUpdater.on("error", (err) => {
-  if (win) win.webContents.send("update-error", err ? err.message : "Bilinmeyen güncelleme hatası")
-})
-
-autoUpdater.on("download-progress", (progressObj) => {
-  if (win) win.webContents.send("update-download-progress", progressObj)
-})
-
-autoUpdater.on("update-downloaded", (info) => {
-  if (win) win.webContents.send("update-downloaded", info)
-})
-
-// --- IPC Eventleri (Renderer -> Main) ---
-
-// Renderer (page.tsx) hazır olduğunda Python'a haber ver
-ipcMain.on("renderer-ready", () => {
-  if (pythonService) {
-    try {
-      pythonService.stdin.write(JSON.stringify({ action: "renderer_ready", data: null }) + '\n');
-    } catch(e) {
-      autoUpdater.logger.error("Python'a 'renderer-ready' mesajı gönderilemedi.");
-    }
-  }
-})
-
-// Python'a komut göndermek için bir dinleyici
-const sendToPython = (action, data) => {
-  if (pythonService) {
-    try {
-      pythonService.stdin.write(JSON.stringify({ action, data }) + '\n');
-    } catch (e) {
-      autoUpdater.logger.error(`Python'a komut gönderilemedi (${action}): ${e}`);
-    }
+function sendCommandToPython(command) {
+  if (pythonProcess && pythonProcess.stdin && !pythonProcess.stdin.destroyed) {
+    const commandString = JSON.stringify(command)
+    pythonProcess.stdin.write(`${commandString}\n`)
   } else {
-    autoUpdater.logger.error(`Python servisi çalışmıyor. Komut gönderilemedi: ${action}`);
+    console.error("Python servisi hazır değil veya zaten kapatılmış.")
   }
 }
 
-// --- Renderer'dan Gelen Komutlar ---
-ipcMain.on("perform-search", (event, searchTerm) => sendToPython("search", searchTerm))
-ipcMain.on("cancel-search", () => sendToPython("cancel_search", null))
-ipcMain.on("export-to-excel", (event, data) => sendToPython("export", data))
-ipcMain.on("load-settings", () => sendToPython("load_settings", null))
-ipcMain.on("save-settings", (event, settings) => sendToPython("save_settings", settings))
-ipcMain.on("start-batch-search", (event, data) => sendToPython("start_batch_search", data))
-ipcMain.on("cancel-batch-search", () => sendToPython("cancel_batch_search", null))
-ipcMain.on("cancel-current-term-search", () => sendToPython("cancel_current_term_search", null))
-ipcMain.on("get-parities", () => sendToPython("get_parities", null))
-ipcMain.on("load-calendar-notes", () => sendToPython("load_calendar_notes", null))
-ipcMain.on("save-calendar-notes", (event, notes) => sendToPython("save_calendar_notes", notes))
-ipcMain.on("export-meetings", (event, data) => sendToPython("export_meetings", data))
-ipcMain.on("check-notifications-now", () => sendToPython("check_notifications_now", null))
+// --- YENİ: Uygulama versiyonunu döndüren handler ---
+ipcMain.handle('get-app-version', () => app.getVersion());
 
-// Bildirim gösterme
-ipcMain.on("show-notification", (event, data) => {
+// IPC Komutları...
+ipcMain.on("perform-search", (event, searchTerm) => sendCommandToPython({ action: "search", data: searchTerm }))
+ipcMain.on("cancel-search", () => sendCommandToPython({ action: "cancel_search" }))
+ipcMain.on("export-to-excel", (event, data) => sendCommandToPython({ action: "export", data: data }))
+ipcMain.on("load-settings", () => sendCommandToPython({ action: "load_settings" }))
+ipcMain.on("save-settings", (event, settings) => sendCommandToPython({ action: "save_settings", data: settings }))
+ipcMain.handle("select-file", async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ["openFile"],
+      filters: [{ name: "Documents", extensions: ["xlsx", "csv", "docx"] }],
+    })
+    if (!canceled) { return filePaths[0] } return null
+})
+ipcMain.on("start-batch-search", (event, data) => sendCommandToPython({ action: "start_batch_search", data: data }))
+ipcMain.on("cancel-batch-search", () => sendCommandToPython({ action: "cancel_batch_search" }))
+ipcMain.on("cancel-current-term-search", () => sendCommandToPython({ action: "cancel_current_term_search" }))
+ipcMain.on("get-parities", () => sendCommandToPython({ action: "get_parities" }))
+ipcMain.on("load-calendar-notes", () => sendCommandToPython({ action: "load_calendar_notes" }))
+ipcMain.on("save-calendar-notes", (event, notes) => sendCommandToPython({ action: "save_calendar_notes", data: notes }))
+ipcMain.on("export-meetings", (event, data) => sendCommandToPython({ action: "export_meetings", data: data }))
+ipcMain.on("check-notifications-now", () => sendCommandToPython({ action: "check_notifications_now" }))
+ipcMain.on("show-notification", (event, { title, body }) => {
     if (Notification.isSupported()) {
         const notification = new Notification({
-            title: data.title,
-            body: data.body,
-            icon: path.join(__dirname, "assets", "icon.png"),
+            title: title,
+            body: body,
+            icon: iconPath,
         })
         notification.show()
-        notification.on('click', () => {
-            if (win) {
-                win.show()
-                // Gerekirse takvimde o tarihe gitmek için bir event gönderilebilir
-                // win.webContents.send('go-to-calendar-date', data.noteDate);
-            }
-        });
     }
 })
-
-// Güncelle ve yeniden başlat komutu
-ipcMain.on("restart-app-and-update", () => {
-  autoUpdater.quitAndInstall()
-})
-
-// Dosya Seçme Diyaloğu
-ipcMain.handle("select-file", async () => {
-   const result = await dialog.showOpenDialog(win, {
-    properties: ['openFile'],
-    filters: [
-      { name: 'Belgeler', extensions: ['xlsx', 'csv', 'docx'] },
-    ]
-  });
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-  return result.filePaths[0];
+// YENİ: Manuel güncelleme kontrolü
+ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdates();
+});
+ipcMain.once("renderer-ready", () => {
+    console.log("Arayüz hazır. Saklanan ilk durum mesajı gönderiliyor (varsa).")
+    handshakeComplete = true
+    if (win && !win.isDestroyed() && initialPythonStateMessage) {
+      win.webContents.send(initialPythonStateMessage.channel, initialPythonStateMessage.data)
+    }
 })
