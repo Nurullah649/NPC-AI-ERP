@@ -3981,7 +3981,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 // Ana Uygulama Yönlendiricisi
 // --------------------------------------------------------------------------------
 export default function App() {
-  const [appStatus, setAppStatus] = = useState("initializing")
+  const [appStatus, setAppStatus] = useState("initializing")
   const { toasts, setToasts, toast } = useToast()
   const [startupUpdateState, setStartupUpdateState] = useState({ status: "checking", progress: 0 })
   const [isUpdateConfirmationVisible, setIsUpdateConfirmationVisible] = useState(false)
