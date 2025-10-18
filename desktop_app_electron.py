@@ -88,24 +88,32 @@ def get_resource_path(relative_path: str) -> str:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-
-# --- Uygulama Veri Yolu Tanımı ---
-def get_app_base_path() -> Path:
-    if getattr(sys, 'frozen', False):
-        return Path(os.path.dirname(sys.executable))
+# --- YENİ VE GÜVENLİ UYGULAMA VERİ YOLU TANIMI ---
+def get_persistent_data_path() -> Path:
+    if len(sys.argv) > 1:
+        # Electron, veri yolunu bir argüman olarak gönderir.
+        path_from_electron = Path(sys.argv[1])
+        return path_from_electron
+    # Eğer argüman gelmezse (örn: direkt python ile test ederken)
+    elif sys.platform == "win32":
+        # Windows için standart AppData klasörünü kullan
+        return Path(os.getenv("APPDATA")) / "NPC-AI-ERP"
     else:
-        return Path(os.path.abspath("."))
+        # Diğer sistemler için (macOS, Linux) fallback
+        return Path.home() / ".config" / "NPC-AI-ERP"
 
 
-dotenv_path = get_resource_path('.env')
-# .env dosyasını yükle
-load_dotenv(dotenv_path=dotenv_path)
-
-APP_BASE_PATH = get_app_base_path()
-LOGS_AND_SETTINGS_DIR = APP_BASE_PATH / "TalesJob_Veri"
+# --- GÜVENLİ VERİ YOLU ATAMALARI ---
+# Artık tüm kullanıcı verileri (ayarlar, loglar, takvim) güncellemelerden etkilenmeyen
+# bu güvenli klasöre kaydedilecek.
+LOGS_AND_SETTINGS_DIR = get_persistent_data_path()
 SETTINGS_FILE_PATH = LOGS_AND_SETTINGS_DIR / "settings.json"
 CALENDAR_NOTES_FILE_PATH = LOGS_AND_SETTINGS_DIR / "calendar_notes.json"
 NOTIFICATION_STATE_FILE = LOGS_AND_SETTINGS_DIR / "notification_state.json"
+
+# .env dosyası hala paket içinden okunuyor, bu doğru.
+dotenv_path = get_resource_path('.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 # Bildirim zamanlayıcı için global değişkenler
 notification_thread = None
@@ -117,21 +125,51 @@ itk_cache_lock = threading.Lock()
 
 
 # --- Ayarları Yükleme/Kaydetme Fonksiyonları ---
-def load_settings() -> Dict[str, Any]:
+def load_settings() -> (Dict[str, Any], bool): # YENİ: bool değeri döndürür (was_upgraded)
+    """
+    Kullanıcı ayarlarını yükler. Eğer ayar dosyası yoksa varsayılanları oluşturur.
+    Mevcut ayar dosyasını, koddaki yeni varsayılan ayarlarla akıllıca günceller.
+    """
+    # Tüm ayarlar ve varsayılan değerleri burada tanımlanır.
+    # Yeni bir ayar eklendiğinde, sadece bu listeye eklemek yeterlidir.
     default_settings = {
         "netflex_username": "", "netflex_password": "", "tci_coefficient": 1.4,
         "sigma_coefficient_us": 1.0, "sigma_coefficient_de": 1.0, "sigma_coefficient_gb": 1.0,
         "orkim_username": "", "orkim_password": "",
-        "itk_username": "", "itk_password": "", "itk_coefficient": 1.0
+        "itk_username": "", "itk_password": "", "itk_coefficient": 1.0,
+        # Örnek yeni ayar: "auto_check_for_updates": True
     }
-    if not SETTINGS_FILE_PATH.exists(): return default_settings
+
+    # Veri klasörünün mevcut olduğundan emin ol
+    LOGS_AND_SETTINGS_DIR.mkdir(exist_ok=True)
+
+    if not SETTINGS_FILE_PATH.exists():
+        # Ayar dosyası yoksa, varsayılanları kaydet ve yükseltme olmadığını belirt.
+        save_settings(default_settings)
+        return default_settings, False
+
     try:
         with open(SETTINGS_FILE_PATH, 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-            settings.update({k: v for k, v in default_settings.items() if k not in settings})
-            return settings
+            user_settings = json.load(f)
+
+        # Akıllı yükseltme: Varsayılanları temel al, kullanıcının ayarlarını üzerine yaz.
+        # Bu, yeni eklenen varsayılan ayarların korunmasını sağlar.
+        final_settings = default_settings.copy()
+        final_settings.update(user_settings)
+
+        # Yeni bir ayar eklenip eklenmediğini kontrol et (anahtar setleri farklı mı?)
+        was_upgraded = set(final_settings.keys()) != set(user_settings.keys())
+
+        # Eğer ayarlar yükseltildiyse (yeni anahtar eklendiyse), dosyayı güncelle.
+        if was_upgraded:
+            save_settings(final_settings)
+            logging.info("Ayarlar yeni versiyona yükseltildi. Yeni ayarlar eklendi.")
+
+        return final_settings, was_upgraded
+
     except (json.JSONDecodeError, IOError):
-        return default_settings
+        # Hata durumunda varsayılanlara dön ve yükseltme olmadığını belirt.
+        return default_settings, False
 
 
 def save_settings(new_settings: Dict[str, Any]):
@@ -164,6 +202,11 @@ def save_calendar_notes(notes: list):
             json.dump(notes, f, indent=4, ensure_ascii=False)
     except (IOError, TypeError) as e:
         logging.error(f"Takvim notları kaydedilirken hata: {e}")
+
+# ... (Geri kalan tüm Python kodunuz burada hiçbir değişiklik olmadan devam ediyor) ...
+# ...
+# ... (Dosyanın sonuna kadar olan tüm kodları buraya yapıştırın)
+# ...
 
 
 def _mark_meeting_as_complete(note_date: str, meeting_id: str):
@@ -1070,7 +1113,7 @@ def main():
         threading.Thread(target=init_task, name="Full-Initializer", daemon=True).start()
 
     if SETTINGS_FILE_PATH.exists():
-        initialize_services(load_settings())
+        initialize_services(load_settings()[0]) # YENİ: load_settings tuple döndürdüğü için ilk elemanı al
     else:
         send_to_frontend("initial_setup_required", True)
 
@@ -1085,7 +1128,10 @@ def main():
             logging.info(f"Komut alındı: Eylem='{action}'")
 
             if action == "load_settings":
-                send_to_frontend("settings_loaded", load_settings())
+                settings_data, was_upgraded = load_settings()
+                send_to_frontend("settings_loaded", settings_data)
+                if was_upgraded:
+                    send_to_frontend("new_settings_available", True)
             elif action == "save_settings" and isinstance(data, dict):
                 save_settings(data)
                 if engine:
@@ -1140,31 +1186,30 @@ def main():
             elif action == "shutdown":
                 logging.info("Kapatma komutu alındı. Sürücüler kapatılıyor...")
                 stop_notification_scheduler()
+                send_to_frontend('python_shutdown_complete', {})
                 if engine:
                     engine.force_cancel_batch()
-                if search_thread and search_thread.is_alive():
-                    search_thread.join(1.0)
-                if batch_search_thread and batch_search_thread.is_alive():
-                    batch_search_thread.join(1.0)
-
-                # Tüm sürücülerin düzgün kapatıldığından emin ol
-                try:
-                    if sigma_api: sigma_api.stop_drivers()
-                except Exception as e:
-                    logging.error(f"Sigma sürücüleri kapatılırken hata: {e}")
-                try:
-                    if tci_api: tci_api.close_driver()
-                except Exception as e:
-                    logging.error(f"TCI sürücüsü kapatılırken hata: {e}")
-                try:
-                    if orkim_api: orkim_api.close_driver()
-                except Exception as e:
-                    logging.error(f"Orkim sürücüsü kapatılırken hata: {e}")
-                try:
-                    if itk_api: itk_api.close_driver()
-                except Exception as e:
-                    logging.error(f"ITK sürücüsü kapatılırken hata: {e}")
-
+                    if search_thread and search_thread.is_alive():
+                        search_thread.join(1.0)
+                    if batch_search_thread and batch_search_thread.is_alive():
+                        batch_search_thread.join(1.0)
+                    # Tüm sürücülerin düzgün kapatıldığından emin ol
+                    try:
+                        if sigma_api: sigma_api.stop_drivers()
+                    except Exception as e:
+                        logging.error(f"Sigma sürücüleri kapatılırken hata: {e}")
+                    try:
+                        if tci_api: tci_api.close_driver()
+                    except Exception as e:
+                        logging.error(f"TCI sürücüsü kapatılırken hata: {e}")
+                    try:
+                        if orkim_api: orkim_api.close_driver()
+                    except Exception as e:
+                        logging.error(f"Orkim sürücüsü kapatılırken hata: {e}")
+                    try:
+                        if itk_api: itk_api.close_driver()
+                    except Exception as e:
+                        logging.error(f"ITK sürücüsü kapatılırken hata: {e}")
                 logging.info("Tüm sürücüler kapatıldı. Arka plan servisinden çıkılıyor.")
                 break  # Döngüyü sonlandır ve script'in bitmesini sağla
         except json.JSONDecodeError:
@@ -1174,7 +1219,10 @@ def main():
 
     stop_notification_scheduler()
     logging.info("Python ana döngüsü sonlandı.")
-
+    # Kapatma tamamlandığında Electron'a haber veriyoruz.
+    send_to_frontend('python_shutdown_complete', {})
+    sys.stdout.flush()
+    time.sleep(0.5)
 
 if __name__ == '__main__':
     main()

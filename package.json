@@ -21,13 +21,19 @@
     "concurrently": "^8.2.2",
     "electron": "^38.3.0",
     "electron-builder": "^24.9.1",
-    "wait-on": "^7.2.0"
+    "wait-on": "^7.2.0",
+    "electron-updater": "^6.1.1"
   },
   "build": {
     "appId": "com.npc-ai-erp.app",
     "productName": "NPC-AI ERP",
     "copyright": "Copyright © 2024 NPC-AI",
     "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "Nurullah649",
+      "repo": "NPC-AI-ERP"
+    },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.png"

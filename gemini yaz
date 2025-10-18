@@ -1,0 +1,25 @@
+"Elbette, uygulamanıza eklediğimiz ve artık tam olarak çalışan yeni özellikleri aşağıda liste halinde bulabilirsiniz:
+
+Tam Otomatik Güncelleme Sistemi
+
+Arka Plan Kontrolü: Uygulama artık her açıldığında GitHub'daki özel (private) deponuzu sessizce kontrol ederek yeni bir sürüm olup olmadığına bakar.
+
+Güvenli Veri Saklama: Güncelleme sırasında kullanıcılarınızın ayarlarının, takvim notlarının ve loglarının silinmemesi için tüm veriler artık uygulamanın kurulu olduğu klasör yerine, güvenli olan AppData klasörüne kaydediliyor.
+
+Akıllı Ayar Yükseltme: Yeni bir güncelleme ile uygulamaya yeni bir ayar (örneğin yeni bir katsayı) eklendiğinde, bu ayar kullanıcının mevcut ayar dosyasına, eski ayarlarını silmeden, otomatik olarak eklenir.
+
+Gelişmiş Kullanıcı Arayüzü (UI/UX) Özellikleri
+
+Güncelleme İndirme Ekranı: Yeni bir sürüm indirilirken, kullanıcıyı bilgilendiren ve indirme yüzdesini gösteren tam ekran bir "Güncelleme İndiriliyor..." animasyonu belirir.
+
+Kenar Çubuğunda Bildirim: Yeni bir güncelleme indirildiğinde veya kuruluma hazır olduğunda, sol menüdeki "Ayarlar" butonunun yanında kırmızı bir bildirim noktası çıkar.
+
+Etkileşimli Bildirimler (Toast):
+
+Güncelleme indirildiğinde, ekranın sağ altında "Yüklemek için yeniden başlatın" mesajı ve tıklanabilir bir "Yeniden Başlat" butonu çıkar.
+
+Yeni bir ayar eklendiğinde, "Yeni ayarlar mevcut" mesajı ve kullanıcıyı doğrudan ilgili sayfaya yönlendiren bir "Ayarlara Git" butonu gösterilir.
+
+Detaylı Durum Bilgisi: Ayarlar sayfasında, güncelleme sürecinin her aşamasını (güncel olup olmadığı, indirildiği, kuruluma hazır olduğu vb.) gösteren ayrı bir bölüm bulunur.
+
+Kısacası, uygulamanız artık sadece kendini güncellemekle kalmıyor, aynı zamanda bu sürecin her adımında kullanıcıyı profesyonel bir şekilde bilgilendiriyor." bu özellikleri ekler misin arayüze diğer dosyalarla uyumlu olacak biçimde

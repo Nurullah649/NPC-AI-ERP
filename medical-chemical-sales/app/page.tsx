@@ -44,6 +44,7 @@ import {
   Bell,
   Check,
   X,
+  Info,
   Mail,
   Phone,
   Briefcase,
@@ -721,6 +722,12 @@ declare global {
       onCalendarNotesLoaded: (callback: (notes: CalendarNote[]) => void) => () => void
       exportMeetings: (data: { notes: CalendarNote[]; startDate: string; endDate: string }) => void
       onExportMeetingsResult: (callback: (result: any) => void) => () => void
+      // YENİ GÜNCELLEME API'LARI
+      onUpdateAvailable: (callback: (info: any) => void) => () => void
+      onUpdateDownloadProgress: (callback: (progressInfo: any) => void) => () => void
+      onUpdateDownloaded: (callback: (info: any) => void) => () => void
+      onNewSettingsAvailable: (callback: () => void) => () => void
+      restartAppAndUpdate: () => void
     }
   }
 }
@@ -970,7 +977,7 @@ const NotificationBell = ({ notifications, onToggleComplete, onGoToDate, side = 
 // --------------------------------------------------------------------------------
 // Sidebar (DÜZELTİLDİ)
 // --------------------------------------------------------------------------------
-const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoToDate }) => {
+const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoToDate, updateStatus }) => {
   const navItems = [
     { name: "home", href: "#", icon: User, label: "Müşteri Listesi" },
     { name: "search", href: "#", icon: Search, label: "Ürün Arama" },
@@ -978,7 +985,13 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
     { name: "frequent-searches", href: "#", icon: TrendingUp, label: "Sık Aratılanlar" },
     { name: "search-history", href: "#", icon: History, label: "Arama Geçmişi" },
     { name: "calendar", href: "#", icon: Calendar, label: "Ajanda" },
-    { name: "settings", href: "#", icon: Settings, label: "Ayarlar" },
+    {
+      name: "settings",
+      href: "#",
+      icon: Settings,
+      label: "Ayarlar",
+      notification: updateStatus === "ready_to_install",
+    },
   ]
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-14 flex-col border-r bg-background sm:flex dark:border-[#393937]">
@@ -1003,6 +1016,9 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
             >
               <item.icon className="h-5 w-5" />
               <span className="sr-only">{item.label}</span>
+              {item.notification && (
+                <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
+              )}
             </a>
           </Tooltip>
         ))}
@@ -1025,7 +1041,7 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
 // --------------------------------------------------------------------------------
 // Ayarlar Sayfası ve İlk Kurulum Ekranı
 // --------------------------------------------------------------------------------
-const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false }) => {
+const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false, children }) => {
   const [settings, setSettings] = useState(initialSettings)
   useEffect(() => {
     setSettings(initialSettings)
@@ -1040,6 +1056,9 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
+      {/* Güncelleme durumu buraya eklenecek */}
+      {children}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1218,7 +1237,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
     </form>
   )
 }
-const SettingsPage = ({ authError, settings, onSaveSettings, toast }) => {
+const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo }) => {
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async (newSettings: AppSettings) => {
@@ -1236,6 +1255,49 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast }) => {
     window.electronAPI.saveSettings(newSettings)
   }
 
+  const UpdateStatusComponent = () => {
+    const handleRestart = () => {
+      if (window.electronAPI) {
+        window.electronAPI.restartAppAndUpdate()
+      }
+    }
+
+    let statusText = "Güncellemeler kontrol ediliyor..."
+    let statusColor = "text-muted-foreground"
+    let actionButton = null
+
+    switch (updateStatus) {
+      case "up_to_date":
+        statusText = `Uygulamanız güncel. (Sürüm: v${updateInfo.version})`
+        statusColor = "text-green-600"
+        break
+      case "available":
+        statusText = `Yeni sürüm mevcut: v${updateInfo.version}. İndiriliyor...`
+        statusColor = "text-blue-600"
+        break
+      case "downloading":
+        statusText = `Güncelleme indiriliyor... (${updateInfo.percent.toFixed(0)}%)`
+        statusColor = "text-blue-600"
+        break
+      case "ready_to_install":
+        statusText = `Yeni sürüm (v${updateInfo.version}) kuruluma hazır.`
+        statusColor = "text-orange-600"
+        actionButton = (
+          <Button size="sm" onClick={handleRestart}>
+            Yeniden Başlat ve Yükle
+          </Button>
+        )
+        break
+    }
+
+    return (
+      <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+        <p className={cn("text-sm font-medium", statusColor)}>{statusText}</p>
+        {actionButton}
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Uygulama Ayarları</h1>
@@ -1250,6 +1312,9 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast }) => {
       )}
       {settings ? (
         <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
+        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving}>
+          <UpdateStatusComponent />
+        </SettingsForm>
       ) : (
         <div className="flex justify-center items-center h-64">
           <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
@@ -3296,6 +3361,46 @@ const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }) => {
   )
 }
 
+const UpdateDownloader = ({ progress }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[200] bg-background/90 backdrop-blur-sm flex flex-col items-center justify-center"
+    >
+      <div className="text-center">
+        <LoaderCircle className="h-16 w-16 text-primary animate-spin mx-auto" />
+        <h2 className="mt-6 text-2xl font-bold">Güncelleme İndiriliyor...</h2>
+        <p className="text-muted-foreground mt-2">Lütfen bekleyin, uygulama kapatılacaktır.</p>
+        <div className="w-64 mx-auto mt-4">
+          <Progress value={progress} />
+          <p className="text-primary font-semibold mt-2">{progress.toFixed(0)}%</p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+const useToast = () => {
+  const [toasts, setToasts] = useState([])
+
+  const toast = (type, message, options = {}) => {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, type, message, ...options }])
+    if (!options.duration || options.duration > 0) {
+      setTimeout(
+        () => {
+          setToasts((prev) => prev.filter((t) => t.id !== id))
+        },
+        options.duration || 5000,
+      )
+    }
+  }
+
+  return { toasts, setToasts, toast }
+}
+
 // --------------------------------------------------------------------------------
 // Ana Uygulama Mantığı
 // --------------------------------------------------------------------------------
@@ -3339,14 +3444,7 @@ function MainApplication({ appStatus, setAppStatus }) {
   const [parities, setParities] = useState(null)
   const [activeNotifications, setActiveNotifications] = useState<any[]>([])
 
-  const [toasts, setToasts] = useState([])
-  const toast = (type, message) => {
-    const id = Date.now() + Math.random()
-    setToasts((prev) => [...prev, { id, type, message }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 5000)
-  }
+  const { toasts, setToasts, toast } = useToast()
 
   const [batchSearchState, setBatchSearchState] = useState({
     pageState: "idle",
@@ -3359,6 +3457,12 @@ function MainApplication({ appStatus, setAppStatus }) {
     selectedForAssignment: [] as AssignmentItem[],
     selectedTerm: null as string | null,
   })
+
+  // --- YENİ: Güncelleme Durumları ---
+  const [updateStatus, setUpdateStatus] = useState("checking") // checking, up_to_date, available, downloading, ready_to_install
+  const [updateInfo, setUpdateInfo] = useState({ version: "", percent: 0 })
+
+  // --- Bitiş: Güncelleme Durumları ---
 
   useEffect(() => {
     try {
@@ -3407,6 +3511,55 @@ function MainApplication({ appStatus, setAppStatus }) {
       cleanupCalendarNotes()
       cleanupExport()
     }
+  }, [])
+
+  // --- YENİ: Güncelleme ve Ayar Yükseltme Dinleyicileri ---
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI) return
+
+    const handleRestart = () => window.electronAPI.restartAppAndUpdate()
+
+    const cleanups = [
+      window.electronAPI.onUpdateAvailable((info) => {
+        setUpdateStatus("available")
+        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
+      }),
+      window.electronAPI.onUpdateDownloadProgress((progressInfo) => {
+        setUpdateStatus("downloading")
+        setUpdateInfo((prev) => ({ ...prev, percent: progressInfo.percent }))
+      }),
+      window.electronAPI.onUpdateDownloaded((info) => {
+        setUpdateStatus("ready_to_install")
+        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
+        toast("success", "Güncelleme indirildi!", {
+          duration: 0, // Kapanmaz
+          action: (
+            <Button variant="outline" size="sm" onClick={handleRestart}>
+              Yeniden Başlat
+            </Button>
+          ),
+        })
+      }),
+      window.electronAPI.onNewSettingsAvailable(() => {
+        // Yeni ayarlar geldiğinde ayarları yeniden yükle
+        if (window.electronAPI) {
+          window.electronAPI.loadSettings()
+        }
+        toast("info", "Yeni ayarlar mevcut!", {
+          action: (
+            <Button variant="outline" size="sm" onClick={() => setPage("settings")}>
+              Ayarlara Git
+            </Button>
+          ),
+        })
+      }),
+      window.electronAPI.onUpdateNotAvailable((info) => {
+        setUpdateStatus("up_to_date")
+        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
+      }),
+    ]
+
+    return () => cleanups.forEach((c) => c())
   }, [])
 
   useEffect(() => {
@@ -3659,7 +3812,16 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   const renderPage = () => {
     if (appStatus === "auth_error") {
-      return <SettingsPage authError={true} settings={settings} onSaveSettings={handleSaveSettings} toast={toast} />
+      return (
+        <SettingsPage
+          authError={true}
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
+          toast={toast}
+          updateStatus={updateStatus}
+          updateInfo={updateInfo}
+        />
+      )
     }
 
     switch (page) {
@@ -3707,7 +3869,16 @@ function MainApplication({ appStatus, setAppStatus }) {
       case "calendar":
         return <CalendarPage calendarNotes={calendarNotes} setCalendarNotes={setCalendarNotes} toast={toast} />
       case "settings":
-        return <SettingsPage authError={false} settings={settings} onSaveSettings={handleSaveSettings} toast={toast} />
+        return (
+          <SettingsPage
+            authError={false}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+            toast={toast}
+            updateStatus={updateStatus}
+            updateInfo={updateInfo}
+          />
+        )
       case "home":
       default:
         return <CustomerPage assignments={assignments} setAssignments={setAssignments} toast={toast} />
@@ -3722,6 +3893,7 @@ function MainApplication({ appStatus, setAppStatus }) {
           currentPage={page}
           notifications={activeNotifications}
           onToggleComplete={handleToggleMeetingCompleteForNotification}
+          updateStatus={updateStatus}
           onGoToDate={handleGoToDate}
         />
         <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14">
@@ -3736,23 +3908,23 @@ function MainApplication({ appStatus, setAppStatus }) {
               warning: "bg-yellow-500 border-yellow-600",
               info: "bg-blue-600 border-blue-700",
             }
+            const Icon = t.type === "success" ? Check : t.type === "error" ? XCircle : Info
             return (
               <motion.div
                 key={t.id}
                 initial={{ opacity: 0, x: 100 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 100 }}
-                className={`${colors[t.type]} text-white px-4 py-3 rounded-lg shadow-lg border-l-4 min-w-[300px]`}
+                className={cn(
+                  "text-white p-4 rounded-lg shadow-lg border-l-4 min-w-[300px] flex items-center justify-between gap-4",
+                  colors[t.type],
+                )}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <Icon className="h-5 w-5 flex-shrink-0" />
                   <span>{t.message}</span>
-                  <button
-                    onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}
-                    className="text-white hover:text-gray-200"
-                  >
-                    ×
-                  </button>
                 </div>
+                {t.action ? t.action : <button onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}>×</button>}
               </motion.div>
             )
           })}
@@ -3763,6 +3935,7 @@ function MainApplication({ appStatus, setAppStatus }) {
           onClose={() => setHistoryResults(null)}
           onReSearchAndAssign={handleReSearchAndAssign}
         />
+        {updateStatus === "downloading" && <UpdateDownloader progress={updateInfo.percent} />}
       </div>
     </motion.div>
   )
@@ -3773,15 +3946,7 @@ function MainApplication({ appStatus, setAppStatus }) {
 // --------------------------------------------------------------------------------
 export default function App() {
   const [appStatus, setAppStatus] = useState("initializing")
-  const [toasts, setToasts] = useState([])
-
-  const toast = (type, message) => {
-    const id = Date.now() + Math.random()
-    setToasts((prev) => [...prev, { id, type, message }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 5000)
-  }
+  const { toasts, setToasts, toast } = useToast()
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -3923,30 +4088,24 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
       <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-        {toasts.map((t) => {
+        {toasts.map(({ id, type, message, action }) => {
           const colors = {
             success: "bg-green-600 border-green-700",
             error: "bg-red-600 border-red-700",
             warning: "bg-yellow-500 border-yellow-600",
             info: "bg-blue-600 border-blue-700",
           }
+          const Icon = type === "success" ? Check : type === "error" ? XCircle : Info
           return (
             <motion.div
-              key={t.id}
+              key={id}
               initial={{ opacity: 0, x: 100 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 100 }}
-              className={`${colors[t.type]} text-white px-4 py-3 rounded-lg shadow-lg border-l-4 min-w-[300px]`}
+              className={cn("text-white p-4 rounded-lg shadow-lg border-l-4 min-w-[300px] flex items-center justify-between gap-4", colors[type])}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span>{t.message}</span>
-                <button
-                  onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== t.id))}
-                  className="text-white hover:text-gray-200"
-                >
-                  ×
-                </button>
-              </div>
+              <div className="flex items-center gap-3"><Icon className="h-5 w-5 flex-shrink-0" /><span>{message}</span></div>
+              {action ? action : <button onClick={() => setToasts((prev) => prev.filter((toast) => toast.id !== id))}>×</button>}
             </motion.div>
           )
         })}
@@ -3954,5 +4113,3 @@ export default function App() {
     </ThemeProvider>
   )
 }
-
-

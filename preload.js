@@ -2,11 +2,9 @@
 
 const { contextBridge, ipcRenderer } = require("electron")
 
-// Tekrarlayan listener oluşturma kodunu basitleştiren bir yardımcı fonksiyon
 const createListener = (channel) => (callback) => {
   const subscription = (_event, ...args) => callback(...args)
   ipcRenderer.on(channel, subscription)
-  // Temizlik fonksiyonu: Component unmount olduğunda listener'ı kaldırmak için
   return () => {
     ipcRenderer.removeListener(channel, subscription)
   }
@@ -25,13 +23,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   cancelBatchSearch: () => ipcRenderer.send("cancel-batch-search"),
   cancelCurrentTermSearch: () => ipcRenderer.send("cancel-current-term-search"),
   getParities: () => ipcRenderer.send("get-parities"),
-
   loadCalendarNotes: () => ipcRenderer.send("load-calendar-notes"),
   saveCalendarNotes: (notes) => ipcRenderer.send("save-calendar-notes", notes),
   exportMeetings: (data) => ipcRenderer.send("export-meetings", data),
-
   checkNotificationsNow: () => ipcRenderer.send("check-notifications-now"),
   showNotification: (data) => ipcRenderer.send("show-notification", data),
+
+  // YENİ: Güncelleme komutu
+  restartAppAndUpdate: () => ipcRenderer.send("restart-app-and-update"),
+
 
   // --- Dinleyiciler (Main -> Renderer) ---
   onServicesReady: createListener("services-ready"),
@@ -48,8 +48,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onBatchSearchComplete: createListener("batch-search-complete"),
   onLogSearchTerm: createListener("log-search-term"),
   onParitiesUpdated: createListener("parities-updated"),
-
   onCalendarNotesLoaded: createListener("calendar-notes-loaded"),
   onCalendarNotesSaved: createListener("calendar-notes-saved"),
+  onShowNotification: createListener("show-notification"),
   onExportMeetingsResult: createListener("export-meetings-result"),
+
+  // YENİ: Güncelleme dinleyicileri
+  onUpdateAvailable: createListener("update-available"),
+  onUpdateNotAvailable: createListener("update-not-available"),
+  onUpdateDownloadProgress: createListener("update-download-progress"),
+  onUpdateDownloaded: createListener("update-downloaded"),
+  onUpdateError: createListener("update-error"),
+
+  // YENİ: Python'dan gelen yeni ayar bildirimi
+  onNewSettingsAvailable: createListener("new-settings-available"),
 })
