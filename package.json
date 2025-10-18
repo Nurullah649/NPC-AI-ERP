@@ -1,6 +1,6 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "NPC-AI ERP Electron Uygulaması",
   "main": "main.js",
   "homepage": "./",
@@ -33,7 +33,8 @@
     "publish": {
       "provider": "github",
       "owner": "Nurullah649",
-      "repo": "NPC-AI-ERP"
+      "repo": "NPC-AI-ERP",
+      "private": true
     },
     "win": {
       "target": "nsis",
