@@ -1311,7 +1311,6 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
         </Alert>
       )}
       {settings ? (
-        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} />
         <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving}>
           <UpdateStatusComponent />
         </SettingsForm>
