@@ -766,6 +766,7 @@ declare global {
       onUpdateNotAvailable: (callback: (info: any) => void) => () => void
       onUpdateError: (callback: (error: any) => void) => () => void
       restartAppAndUpdate: () => void
+      checkForUpdates: () => void
     }
   }
 }
@@ -1093,178 +1094,165 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
-      {/* Güncelleme durumu buraya eklenecek */}
+    <form onSubmit={handleSubmit} className="space-y-6">
       {children}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" /> Netflex API Bilgileri
-          </CardTitle>
-          <CardDescription>Netflex sisteminden veri çekmek için kullanılacak kullanıcı adı ve şifre.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="netflex_username">Kullanıcı Adı</Label>
-            <Input
-              id="netflex_username"
-              value={settings.netflex_username || ""}
-              onChange={(e) => handleChange("netflex_username", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="netflex_password">Şifre</Label>
-            <Input
-              id="netflex_password"
-              type="password"
-              value={settings.netflex_password || ""}
-              onChange={(e) => handleChange("netflex_password", e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" /> Netflex API
+            </CardTitle>
+            <CardDescription>Netflex sistemine giriş bilgileri.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="netflex_username">Kullanıcı Adı</Label>
+              <Input
+                id="netflex_username"
+                value={settings.netflex_username || ""}
+                onChange={(e) => handleChange("netflex_username", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="netflex_password">Şifre</Label>
+              <Input
+                id="netflex_password"
+                type="password"
+                value={settings.netflex_password || ""}
+                onChange={(e) => handleChange("netflex_password", e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" /> Orkim Market
+            </CardTitle>
+            <CardDescription>Orkim Market sistemine giriş bilgileri.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="orkim_username">Kullanıcı Adı</Label>
+              <Input
+                id="orkim_username"
+                value={settings.orkim_username || ""}
+                onChange={(e) => handleChange("orkim_username", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="orkim_password">Şifre</Label>
+              <Input
+                id="orkim_password"
+                type="password"
+                value={settings.orkim_password || ""}
+                onChange={(e) => handleChange("orkim_password", e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" /> ITK Bayi
+            </CardTitle>
+            <CardDescription>ITK bayi sistemine giriş bilgileri.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="itk_username">Kullanıcı Adı</Label>
+              <Input
+                id="itk_username"
+                value={settings.itk_username || ""}
+                onChange={(e) => handleChange("itk_username", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="itk_password">Şifre</Label>
+              <Input
+                id="itk_password"
+                type="password"
+                value={settings.itk_password || ""}
+                onChange={(e) => handleChange("itk_password", e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" /> Sigma Fiyatlandırma
-          </CardTitle>
-          <CardDescription>
-            Sigma-Aldrich ürünlerinin EUR fiyatları ile çarpılacak ülkeye özel katsayılar.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="sigma_coefficient_us">Amerika (US) Katsayısı</Label>
-            <Input
-              id="sigma_coefficient_us"
-              type="number"
-              step="0.1"
-              value={settings.sigma_coefficient_us || 1.0}
-              onChange={(e) => handleChange("sigma_coefficient_us", Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sigma_coefficient_de">Almanya (DE) Katsayısı</Label>
-            <Input
-              id="sigma_coefficient_de"
-              type="number"
-              step="0.1"
-              value={settings.sigma_coefficient_de || 1.0}
-              onChange={(e) => handleChange("sigma_coefficient_de", Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sigma_coefficient_gb">İngiltere (GB) Katsayısı</Label>
-            <Input
-              id="sigma_coefficient_gb"
-              type="number"
-              step="0.1"
-              value={settings.sigma_coefficient_gb || 1.0}
-              onChange={(e) => handleChange("sigma_coefficient_gb", Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="h-5 w-5 text-primary" /> TCI Fiyatlandırma
-          </CardTitle>
-          <CardDescription>TCI ürünlerinin orijinal fiyatı ile çarpılacak katsayı.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="tci_coefficient">Fiyat Katsayısı</Label>
-            <Input
-              id="tci_coefficient"
-              type="number"
-              step="0.1"
-              value={settings.tci_coefficient || 1.4}
-              onChange={(e) => handleChange("tci_coefficient", Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="h-5 w-5 text-primary" /> ITK Fiyatlandırma
-          </CardTitle>
-          <CardDescription>ITK ürünlerinin orijinal fiyatı ile çarpılacak katsayı.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="itk_coefficient">Fiyat Katsayısı</Label>
-            <Input
-              id="itk_coefficient"
-              type="number"
-              step="0.1"
-              value={settings.itk_coefficient || 1.0}
-              onChange={(e) => handleChange("itk_coefficient", Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" /> Orkim Market Bilgileri
-          </CardTitle>
-          <CardDescription>Orkim Market sistemine giriş için gerekli bilgiler.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="orkim_username">Kullanıcı Adı</Label>
-            <Input
-              id="orkim_username"
-              value={settings.orkim_username || ""}
-              onChange={(e) => handleChange("orkim_username", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="orkim_password">Şifre</Label>
-            <Input
-              id="orkim_password"
-              type="password"
-              value={settings.orkim_password || ""}
-              onChange={(e) => handleChange("orkim_password", e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" /> ITK (İstanbul Teknik Kimya) Bilgileri
-          </CardTitle>
-          <CardDescription>ITK bayi sistemine giriş için gerekli bilgiler.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="itk_username">Kullanıcı Adı</Label>
-            <Input
-              id="itk_username"
-              value={settings.itk_username || ""}
-              onChange={(e) => handleChange("itk_username", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="itk_password">Şifre</Label>
-            <Input
-              id="itk_password"
-              type="password"
-              value={settings.itk_password || ""}
-              onChange={(e) => handleChange("itk_password", e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" /> Sigma Fiyatlandırma
+            </CardTitle>
+            <CardDescription>Sigma-Aldrich ürünleri için ülkeye özel katsayılar.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="sigma_coefficient_us">Amerika (US)</Label>
+              <Input
+                id="sigma_coefficient_us"
+                type="number"
+                step="0.1"
+                value={settings.sigma_coefficient_us || 1.0}
+                onChange={(e) => handleChange("sigma_coefficient_us", Number.parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sigma_coefficient_de">Almanya (DE)</Label>
+              <Input
+                id="sigma_coefficient_de"
+                type="number"
+                step="0.1"
+                value={settings.sigma_coefficient_de || 1.0}
+                onChange={(e) => handleChange("sigma_coefficient_de", Number.parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sigma_coefficient_gb">İngiltere (GB)</Label>
+              <Input
+                id="sigma_coefficient_gb"
+                type="number"
+                step="0.1"
+                value={settings.sigma_coefficient_gb || 1.0}
+                onChange={(e) => handleChange("sigma_coefficient_gb", Number.parseFloat(e.target.value) || 0)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-primary" /> Diğer Katsayılar
+            </CardTitle>
+            <CardDescription>TCI ve ITK için fiyat katsayıları.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="tci_coefficient">TCI Katsayısı</Label>
+              <Input
+                id="tci_coefficient"
+                type="number"
+                step="0.1"
+                value={settings.tci_coefficient || 1.4}
+                onChange={(e) => handleChange("tci_coefficient", Number.parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="itk_coefficient">ITK Katsayısı</Label>
+              <Input
+                id="itk_coefficient"
+                type="number"
+                step="0.1"
+                value={settings.itk_coefficient || 1.0}
+                onChange={(e) => handleChange("itk_coefficient", Number.parseFloat(e.target.value) || 0)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="flex justify-end">
         <Button type="submit" disabled={isSaving}>
@@ -1275,7 +1263,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
     </form>
   )
 }
-const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo }) => {
+const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo, appVersion }) => {
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async (newSettings: AppSettings) => {
@@ -1300,13 +1288,20 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
       }
     }
 
+    const handleCheckForUpdates = () => {
+      if (window.electronAPI) {
+        setUpdateStatus("checking")
+        window.electronAPI.checkForUpdates()
+      }
+    }
+
     let statusText = "Güncellemeler kontrol ediliyor..."
     let statusColor = "text-muted-foreground"
     let actionButton = null
 
     switch (updateStatus) {
       case "up_to_date":
-        statusText = `Uygulamanız güncel. (Sürüm: v${updateInfo.version})`
+        statusText = `Uygulamanız güncel.`
         statusColor = "text-green-600"
         break
       case "available":
@@ -1332,9 +1327,17 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
     }
 
     return (
-      <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-        <p className={cn("text-sm font-medium", statusColor)}>{statusText}</p>
-        {actionButton}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 border rounded-lg bg-muted/50 mb-6">
+        <div className="flex flex-col">
+          <p className={cn("text-sm font-medium", statusColor)}>{statusText}</p>
+          <p className="text-xs text-muted-foreground">Mevcut Sürüm: v{appVersion}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {actionButton}
+          <Button size="sm" variant="outline" onClick={handleCheckForUpdates} disabled={updateStatus === "downloading"}>
+            Güncellemeleri Kontrol Et
+          </Button>
+        </div>
       </div>
     )
   }
@@ -1342,7 +1345,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Uygulama Ayarları</h1>
-      {authError && !isSaving && (
+      {authError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Kimlik Doğrulama Hatası!</AlertTitle>
@@ -1353,7 +1356,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
       )}
       {settings ? (
         <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving}>
-          <UpdateStatusComponent />
+          {!isSaving && <UpdateStatusComponent />}
         </SettingsForm>
       ) : (
         <div className="flex justify-center items-center h-64">
@@ -3873,6 +3876,7 @@ function MainApplication({ appStatus, setAppStatus }) {
           toast={toast}
           updateStatus={updateStatus}
           updateInfo={updateInfo}
+          appVersion={appVersion}
         />
       )
     }
@@ -3930,6 +3934,7 @@ function MainApplication({ appStatus, setAppStatus }) {
             toast={toast}
             updateStatus={updateStatus}
             updateInfo={updateInfo}
+          appVersion={appVersion}
           />
         )
       case "home":
@@ -4049,9 +4054,7 @@ export default function App() {
       }),
     ]
 
-    if (window.electronAPI.rendererReady) window.electronAPI.rendererReady()
-
-    return () => cleanups.forEach((cleanup) => cleanup())
+    return () => cleanups.forEach((cleanup) => cleanup && cleanup())
   }, [])
 
   const handleUpdateConfirm = () => {

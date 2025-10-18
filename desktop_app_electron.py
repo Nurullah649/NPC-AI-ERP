@@ -779,15 +779,30 @@ class ComparisonEngine:
                 "brand": f"Sigma ({s_brand})", "sigma_variations": sigma_variations, "netflex_matches": netflex_matches}
 
     def _process_tci_product(self, tci_product: tci.Product, context: Dict = None) -> Dict[str, Any]:
+        parities = self.currency_converter.get_parities()
+        tci_coefficient = self.settings.get('tci_coefficient', 1.4)
         processed_variations = []
+
         for variation in tci_product.variations:
             original_price_str = variation.get('price', 'N/A')
+            currency_symbol = '€' if '€' in original_price_str else '$' if '$' in original_price_str else '£' if '£' in original_price_str else '€'
             price_float = None
+            calculated_price_eur = None
+
             try:
                 cleaned = re.sub(r'[^\d,.]', '', original_price_str)
                 standardized = cleaned.replace('.', '').replace(',', '.') if cleaned.rfind(',') > cleaned.rfind(
                     '.') else cleaned.replace(',', '')
                 price_float = float(standardized) if standardized else None
+
+                if price_float is not None:
+                    base_price_eur = price_float
+                    if currency_symbol == '$' and parities.get('usd_eur'):
+                        base_price_eur = price_float * parities['usd_eur']
+                    elif currency_symbol == '£' and parities.get('gbp_eur'):
+                        base_price_eur = price_float * parities['gbp_eur']
+                    calculated_price_eur = base_price_eur * tci_coefficient
+
             except (ValueError, TypeError):
                 pass
 
@@ -795,7 +810,9 @@ class ComparisonEngine:
                 "unit": variation.get('unit'),
                 "original_price": original_price_str,
                 "original_price_numeric": price_float,
-                "stock_info": variation.get('stock_info', [])
+                "stock_info": variation.get('stock_info', []),
+                "calculated_price_eur": calculated_price_eur,
+                "calculated_price_eur_str": f"{calculated_price_eur:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".") if calculated_price_eur is not None else "N/A"
             })
 
         return {

@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // YENİ: Güncelleme komutu
   restartAppAndUpdate: () => ipcRenderer.send("restart-app-and-update"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  checkForUpdates: () => ipcRenderer.send("check-for-updates"),
 
 
   // --- Dinleyiciler (Main -> Renderer) ---

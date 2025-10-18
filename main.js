@@ -151,7 +151,7 @@ function startPythonService() {
   pythonProcess.on("close", (code) => {
     console.error(`Python servisi ${code} koduyla sonlandı.`)
     if (win && !win.isDestroyed() && code !== 0 && !shutdownInProgress) {
-      initialPythonStateMessage = { channel: "python-crashed", data: null }
+      initialPythonStateMessage = { channel: "python-crashed", data: `Arka plan servisi beklenmedik şekilde sonlandı (Kod: ${code}).` }
       if (win.webContents) {
         win.webContents.send("python-crashed")
       }
@@ -285,9 +285,6 @@ function sendCommandToPython(command) {
 
 // --- YENİ: Uygulama versiyonunu döndüren handler ---
 ipcMain.handle('get-app-version', () => app.getVersion());
-
-// YENİ: Güncelleme hatası olayı
-autoUpdater.on('error', (err) => win.webContents.send('update-error', err));
 
 // IPC Komutları...
 ipcMain.on("perform-search", (event, searchTerm) => sendCommandToPython({ action: "search", data: searchTerm }))
