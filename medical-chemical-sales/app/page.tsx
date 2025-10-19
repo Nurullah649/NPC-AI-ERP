@@ -2130,6 +2130,16 @@ const SearchPage = ({
             </Button>
           </Tooltip>
 
+          {/* YENİ FİLTRE ALANI */}
+          <div className="relative w-full max-w-xs">
+            <Input
+              placeholder="Sonuçlar içinde ara..."
+              value={filterTerm}
+              onChange={(e) => setFilterTerm(e.target.value)}
+              className="pl-8"
+            />
+            <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="flex-shrink-0 bg-transparent">
@@ -2164,7 +2174,7 @@ const SearchPage = ({
                 ITK
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
-          </DropdownMenu> 
+          </DropdownMenu>
           <Button 
             onClick={onSearchOrCancelClick} 
             onMouseEnter={() => { 
@@ -2227,6 +2237,11 @@ const SearchPage = ({
         </div>
       </div>
 
+      {searchResults.length > 0 && (
+        <div className="flex-shrink-0 text-right pr-1 pb-2">
+          <span className="text-sm font-normal text-muted-foreground">({filteredResults.length} adet sonuç bulundu)</span>
+        </div>
+      )}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -2236,24 +2251,9 @@ const SearchPage = ({
       )}
 
       {searchResults.length > 0 && (
-        <Card className="flex-grow flex flex-col overflow-hidden mt-4">
-          <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
-            <div className="flex items-baseline gap-2">
-              <CardTitle className="text-xl">Arama Sonuçları</CardTitle>
-              <span className="text-sm font-normal text-muted-foreground">({filteredResults.length} adet)</span>
-            </div>
-            <div className="relative w-full max-w-xs">
-              <Input
-                placeholder="Sonuçlar içinde ara..."
-                value={filterTerm}
-                onChange={(e) => setFilterTerm(e.target.value)}
-                className="pl-8"
-              />
-              <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
+        <Card className="flex-grow flex flex-col overflow-hidden">
           <CardContent className="flex-grow flex flex-col overflow-hidden p-0">
-            <div className="p-4 border-b bg-muted/40 flex-shrink-0">
+            <div className="p-4 border-b bg-[#e2e8f0] dark:bg-[#383838] flex-shrink-0">
               <div className={headerGridClasses}>
                 <div className="text-center">Seç</div>
                 <div className="truncate">CAS</div>
