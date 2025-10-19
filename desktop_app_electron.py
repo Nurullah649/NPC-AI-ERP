@@ -828,16 +828,27 @@ class ComparisonEngine:
 
     def _process_orkim_product(self, orkim_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """Orkim'den gelen ürün verisini standart formata çevirir."""
+        
+        # Stok bilgisini al ve formatla
+        stock_quantity = orkim_product.get("stock_quantity")
+        stock_status = orkim_product.get("stock_status")
+        stock_display = "N/A"
+        if stock_status == "Stokta Yok" or stock_quantity == 0:
+            stock_display = "Stokta Yok"
+        elif isinstance(stock_quantity, int):
+            stock_display = stock_quantity
+
         price_str = orkim_product.get("price_str", "N/A")
         return {
             "source": "Orkim",
             "product_name": orkim_product.get("urun_adi", "N/A"),
             "product_number": orkim_product.get("k_kodu", "N/A"),
-            "cas_number": "N/A",  # Orkim arama sayfasında bu bilgi yok
+            "cas_number": "N/A",
             "brand": "Orkim",
             "cheapest_eur_price_str": price_str,
             "cheapest_material_number": orkim_product.get("k_kodu", "N/A"),
             "cheapest_source_country": "Orkim",
+            "cheapest_netflex_stock": stock_display,
             "sigma_variations": {},
             "netflex_matches": [],
             "tci_variations": []

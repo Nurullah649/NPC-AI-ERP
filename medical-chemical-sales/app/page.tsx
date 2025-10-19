@@ -123,6 +123,11 @@ const CardContent = React.forwardRef(({ className, ...props }, ref) => (
 ))
 CardContent.displayName = "CardContent"
 
+const CardFooter = React.forwardRef(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("flex items-center p-6 pt-0", className)} {...props} />
+))
+CardFooter.displayName = "CardFooter"
+
 const Input = React.forwardRef(({ className, type, ...props }, ref) => {
   return (
     <input
@@ -1564,7 +1569,11 @@ const CustomerPage = ({ assignments, setAssignments, toast }) => {
                       />
                       <TableCell>{product.product_code}</TableCell>
                       <TableCell>{product.price_str}</TableCell>
-                      <TableCell>{product.cheapest_netflex_stock ?? "N/A"}</TableCell>
+                      <TableCell>
+                        {product.cheapest_netflex_stock === 0
+                          ? "Stokta Yok"
+                          : product.cheapest_netflex_stock ?? "N/A"}
+                      </TableCell>
                       <TableCell className="text-right">
                         <Tooltip content="Ürünü Sil" side="left">
                           <Button variant="ghost" size="icon" onClick={() => handleDeleteAssignment(product)}>
@@ -1800,13 +1809,13 @@ const ProductResultItem = ({
                       {Object.entries(countryHeaders).map(([code, name]) => (
                         <TableHead key={code}>{name}</TableHead>
                       ))}
-                    </TableRow>
+                    </TableRow> 
                   </TableHeader>
                   <TableBody>
                     {getCombinedData.map((item, itemIndex) => {
                       const isCheapestNetflex =
                         item.netflex &&
-                        item.netflex.price_numeric !== null &&
+                        item.netflex.price_numeric != null &&
                         product.cheapest_eur_price_str === item.netflex.price_str
                       return (
                         <TableRow key={itemIndex}>
@@ -1829,7 +1838,7 @@ const ProductResultItem = ({
                                   <div className="flex flex-col">
                                     <div
                                       className={cn(
-                                        "flex items-baseline gap-2",
+                                        "flex items-baseline gap-2 font-semibold",
                                         isCheapestNetflex && "text-red-600 font-bold",
                                       )}
                                     >
@@ -1854,8 +1863,7 @@ const ProductResultItem = ({
                           </TableCell>
                           {Object.keys(countryHeaders).map((code) => {
                             const isCheapestSigma =
-                              item.sigma[code] &&
-                              item.sigma[code].price_eur !== null &&
+                              item.sigma[code]?.price_eur != null &&
                               product.cheapest_eur_price_str === item.sigma[code].price_eur_str
                             return (
                               <TableCell key={code}>
@@ -1874,7 +1882,7 @@ const ProductResultItem = ({
                                     <Label
                                       htmlFor={`cb-${code}-${item.material_number}`}
                                       className={cn(
-                                        "flex flex-col cursor-pointer",
+                                        "flex flex-col cursor-pointer font-semibold",
                                         isCheapestSigma && "text-red-600 font-bold",
                                       )}
                                     >
@@ -1977,7 +1985,7 @@ const SearchPage = ({
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
-  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true, netflex: true } })
+  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true } })
   const [isProductNameVisible] = useState(true) // Her zaman görünür olması için sabitlendi
   const [showOriginalPrices, setShowOriginalPrices] = useState(false)
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
@@ -2070,7 +2078,6 @@ const SearchPage = ({
       const brand = product.brand.toLowerCase()
       const brandMatch =
         (brand.includes("sigma") && filters.brands.sigma) ||
-        (brand.includes("netflex") && filters.brands.netflex) ||
         (brand.includes("tci") && filters.brands.tci) ||
         (brand.includes("orkim") && filters.brands.orkim) ||
         (brand.includes("itk") && filters.brands.itk)
@@ -2156,74 +2163,67 @@ const SearchPage = ({
               >
                 ITK
               </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={filters.brands.netflex}
-                onCheckedChange={(checked) => handleFilterChange("brands", "netflex", checked)}
-              >
-                Netflex
-              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            onClick={onSearchOrCancelClick}
-            onMouseEnter={() => {
-              if (isLoading) setIsHovering(true)
-            }}
-            onMouseLeave={() => {
-              if (isLoading) setIsHovering(false)
-            }}
-            className={cn("relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out")}
-            variant={isLoading && isHovering ? "destructive" : "default"}
-          >
-            <div className="relative z-10">
-              <AnimatePresence mode="wait">
-                {isLoading && isHovering ? (
-                  <motion.span
-                    key="cancel"
-                    className="flex items-center justify-center"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <XCircle className="mr-2 h-5 w-5" /> Aramayı İptal Et
-                  </motion.span>
-                ) : isLoading ? (
-                  <motion.span
-                    key="searching"
-                    className="flex items-center justify-center"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <LoaderCircle className="h-4 w-4 animate-spin mr-2" /> Aranıyor...
-                  </motion.span>
-                ) : (
-                  <motion.span
-                    key="search"
-                    className="flex items-center justify-center"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Search className="mr-2 h-4 w-4" /> Ara
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
-            {isLoading && !isHovering && (
-              <motion.div
-                className="absolute bottom-0 left-0 right-0 bg-primary/20"
-                initial={{ height: "0%" }}
-                animate={{ height: `${progress * 100}%` }}
-                transition={{ type: "spring", stiffness: 50, damping: 20 }}
-                style={{ zIndex: 5 }}
-              />
-            )}
-          </Button>
+          </DropdownMenu> 
+          <Button 
+            onClick={onSearchOrCancelClick} 
+            onMouseEnter={() => { 
+              if (isLoading) setIsHovering(true) 
+            }} 
+            onMouseLeave={() => { 
+              if (isLoading) setIsHovering(false) 
+            }} 
+            className={cn("relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out")} 
+            variant={isLoading && isHovering ? "destructive" : "default"} 
+          > 
+            <div className="relative z-10"> 
+              <AnimatePresence mode="wait"> 
+                {isLoading && isHovering ? ( 
+                  <motion.span 
+                    key="cancel" 
+                    className="flex items-center justify-center" 
+                    initial={{ opacity: 0, y: 5 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0, y: -5 }} 
+                    transition={{ duration: 0.2 }} 
+                  > 
+                    <XCircle className="mr-2 h-5 w-5" /> Aramayı İptal Et 
+                  </motion.span> 
+                ) : isLoading ? ( 
+                  <motion.span 
+                    key="searching" 
+                    className="flex items-center justify-center" 
+                    initial={{ opacity: 0, y: 5 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0, y: -5 }} 
+                    transition={{ duration: 0.2 }} 
+                  > 
+                    <LoaderCircle className="h-4 w-4 animate-spin mr-2" /> Aranıyor... 
+                  </motion.span> 
+                ) : ( 
+                  <motion.span 
+                    key="search" 
+                    className="flex items-center justify-center" 
+                    initial={{ opacity: 0, y: 5 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0, y: -5 }} 
+                    transition={{ duration: 0.2 }} 
+                  > 
+                    <Search className="mr-2 h-4 w-4" /> Ara 
+                  </motion.span> 
+                )} 
+              </AnimatePresence> 
+            </div> 
+            {isLoading && !isHovering && ( 
+              <motion.div 
+                className="absolute bottom-0 left-0 right-0 bg-primary/20" 
+                initial={{ height: "0%" }} 
+                animate={{ height: `${progress * 100}%` }} 
+                transition={{ type: "spring", stiffness: 50, damping: 20 }} 
+                style={{ zIndex: 5 }} 
+              /> 
+            )} 
+          </Button> 
         </div>
       </div>
 
@@ -2239,8 +2239,8 @@ const SearchPage = ({
         <Card className="flex-grow flex flex-col overflow-hidden mt-4">
           <CardHeader className="flex-shrink-0 flex flex-row items-center justify-between">
             <div className="flex items-baseline gap-2">
-              <CardTitle>Arama Sonuçları</CardTitle>
-              <span className="font-normal text-muted-foreground">({filteredResults.length} adet)</span>
+              <CardTitle className="text-xl">Arama Sonuçları</CardTitle>
+              <span className="text-sm font-normal text-muted-foreground">({filteredResults.length} adet)</span>
             </div>
             <div className="relative w-full max-w-xs">
               <Input
@@ -2283,25 +2283,25 @@ const SearchPage = ({
               </div>
             </div>
             {filteredResults.length > itemsPerPage && (
-              <div className="flex items-center justify-center gap-4 p-4 border-t flex-shrink-0">
+              <div className="flex items-center justify-center gap-2 p-3 border-t flex-shrink-0 mt-auto">
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" /> Önceki
                 </Button>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   Sayfa {currentPage} / {Math.ceil(filteredResults.length / itemsPerPage)}
                 </span>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="xs"
                   onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(filteredResults.length / itemsPerPage)))}
                   disabled={currentPage * itemsPerPage >= filteredResults.length}
                 >
-                  Sonraki <ChevronRight className="h-4 w-4 ml-1" />
+                  Sonraki <ChevronRight className="h-4 w-4 ml-1" /> 
                 </Button>
               </div>
             )}
@@ -3480,18 +3480,21 @@ const UpdateDownloader = ({ progress }) => {
 const useToast = () => {
   const [toasts, setToasts] = useState([])
 
-  const toast = (type, message, options = {}) => {
-    const id = Date.now() + Math.random()
-    setToasts((prev) => [...prev, { id, type, message, ...options }])
-    if (!options.duration || options.duration > 0) {
-      setTimeout(
-        () => {
-          setToasts((prev) => prev.filter((t) => t.id !== id))
-        },
-        options.duration || 5000,
-      )
-    }
-  }
+  const toast = React.useCallback(
+    (type, message, options = {}) => {
+      const id = Date.now() + Math.random()
+      setToasts((prev) => [...prev, { id, type, message, ...options }])
+      if (!options.duration || options.duration > 0) {
+        setTimeout(
+          () => {
+            setToasts((prev) => prev.filter((t) => t.id !== id))
+          },
+          options.duration || 5000,
+        )
+      }
+    },
+    [], // setToasts is stable, so no dependencies needed
+  )
 
   return { toasts, setToasts, toast }
 }
@@ -4188,8 +4191,8 @@ export default function App() {
             --accent-foreground: 222.2 47.4% 11.2%;
             --destructive: 0 84.2% 60.2%;
             --destructive-foreground: 210 40% 98%;
-            --border: 214.3 31.8% 91.4%;
-            --input: 214.3 31.8% 91.4%;
+            --border: 215 20.2% 65.1%; /* #e2e8f0 */
+            --input: 215 20.2% 65.1%; /* #e2e8f0 */
             --ring: 222.2 84% 4.9%;
         }
         .dark {
@@ -4209,8 +4212,8 @@ export default function App() {
             --accent-foreground: 0 0% 98%;
             --destructive: 0 62.8% 30.6%;
             --destructive-foreground: 0 0% 98%;
-            --border: 0 0% 22%; /* #393937 */
-            --input: 0 0% 22%; /* #393937 */
+            --border: 0 0% 22%; /* #383838 */
+            --input: 0 0% 22%; /* #383838 */
             --ring: 217.2 91.2% 59.8%;
         }
         .bg-background { background-color: hsl(var(--background)); }
