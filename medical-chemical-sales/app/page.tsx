@@ -1916,27 +1916,36 @@ const ProductResultItem = ({
                 </TableHeader>
                 <TableBody>
                   {product.tci_variations?.map((variation, vIndex) => (
-                    <TableRow key={vIndex}>
-                      <TableCell>
-                        <Checkbox
-                          id={`cb-tci-${product.product_number}-${vIndex}`}
-                          onChange={() => handleSelectTCI(product, variation)}
-                          checked={selectedForAssignment.some(
-                            (p) =>
-                              p.product_code === `${product.product_number}-${variation.unit}` && p.source === "TCI",
-                          )}
-                          className="h-5 w-5"
-                        />
-                      </TableCell>
-                      <TableCell>{variation.unit}</TableCell>
-                      <TableCell>{variation.original_price}</TableCell>
-                      <TableCell className="font-semibold">{variation.calculated_price_eur_str || "N/A"}</TableCell>
-                      <TableCell className="text-xs">
-                        {variation.stock_info && variation.stock_info.length > 0
-                          ? variation.stock_info.map((s) => `${s.country}: ${s.stock}`).join(", ")
-                          : "N/A"}
-                      </TableCell>
-                    </TableRow>
+                    (() => {
+                      const isCheapestTCI =
+                        variation.calculated_price_eur !== null &&
+                        product.cheapest_eur_price_str === variation.calculated_price_eur_str
+                      return (
+                        <TableRow key={vIndex}>
+                          <TableCell>
+                            <Checkbox
+                              id={`cb-tci-${product.product_number}-${vIndex}`}
+                              onChange={() => handleSelectTCI(product, variation)}
+                              checked={selectedForAssignment.some(
+                                (p) =>
+                                  p.product_code === `${product.product_number}-${variation.unit}` && p.source === "TCI",
+                              )}
+                              className="h-5 w-5"
+                            />
+                          </TableCell>
+                          <TableCell>{variation.unit}</TableCell>
+                          <TableCell>{variation.original_price}</TableCell>
+                          <TableCell className={cn("font-semibold", isCheapestTCI && "text-red-600 font-bold")}>
+                            {variation.calculated_price_eur_str || "N/A"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {variation.stock_info && variation.stock_info.length > 0
+                              ? variation.stock_info.map((s) => `${s.country}: ${s.stock}`).join(", ")
+                              : "N/A"}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })()
                   ))}
                 </TableBody>
               </Table>
@@ -1968,10 +1977,11 @@ const SearchPage = ({
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
-  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true } })
-  const [isProductNameVisible, setIsProductNameVisible] = useState(false)
+  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true, netflex: true } })
+  const [isProductNameVisible] = useState(true) // Her zaman görünür olması için sabitlendi
   const [showOriginalPrices, setShowOriginalPrices] = useState(false)
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
   const isMounted = useRef(false)
@@ -2016,6 +2026,7 @@ const SearchPage = ({
     } else {
       setFilterTerm("")
       setDebouncedFilterTerm("")
+      setCurrentPage(1) // Yeni arama yapıldığında ilk sayfaya dön
       handleSearch(searchTerm)
     }
   }
@@ -2059,6 +2070,7 @@ const SearchPage = ({
       const brand = product.brand.toLowerCase()
       const brandMatch =
         (brand.includes("sigma") && filters.brands.sigma) ||
+        (brand.includes("netflex") && filters.brands.netflex) ||
         (brand.includes("tci") && filters.brands.tci) ||
         (brand.includes("orkim") && filters.brands.orkim) ||
         (brand.includes("itk") && filters.brands.itk)
@@ -2074,6 +2086,11 @@ const SearchPage = ({
     })
   }, [searchResults, filters, debouncedFilterTerm])
 
+  // Sayfalama için sonuçları böl
+  const itemsPerPage = 10
+  const paginatedResults = useMemo(() => {
+    return filteredResults.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  }, [filteredResults, currentPage, itemsPerPage])
   const headerGridClasses = cn(
     "grid gap-x-4 font-semibold text-sm text-muted-foreground items-center",
     isProductNameVisible
@@ -2103,12 +2120,6 @@ const SearchPage = ({
             <Button variant="outline" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
               <span className="sr-only">Orijinal Fiyatları Gizle/Göster</span>
               {showOriginalPrices ? <Euro className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
-            </Button>
-          </Tooltip>
-          <Tooltip content="Ürün Adı Sütununu Göster/Gizle">
-            <Button variant="outline" size="icon" onClick={() => setIsProductNameVisible(!isProductNameVisible)}>
-              <span className="sr-only">Ürün Adını Gizle/Göster</span>
-              {isProductNameVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </Tooltip>
 
@@ -2144,6 +2155,12 @@ const SearchPage = ({
                 onCheckedChange={(checked) => handleFilterChange("brands", "itk", checked)}
               >
                 ITK
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={filters.brands.netflex}
+                onCheckedChange={(checked) => handleFilterChange("brands", "netflex", checked)}
+              >
+                Netflex
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -2250,7 +2267,7 @@ const SearchPage = ({
             </div>
             <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
               <div className="space-y-2">
-                {filteredResults.map((product, index) => (
+                {paginatedResults.map((product, index) => (
                   <MemoizedProductResultItem
                     key={`${product.source}-${product.product_number}-${index}`}
                     product={product}
@@ -2265,6 +2282,29 @@ const SearchPage = ({
                 ))}
               </div>
             </div>
+            {filteredResults.length > itemsPerPage && (
+              <div className="flex items-center justify-center gap-4 p-4 border-t flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Önceki
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Sayfa {currentPage} / {Math.ceil(filteredResults.length / itemsPerPage)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, Math.ceil(filteredResults.length / itemsPerPage)))}
+                  disabled={currentPage * itemsPerPage >= filteredResults.length}
+                >
+                  Sonraki <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -3515,8 +3555,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
 
   useEffect(() => {
     try {
-      const savedAssignments = localStorage.getItem("assignments_single")
-      if (savedAssignments) setAssignments(JSON.parse(savedAssignments))
+      // Atanmış ürünler artık başlangıçta yüklenmiyor, her seferinde sıfırlanıyor.
       const savedHistory = localStorage.getItem("search_history")
       if (savedHistory) setSearchHistory(JSON.parse(savedHistory))
     } catch (error) {
