@@ -876,6 +876,19 @@ const calculateProductPrices = (product: ProductResult, settings: AppSettings, p
     })
   }
 
+  // TCI fiyatlarını da karşılaştırmaya dahil et
+  if (newProduct.source === "TCI" && newProduct.tci_variations) {
+    newProduct.tci_variations.forEach((varItem) => {
+      if (varItem.calculated_price_eur != null) {
+        allPriceOptions.push({
+          price: varItem.calculated_price_eur,
+          code: `${newProduct.product_number}-${varItem.unit}`, // Varyasyon için benzersiz kod
+          source: "TCI",
+        })
+      }
+    })
+  }
+
   if (allPriceOptions.length > 0) {
     const cheapestOption = allPriceOptions.reduce((min, p) => (p.price < min.price ? p : min), allPriceOptions[0])
     newProduct.cheapest_eur_price_str = formatCurrency(cheapestOption.price, "EUR")
@@ -1080,7 +1093,7 @@ const Sidebar = ({ setPage, currentPage, notifications, onToggleComplete, onGoTo
 // --------------------------------------------------------------------------------
 // Ayarlar Sayfası ve İlk Kurulum Ekranı
 // --------------------------------------------------------------------------------
-const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false, children }) => {
+const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false, children, onManualUpdateCheck }) => {
   const [settings, setSettings] = useState(initialSettings)
   useEffect(() => {
     setSettings(initialSettings)
@@ -1263,7 +1276,7 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
     </form>
   )
 }
-const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo, appVersion }) => {
+const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo, appVersion, onManualUpdateCheck }) => {
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async (newSettings: AppSettings) => {
@@ -1290,9 +1303,8 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
 
     const handleCheckForUpdates = () => {
       if (window.electronAPI) {
-        setUpdateStatus("checking")
-        window.electronAPI.checkForUpdates()
-      }
+        if (onManualUpdateCheck) onManualUpdateCheck()
+      } 
     }
 
     let statusText = "Güncellemeler kontrol ediliyor..."
@@ -1355,7 +1367,7 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
         </Alert>
       )}
       {settings ? (
-        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving}>
+        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} onManualUpdateCheck={onManualUpdateCheck}>
           {!isSaving && <UpdateStatusComponent />}
         </SettingsForm>
       ) : (
@@ -3478,7 +3490,7 @@ const calculateRelevance = (product: ProductResult, term: string): number => {
   return score
 }
 
-function MainApplication({ appStatus, setAppStatus }) {
+function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, appVersion, onManualUpdateCheck }) {
   const [page, setPage] = useState("calendar")
   const [assignments, setAssignments] = useState<AssignmentItem[]>([])
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
@@ -3501,13 +3513,6 @@ function MainApplication({ appStatus, setAppStatus }) {
     selectedTerm: null as string | null,
   })
 
-  // --- YENİ: Güncelleme Durumları ---
-  const [updateStatus, setUpdateStatus] = useState("checking") // checking, up_to_date, available, downloading, ready_to_install
-  const [updateInfo, setUpdateInfo] = useState({ version: "", percent: 0 })
-  const [appVersion, setAppVersion] = useState("")
-
-  // --- Bitiş: Güncelleme Durumları ---
-
   useEffect(() => {
     try {
       const savedAssignments = localStorage.getItem("assignments_single")
@@ -3524,13 +3529,6 @@ function MainApplication({ appStatus, setAppStatus }) {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronAPI) return
-
-    // YENİ: Uygulama versiyonunu al
-    const getVersion = async () => {
-      const version = await window.electronAPI.getAppVersion()
-      setAppVersion(version)
-    }
-    getVersion()
 
     // Settings ve Parities yükleme işlemleri App.tsx'den buraya taşındı.
     window.electronAPI.loadSettings()
@@ -3563,59 +3561,6 @@ function MainApplication({ appStatus, setAppStatus }) {
       cleanupCalendarNotes()
       cleanupExport()
     }
-  }, [])
-
-  // --- YENİ: Güncelleme ve Ayar Yükseltme Dinleyicileri ---
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.electronAPI) return
-
-    const handleRestart = () => window.electronAPI.restartAppAndUpdate()
-
-    const cleanups = [
-      window.electronAPI.onUpdateAvailable((info) => {
-        setUpdateStatus("available")
-        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
-      }),
-      window.electronAPI.onUpdateDownloadProgress((progressInfo) => {
-        setUpdateStatus("downloading")
-        setUpdateInfo((prev) => ({ ...prev, percent: progressInfo.percent }))
-      }),
-      window.electronAPI.onUpdateDownloaded((info) => {
-        setUpdateStatus("ready_to_install")
-        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
-        toast("success", "Güncelleme indirildi!", {
-          duration: 0, // Kapanmaz
-          action: (
-            <Button variant="outline" size="sm" onClick={handleRestart}>
-              Yeniden Başlat
-            </Button>
-          ),
-        })
-      }),
-      window.electronAPI.onNewSettingsAvailable(() => {
-        // Yeni ayarlar geldiğinde ayarları yeniden yükle
-        if (window.electronAPI) {
-          window.electronAPI.loadSettings()
-        }
-        toast("info", "Yeni ayarlar mevcut!", {
-          action: (
-            <Button variant="outline" size="sm" onClick={() => setPage("settings")}>
-              Ayarlara Git
-            </Button>
-          ),
-        })
-      }),
-      window.electronAPI.onUpdateNotAvailable((info) => {
-        setUpdateStatus("up_to_date")
-        setUpdateInfo((prev) => ({ ...prev, version: info.version }))
-      }),
-      window.electronAPI.onUpdateError((error) => {
-        setUpdateStatus("error")
-        setUpdateInfo((prev) => ({ ...prev, error: error }))
-      }),
-    ]
-
-    return () => cleanups.forEach((c) => c && c())
   }, [])
 
   useEffect(() => {
@@ -3874,9 +3819,10 @@ function MainApplication({ appStatus, setAppStatus }) {
           settings={settings}
           onSaveSettings={handleSaveSettings}
           toast={toast}
-          updateStatus={updateStatus}
-          updateInfo={updateInfo}
-          appVersion={appVersion}
+          updateStatus={updateStatus} // YENİ/GÜNCELLENMİŞ PROPLAR
+          updateInfo={updateInfo} // YENİ/GÜNCELLENMİŞ PROPLAR
+          appVersion={appVersion} // YENİ/GÜNCELLENMİŞ PROPLAR
+          onManualUpdateCheck={onManualUpdateCheck} // Manuel kontrol için
         />
       )
     }
@@ -3932,9 +3878,10 @@ function MainApplication({ appStatus, setAppStatus }) {
             settings={settings}
             onSaveSettings={handleSaveSettings}
             toast={toast}
-            updateStatus={updateStatus}
-            updateInfo={updateInfo}
-          appVersion={appVersion}
+          updateStatus={updateStatus} // YENİ/GÜNCELLENMİŞ PROPLAR
+          updateInfo={updateInfo} // YENİ/GÜNCELLENMİŞ PROPLAR
+          appVersion={appVersion} // YENİ/GÜNCELLENMİŞ PROPLAR
+          onManualUpdateCheck={onManualUpdateCheck} // Manuel kontrol için
           />
         )
       case "home":
@@ -4005,10 +3952,25 @@ function MainApplication({ appStatus, setAppStatus }) {
 export default function App() {
   const [appStatus, setAppStatus] = useState("initializing")
   const { toasts, setToasts, toast } = useToast()
-  const [startupUpdateState, setStartupUpdateState] = useState({ status: "checking", progress: 0 })
+  // DEĞİŞTİR: startupUpdateState'i genişletin
+  const [updateState, setUpdateState] = useState({
+    status: "checking",
+    progress: 0,
+    version: "",
+    error: null,
+  })
   const [isUpdateConfirmationVisible, setIsUpdateConfirmationVisible] = useState(false)
+  // EKLE: appVersion state'i
+  const [appVersion, setAppVersion] = useState("")
 
+  const handleManualUpdateCheck = () => {
+    if (window.electronAPI) {
+      setUpdateState((prev) => ({ ...prev, status: "checking" }))
+      window.electronAPI.checkForUpdates()
+    }
+  }
 
+  // YAKLAŞIK 2139. SATIRDAKİ useEffect'İ KOMPLE DEĞİŞTİRİN
   useEffect(() => {
     if (!window.electronAPI) {
       console.warn("Electron API bulunamadı. Geliştirme modu varsayılıyor.")
@@ -4016,7 +3978,17 @@ export default function App() {
       return () => clearTimeout(timer)
     }
 
-    const handleRestart = () => window.electronAPI.restartAppAndUpdate()
+    // appVersion'ı buraya taşıyın
+    const getVersion = async () => {
+      const version = await window.electronAPI.getAppVersion()
+      setAppVersion(version)
+    }
+    getVersion()
+
+    // Yeniden başlatma fonksiyonunu burada tanımlayın
+    const handleRestart = () => {
+      if (window.electronAPI) window.electronAPI.restartAppAndUpdate()
+    }
 
     const cleanups = [
       window.electronAPI.onServicesReady((isReady) => {
@@ -4033,29 +4005,59 @@ export default function App() {
         toast("error", "Kritik hata: Arka plan servisi çöktü.")
       }),
       // Açılışta güncelleme olaylarını dinle
-      window.electronAPI.onUpdateAvailable(() => {
-        setStartupUpdateState((prev) => ({ ...prev, status: "available" }))
+      // --- GÜNCELLENMİŞ DİNLEYİCİLER ---
+      window.electronAPI.onUpdateAvailable((info) => {
+        setUpdateState((prev) => ({
+          ...prev,
+          status: "available",
+          version: info.version,
+        }))
       }),
       window.electronAPI.onUpdateDownloadProgress((progressInfo) => {
-        setStartupUpdateState({ status: "downloading", progress: progressInfo.percent })
+        setUpdateState((prev) => ({
+          ...prev,
+          status: "downloading",
+          progress: progressInfo.percent,
+        }))
       }),
-      window.electronAPI.onUpdateDownloaded(() => {
-        setStartupUpdateState({ status: "ready_to_install", progress: 100 })
-        setIsUpdateConfirmationVisible(true) // Onay penceresini göster
+      window.electronAPI.onUpdateDownloaded((info) => {
+        setUpdateState((prev) => ({
+          ...prev,
+          status: "ready_to_install",
+          version: info.version || prev.version,
+          progress: 100,
+        }))
+
+        // *** ANA MANTIK ***
+        // appStatus'a göre ya Modal (splash screen) ya da Toast (uygulama içi) göster
+        if (appStatus === "initializing") {
+          setIsUpdateConfirmationVisible(true) // Onay penceresini göster
+        } else {
+          toast("success", "Güncelleme indirildi!", {
+            duration: 0, // Kapanmaz
+            action: (
+              <Button variant="outline" size="sm" onClick={handleRestart}>
+                Yeniden Başlat
+              </Button>
+            ),
+          })
+        }
       }),
       window.electronAPI.onUpdateNotAvailable(() => {
-        setStartupUpdateState({ status: "up_to_date", progress: 0 })
+        setUpdateState((prev) => ({ ...prev, status: "up_to_date" }))
         // Güncelleme yoksa ve servisler hazırsa, ana uygulamaya geç.
         if (appStatus === "initializing") setAppStatus("ready")
       }),
       window.electronAPI.onUpdateError((error) => {
-        setStartupUpdateState({ status: "error", progress: 0, error: error })
+        setUpdateState((prev) => ({ ...prev, status: "error", error: error }))
         if (appStatus === "initializing") setAppStatus("ready") // Hata olsa bile uygulamayı açmaya çalış
       }),
     ]
 
     return () => cleanups.forEach((cleanup) => cleanup && cleanup())
-  }, [])
+    // appStatus'ı bağımlılıklara ekleyerek, toast gösterme mantığının
+    // en güncel appStatus'a göre çalışmasını garantileyin.
+  }, [appStatus, toast, isUpdateConfirmationVisible, appVersion]) // Bağımlılıkları güncelleyin
 
   const handleUpdateConfirm = () => {
     if (window.electronAPI) {
@@ -4093,16 +4095,33 @@ export default function App() {
     }
     switch (appStatus) {
       case "initializing":
-        return <SplashScreen key="splash" hasError={false} updateState={startupUpdateState} />
+        // updateState'i doğru prop'tan besleyin
+        return <SplashScreen key="splash" hasError={false} updateState={updateState} />
       case "setup_required":
         return <InitialSetupScreen key="setup" setAppStatus={setAppStatus} />
       case "ready":
       case "auth_error":
-        return <MainApplication key="main_app" appStatus={appStatus} setAppStatus={setAppStatus} />
+        // MainApplication'a YENİ PROPLARI EKLEYİN
+        return (
+          <MainApplication
+            key="main_app"
+            appStatus={appStatus}
+            setAppStatus={setAppStatus}
+            // Yeni prop'lar
+            updateStatus={updateState.status}
+            updateInfo={{
+              percent: updateState.progress,
+              version: updateState.version,
+              error: updateState.error,
+            }}
+            appVersion={appVersion}
+            onManualUpdateCheck={handleManualUpdateCheck}
+          />
+        )
       case "error":
-        return <SplashScreen key="splash-error" hasError={true} updateState={null} />
+        return <SplashScreen key="splash-error" hasError={true} updateState={updateState} />
       default:
-        return <SplashScreen key="splash-default" hasError={false} updateState={startupUpdateState} />
+        return <SplashScreen key="splash-default" hasError={false} updateState={updateState} />
     }
   }
 

@@ -9,12 +9,12 @@ import time
 import hashlib
 import logging
 from typing import List, Dict, Any
-from urllib.parse import urljoin  # URL birleştirmesi için eklendi
-
+from urllib.parse import urljoin, urlparse
 
 class OrkimScraper:
     """
     Orkim Market web sitesinden ürün bilgilerini çekmek için tasarlanmış scraper sınıfı.
+    Stok durumunu ve miktarını kontrol etme yeteneği eklenmiştir.
     """
 
     def __init__(self, username: str, password: str, openai_api_key: str):
@@ -36,13 +36,12 @@ class OrkimScraper:
             "Referer": self.login_page_url,
             "Origin": self.base_url,
             "DNT": "1",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
             "X-Requested-With": "XMLHttpRequest"
         })
         return session
 
     def _process_captcha_image(self, image_bytes: bytes) -> bytes or None:
-        """CAPTCHA resmini disk'e kaydetmeden, doğrudan RAM üzerinde işler."""
         try:
             image = Image.open(io.BytesIO(image_bytes))
             image = image.convert('L')
@@ -57,9 +56,7 @@ class OrkimScraper:
             return None
 
     def _solve_captcha_with_gpt4o_mini(self, image_bytes: bytes) -> str or None:
-        """İşlenmiş CAPTCHA resmini (byte olarak) OpenAI GPT-4o-mini modeline göndererek çözer."""
         if not self.openai_api_key:
-            logging.error("Orkim - OpenAI API anahtarı bulunamadı.")
             raise ValueError("Orkim - OpenAI API anahtarı bulunamadı.")
         client = OpenAI(api_key=self.openai_api_key)
         base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -82,8 +79,8 @@ class OrkimScraper:
             return None
 
     def _perform_two_step_login(self, captcha_text: str, re_security_code: str) -> bool:
-        """İki aşamalı giriş işlemini gerçekleştirir."""
         logging.info("Orkim: 1. Aşama: Giriş bilgileri gönderiliyor...")
+        self.session.headers.update({"Accept": "application/json, text/javascript, */*; q=0.01"})
         payload_step1 = {"Email": self.username, "Sifre": self.password, "SecurityCode": captcha_text,
                          "ReSecurityCode": re_security_code}
         try:
@@ -91,7 +88,7 @@ class OrkimScraper:
             response_step1.raise_for_status()
             login_data = response_step1.json()
             if not login_data.get("IsSuccessful"):
-                logging.error("Orkim GİRİŞ BAŞARISIZ (1. AŞAMA): 'IsSuccessful' false döndü.")
+                logging.error(f"Orkim GİRİŞ BAŞARISIZ (1. AŞAMA): {login_data.get('Message', 'Mesaj yok')}")
                 return False
             kisi_kod = login_data.get("KisiKod")
             kurum_kod = login_data.get("Firmalar", [{}])[0].get("KurumKod")
@@ -106,6 +103,8 @@ class OrkimScraper:
         payload_step2 = {"Kurum": kurum_kod, "Email": self.username, "Sifre": self.password,
                          "SecurityCode": captcha_text, "ReSecurityCode": re_security_code, "KisiKod": kisi_kod}
         try:
+            self.session.headers.update(
+                {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"})
             response_step2 = self.session.post(self.second_login_step_url, data=payload_step2, timeout=20)
             response_step2.raise_for_status()
             if self.session.cookies.get('orkimmarket'):
@@ -120,13 +119,14 @@ class OrkimScraper:
             return False
 
     def _login(self) -> bool:
-        """CAPTCHA'yı doğrular ve siteye giriş yapar."""
         if self.is_logged_in:
             return True
         max_retries = 3
         for i in range(max_retries):
             logging.info(f"Orkim: Giriş denemesi {i + 1}/{max_retries}...")
             try:
+                self.session.headers.update(
+                    {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"})
                 response = self.session.get(self.login_page_url, timeout=10)
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'lxml')
@@ -136,7 +136,6 @@ class OrkimScraper:
                     raise Exception("CAPTCHA veya ReSecurityCode alanı bulunamadı!")
 
                 re_code_val = re_code_tag['value']
-                # GÜNCELLEME: URL'yi güvenli bir şekilde birleştirmek için urljoin kullanıldı.
                 captcha_url = urljoin(self.base_url, captcha_img['src'])
                 captcha_bytes = self.session.get(captcha_url, timeout=10).content
                 processed_bytes = self._process_captcha_image(captcha_bytes)
@@ -159,8 +158,67 @@ class OrkimScraper:
             time.sleep(2)
         return False
 
+    def _get_stock_from_page(self, product_url: str) -> int:
+        """
+        Bir ürünün stok miktarını, sepete yüksek miktarda ekleyip sonucu okuyarak alır.
+        """
+        try:
+            # 1. Ürün sayfasına git
+            detail_response = self.session.get(product_url, timeout=20)
+            detail_response.raise_for_status()
+            soup = BeautifulSoup(detail_response.text, 'lxml')
+
+            # 2. Sepete ekleme formunu bul ve bilgilerini al
+            form = soup.find('form', {'id': 'SepeteEkle'})
+            if not form:
+                logging.warning(f"Orkim: Stok kontrolü için {product_url} sayfasında sepet formu bulunamadı.")
+                return 0
+
+            action_url = urljoin(self.base_url, form.get('action'))
+            urun_input = form.find('input', {'name': 'urun'})
+            if not urun_input:
+                logging.warning(f"Orkim: Stok kontrolü için {product_url} sayfasında 'urun' inputu bulunamadı.")
+                return 0
+            urun_value = urun_input.get('value')
+
+            # 3. Yüksek miktarda ürünü sepete ekle
+            payload = {'miktar': '999999,0', 'urun': urun_value}
+            cart_response = self.session.post(action_url, data=payload, allow_redirects=True, timeout=20)
+            cart_response.raise_for_status()
+            cart_soup = BeautifulSoup(cart_response.text, 'lxml')
+
+            # 4. Sepet sayfasından stok miktarını oku
+            stock_quantity = 0
+            qty_input = cart_soup.find('input', {'name': lambda n: n and 'SepetMiktar' in n})
+            if qty_input and qty_input.get('value'):
+                try:
+                    stock_str = qty_input.get('value').replace(',', '.')
+                    stock_quantity = int(float(stock_str))
+                    logging.info(f"Orkim: Stok miktarı bulundu: {stock_quantity}")
+                except (ValueError, TypeError):
+                    logging.warning(f"Orkim: Stok miktarı '{qty_input.get('value')}' parse edilemedi.")
+            else:
+                logging.warning("Orkim: Sepet sayfasında miktar input'u bulunamadı.")
+
+            # 5. Ürünü sepetten temizle
+            remove_link_tag = cart_soup.find('a', {'href': lambda h: h and 'sepet-sil' in h})
+            if remove_link_tag:
+                remove_url = urljoin(self.base_url, remove_link_tag['href'])
+                self.session.get(remove_url, timeout=20)
+                logging.info("Orkim: Stok kontrolü sonrası ürün sepetten temizlendi.")
+            else:
+                logging.warning("Orkim: Sepet temizleme linki bulunamadı.")
+
+            return stock_quantity
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Orkim stok miktarı alınırken ağ hatası: {e}")
+        except Exception as e:
+            logging.error(f"Orkim stok miktarı alınırken genel hata: {e}", exc_info=True)
+
+        return 0
+
     def search_products(self, search_term: str, cancellation_token) -> List[Dict[str, Any]]:
-        """Verilen terim için Orkim'de ürün arar ve sonuçları döndürür."""
         if cancellation_token.is_set(): return []
         if not self._login():
             logging.error("Orkim'e giriş yapılamadı, arama atlanıyor.")
@@ -175,16 +233,17 @@ class OrkimScraper:
             base_search_url = response.url.rsplit('/', 1)[0] + '/'
 
             page_number = 1
-            last_page_content = ""
+            last_page_content_hash = ""
             while not cancellation_token.is_set():
                 logging.info(f"Orkim: Sayfa {page_number} taranıyor...")
                 if page_number > 1:
                     response = self.session.get(f"{base_search_url}{page_number}?arama_gurup=", timeout=20)
 
-                if response.text == last_page_content:
+                current_content_hash = hashlib.md5(response.text.encode()).hexdigest()
+                if current_content_hash == last_page_content_hash:
                     logging.info("Orkim: Sayfa içeriği aynı, tarama tamamlandı.")
                     break
-                last_page_content = response.text
+                last_page_content_hash = current_content_hash
 
                 soup = BeautifulSoup(response.text, 'lxml')
                 main_content = soup.find('div', class_='main_content')
@@ -198,6 +257,7 @@ class OrkimScraper:
                     product_data = {}
                     product_name_tag = item.select_one('h3 a')
                     product_data['urun_adi'] = product_name_tag.get_text(strip=True) if product_name_tag else 'N/A'
+                    product_url = product_name_tag['href'] if product_name_tag else None
 
                     kkodu_td = item.find('td', string='K.Kodu')
                     product_data['k_kodu'] = kkodu_td.find_next_sibling('td').get_text(
@@ -216,11 +276,33 @@ class OrkimScraper:
                     else:
                         product_data['price_str'] = "N/A"
 
+                    # Stok Durumu ve Miktarı Kontrolü
+                    instock_img = item.find('img', src=lambda s: s and 'instock.png' in s)
+                    outstock_img = item.find('img', src=lambda s: s and 'outstock.png' in s)
+
+                    if instock_img:
+                        product_data['stock_status'] = "Stokta Var"
+                        if product_url:
+                            product_data['stock_quantity'] = self._get_stock_from_page(product_url)
+                        else:
+                            product_data['stock_quantity'] = "N/A"
+                    elif outstock_img:
+                        product_data['stock_status'] = "Stokta Yok"
+                        product_data['stock_quantity'] = 0
+                    else:
+                        product_data['stock_status'] = "Bilinmiyor"
+                        product_data['stock_quantity'] = "N/A"
+
                     all_scraped_data.append(product_data)
                 page_number += 1
         except Exception as e:
-            logging.error(f"Orkim ürün arama/çekme sırasında hata: {e}")
+            logging.error(f"Orkim ürün arama/çekme sırasında hata: {e}", exc_info=True)
 
         logging.info(f"Orkim: '{search_term}' araması tamamlandı, {len(all_scraped_data)} ürün bulundu.")
         return all_scraped_data
 
+    def close_driver(self):
+        """Oturumu kapatır."""
+        if self.session:
+            self.session.close()
+            logging.info("Orkim oturumu kapatıldı.")
