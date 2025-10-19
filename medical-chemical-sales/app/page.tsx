@@ -3940,7 +3940,6 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
           onClose={() => setHistoryResults(null)}
           onReSearchAndAssign={handleReSearchAndAssign}
         />
-        {updateStatus === "downloading" && <UpdateDownloader progress={updateInfo.percent} />}
       </div>
     </motion.div>
   )
@@ -4071,6 +4070,11 @@ export default function App() {
   }
 
   const renderContent = () => {
+    // İndirme başladığı anda diğer her şeyin yerine bunu göster
+    if (updateState.status === "downloading") {
+      return <UpdateDownloader progress={updateState.progress} />
+    }
+
     if (isUpdateConfirmationVisible) {
       return (
         <div className="fixed inset-0 z-[300] bg-background/80 backdrop-blur-sm flex items-center justify-center">
