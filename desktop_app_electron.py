@@ -1088,9 +1088,9 @@ class ComparisonEngine:
             f_sigma = executor.submit(sigma_task)
             f_orkim = executor.submit(orkim_task)
             f_itk = executor.submit(itk_task)
-            f_tci.result();
-            f_sigma.result();
-            f_orkim.result();
+            f_tci.result()
+            f_sigma.result()
+            f_orkim.result()
             f_itk.result()
 
         # 2. Aşama: Eğer SADECE SİGMA'DA sonuç bulunamadıysa Netflex'te ara

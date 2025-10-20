@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, createContext, useContext, useMemo, useRef } from "react"
+import React, { useState, useEffect, createContext, useContext, useMemo, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -3821,40 +3821,39 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     })
   }
 
-  const handleSearch = (searchTerm: string) => {
-    if (!searchTerm.trim()) return
-    // isLoading'i burada kontrol etmiyoruz çünkü yeni bir arama her zaman başlatılabilmeli
+  const handleSearch = useCallback((searchTerm: string) => {
+    if (!searchTerm.trim()) return;
     if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current)
+      clearTimeout(updateTimeoutRef.current);
     }
-    productQueueRef.current = []
-    setIsLoading(true)
-    setRawSearchResults([])
-    setError(null)
-    setCurrentSearchTerm(searchTerm)
+    productQueueRef.current = [];
+    setIsLoading(true);
+    setRawSearchResults([]);
+    setError(null);
+    setCurrentSearchTerm(searchTerm);
     if (window.electronAPI) {
-      window.electronAPI.performSearch(searchTerm)
+      window.electronAPI.performSearch(searchTerm);
     } else {
-      console.error("Electron API bulunamadı, arama yapılamıyor.")
-      setIsLoading(false)
+      console.error("Electron API bulunamadı, arama yapılamıyor.");
+      setIsLoading(false);
     }
-  }
+  }, []); // Bağımlılık dizisi boş (tüm bağımlılıklar ref veya state setter)
 
   const handleReSearch = (term: string) => {
     setSearchTermForPage(term)
     setPage("search")
   }
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     if (isLoading && window.electronAPI) {
       toast("info", "Arama iptal ediliyor...")
       window.electronAPI.cancelSearch()
     }
-  }
+  }, [isLoading, toast]); // 'isLoading' ve 'toast' bağımlılık olarak eklenmeli
 
-  const onSearchExecuted = () => {
+  const onSearchExecuted = useCallback(() => {
     setSearchTermForPage(null)
-  }
+  }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings)
