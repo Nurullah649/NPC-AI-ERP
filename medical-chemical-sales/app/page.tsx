@@ -575,45 +575,7 @@ const Tooltip = ({ children, content, side = "top" }) => {
   )
 }
 
-// --- SplashScreen Bileşeni ---
-const SplashScreen = ({ hasError, updateState }) => {
-  const { status, progress } = updateState || { status: "none", progress: 0 }
-
-  const handleRestart = () => {
-    if (window.electronAPI) {
-      window.electronAPI.restartAppAndUpdate()
-    }
-  }
-
-  const statusMessages = {
-    checking: "Güncellemeler kontrol ediliyor...",
-    available: "Yeni sürüm bulundu, indiriliyor...",
-    downloading: `Güncelleme indiriliyor... %${progress.toFixed(0)}`,
-  }
-
-  return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4 text-center">
-      <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
-        <Package2 className="h-24 w-24 text-primary" />
-      </motion.div>
-      <motion.h1
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="mt-6 text-4xl font-bold tracking-tight"
-      >
-        NPC-AI ERP
-      </motion.h1>
-      <div className="mt-8 h-10">
-        {hasError ? (
-          <p className="text-destructive">Kritik bir hata oluştu. Lütfen uygulamayı yeniden başlatın.</p>
-        ) : (
-          <p className="text-muted-foreground">{statusMessages[status] || "Servisler başlatılıyor..."}</p>
-        )}
-      </div>
-    </div>
-  )
-}
+import CustomSplashScreen from "./components/SplashScreen"
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
 // --------------------------------------------------------------------------------
@@ -4003,6 +3965,10 @@ export default function App() {
   const [isUpdateConfirmationVisible, setIsUpdateConfirmationVisible] = useState(false)
   // EKLE: appVersion state'i
   const [appVersion, setAppVersion] = useState("")
+  // YENİ SATIRLARI EKLEYİN:
+  const [servicesReady, setServicesReady] = useState(false)
+  const [updateCheckDone, setUpdateCheckDone] = useState(false)
+
 
   const handleManualUpdateCheck = () => {
     if (window.electronAPI) {
@@ -4011,6 +3977,25 @@ export default function App() {
     }
   }
 
+  // YENİ useEffect'İ EKLEYİN:
+  useEffect(() => {
+    // Uygulamayı başlatmak için 3 koşul gerekir:
+    // 1. Python servisleri hazır olmalı (servicesReady)
+    // 2. Güncelleme kontrolü bitmiş olmalı (updateCheckDone)
+    // 3. Bir güncelleme onay penceresi (modal) beklemiyor olmalıyız
+
+    if (servicesReady && updateCheckDone && !isUpdateConfirmationVisible) {
+      // Eğer mevcut durum hala 'initializing' ise 'ready' yap.
+      // 'auth_error' veya 'setup_required' geldiyse, o durumlar önceliklidir.
+      setAppStatus((prevStatus) => {
+        if (prevStatus === "initializing") {
+          return "ready"
+        }
+        return prevStatus // 'auth_error' vb. durumları koru
+      })
+    }
+    // Bu 3 duruma göre hareket et
+  }, [servicesReady, updateCheckDone, isUpdateConfirmationVisible])
   // YAKLAŞIK 2139. SATIRDAKİ useEffect'İ KOMPLE DEĞİŞTİRİN
   useEffect(() => {
     if (!window.electronAPI) {
@@ -4033,11 +4018,12 @@ export default function App() {
 
     const cleanups = [
       window.electronAPI.onServicesReady((isReady) => {
-        // Eğer güncelleme onayı beklemiyorsak durumu değiştir.
-        if (!isUpdateConfirmationVisible) {
-          setAppStatus(isReady ? "ready" : "error")
+        if (isReady) {
+          setServicesReady(true) // Sadece Python'un hazır olduğunu işaretle
+        } else {
+          setAppStatus("error") // Hata varsa hemen göster
+          toast("error", "Arka plan servisleri başlatılamadı.")
         }
-        if (!isReady) toast("error", "Arka plan servisleri başlatılamadı.")
       }),
       window.electronAPI.onInitialSetupRequired(() => setAppStatus("setup_required")),
       window.electronAPI.onAuthenticationError(() => setAppStatus("auth_error")),
@@ -4069,6 +4055,8 @@ export default function App() {
           progress: 100,
         }))
 
+        setUpdateCheckDone(true) // YENİ SATIRI EKLEYİN (Güncelleme kontrolü bitti)
+
         // *** ANA MANTIK ***
         // appStatus'a göre ya Modal (splash screen) ya da Toast (uygulama içi) göster
         if (appStatus === "initializing") {
@@ -4086,19 +4074,18 @@ export default function App() {
       }),
       window.electronAPI.onUpdateNotAvailable(() => {
         setUpdateState((prev) => ({ ...prev, status: "up_to_date" }))
-        // Güncelleme yoksa ve servisler hazırsa, ana uygulamaya geç.
-        if (appStatus === "initializing") setAppStatus("ready")
+        setUpdateCheckDone(true) // Güncelleme kontrolü bitti
       }),
       window.electronAPI.onUpdateError((error) => {
         setUpdateState((prev) => ({ ...prev, status: "error", error: error }))
-        if (appStatus === "initializing") setAppStatus("ready") // Hata olsa bile uygulamayı açmaya çalış
+        setUpdateCheckDone(true) // Güncelleme kontrolü bitti (hata olsa bile)
       }),
     ]
 
     return () => cleanups.forEach((cleanup) => cleanup && cleanup())
     // appStatus'ı bağımlılıklara ekleyerek, toast gösterme mantığının
     // en güncel appStatus'a göre çalışmasını garantileyin.
-  }, [appStatus, toast, isUpdateConfirmationVisible, appVersion]) // Bağımlılıkları güncelleyin
+  }, [appStatus, toast, isUpdateConfirmationVisible]) // Bağımlılıkları güncelleyin
 
   const handleUpdateConfirm = () => {
     if (window.electronAPI) {
@@ -4108,7 +4095,7 @@ export default function App() {
 
   const handleUpdateDecline = () => {
     setIsUpdateConfirmationVisible(false)
-    setAppStatus("ready") // Onay verilmedi, ana uygulamaya devam et
+    // setAppStatus("ready") // BU SATIRI SİLİN
   }
 
   const renderContent = () => {
@@ -4142,7 +4129,7 @@ export default function App() {
     switch (appStatus) {
       case "initializing":
         // updateState'i doğru prop'tan besleyin
-        return <SplashScreen key="splash" hasError={false} updateState={updateState} />
+        return <CustomSplashScreen key="splash" hasError={false} updateState={updateState} />
       case "setup_required":
         return <InitialSetupScreen key="setup" setAppStatus={setAppStatus} />
       case "ready":
@@ -4165,9 +4152,9 @@ export default function App() {
           />
         )
       case "error":
-        return <SplashScreen key="splash-error" hasError={true} updateState={updateState} />
+        return <CustomSplashScreen key="splash-error" hasError={true} updateState={updateState} />
       default:
-        return <SplashScreen key="splash-default" hasError={false} updateState={updateState} />
+        return <CustomSplashScreen key="splash-default" hasError={false} updateState={updateState} />
     }
   }
 

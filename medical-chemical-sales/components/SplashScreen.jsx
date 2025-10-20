@@ -1,10 +1,10 @@
 "use client"
 
 import React from "react"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 
-// LOGO_DATA buraya eklenecek, bu örnek sadece formatı gösterir.
-// Lütfen kendi optimize edilmiş SVG verilerinizle doldurunuz.
+// Logo için örnek SVG verileri.
+// BURAYI KENDİ LOGO VERİLERİNLE DOLDURMALISIN.
 const LOGO_DATA = {
   'background': {
     'fill': '#F6F5F4',
@@ -2898,25 +2898,24 @@ const LOGO_DATA = {
   ]
 };
 
-// Yeniden tasarlanmış, daha şık bir animasyonlu logo bileşeni
+// Logo bileşeni (Dosyandaki daha şık olan ilk versiyonu kullandım)
 function AnimatedLogo({ logoData }) {
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1, // Elementlerin giriş animasyonları arasındaki gecikme
+        staggerChildren: 0.1,
       },
     },
   }
 
-  // Her bir logo parçasının animasyonu için varyantlar
   const elementVariants = {
     hidden: {
       opacity: 0,
-      y: 30, // Aşağıdan başla
-      scale: 0.8, // Biraz küçük başla
-      rotate: -15, // Hafif dönerek başla
+      y: 30,
+      scale: 0.8,
+      rotate: -15,
     },
     visible: {
       opacity: 1,
@@ -2924,7 +2923,7 @@ function AnimatedLogo({ logoData }) {
       scale: 1,
       rotate: 0,
       transition: {
-        type: "spring", // Yay efektiyle daha dinamik bir his
+        type: "spring",
         stiffness: 100,
         damping: 10,
       },
@@ -2939,10 +2938,8 @@ function AnimatedLogo({ logoData }) {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      // SVG'nin kendi köşelerini yuvarlamak için
       style={{ borderRadius: '20px' }}
     >
-      {/* Arka plan (varsa) için yumuşak bir giriş */}
       {logoData?.background?.d && (
         <motion.path
           d={logoData.background.d}
@@ -2950,17 +2947,13 @@ function AnimatedLogo({ logoData }) {
           initial={{ opacity: 0, scale: 0.5 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          // Arka planı da yuvarlamak için
           style={{ borderRadius: '20px' }}
         />
       )}
-      {/* Logo elementleri için grup */}
       <motion.g
         variants={containerVariants}
         style={{
-            // Gölge efekti, SVG çerçevesi yerine doğrudan logo elementlerini içeren gruba uygulandı.
-            // Logonun daha belirgin görünmesi için gölge rengini siyaha yakın ve opaklığını artırdım.
-            filter: "drop-shadow(0px 8px 16px rgba(0, 0, 0, 0.4)) drop-shadow(0px 1px 4px rgba(0, 0, 0, 0.2))",
+          filter: "drop-shadow(0px 8px 16px rgba(0, 0, 0, 0.4)) drop-shadow(0px 1px 4px rgba(0, 0, 0, 0.2))",
         }}
       >
         {logoData?.elements?.map((path, index) => (
@@ -2976,20 +2969,59 @@ function AnimatedLogo({ logoData }) {
   )
 }
 
-// Yeniden tasarlanmış ana açılış ekranı
-export default function SplashScreen({ hasError }) {
-  const loadingText = "Servisler başlatılıyor"
-  const errorText = "Bir hata oluştu. Lütfen yeniden başlatın."
+/**
+ * Ana uygulamanızın kullanacağı YENİ SplashScreen bileşeni.
+ * 'export default' olarak dışa aktarılıyor.
+ * Ana uygulamanın prop'larına (hasError, updateState) uyum sağlar.
+ */
+export default function SplashScreen({ hasError, updateState }) {
 
-  const textToShow = hasError ? errorText : loadingText
+  // 1. Ana uygulamadan gelen prop'ları 'status'a çevirelim
+  let status = "loading"; // Varsayılan
+  if (hasError) {
+    status = "error";
+  } else if (updateState?.status === 'available' || updateState?.status === 'downloading') {
+    status = "updating";
+  } else {
+     status = "loading"; // 'none', 'checking' vs. hepsi yükleniyor sayılacak
+  }
 
+  // 2. Duruma göre metinleri, ana uygulamanızdaki gibi dinamik hale getirelim
+  const { progress } = updateState || { progress: 0 };
+
+  const statusConfig = {
+    loading: {
+      text: updateState?.status === 'checking' ? "Güncellemeler kontrol ediliyor..." : "Servisler başlatılıyor...",
+      showProgressBar: true, // Sonsuz animasyonlu bar
+      textColor: "text-gray-600 dark:text-gray-300",
+      progressBarType: "infinite",
+    },
+    updating: {
+      text: updateState?.status === 'downloading'
+        ? `Güncelleme indiriliyor... %${progress.toFixed(0)}`
+        : "Yeni sürüm bulundu, indiriliyor...",
+      showProgressBar: true,
+      textColor: "text-gray-600 dark:text-gray-300",
+      progressBarType: "progress", // Dolum animasyonlu bar
+    },
+    error: {
+      text: "Bir hata oluştu. Lütfen yeniden başlatın.",
+      showProgressBar: false,
+      textColor: "text-red-500",
+      progressBarType: "none",
+    },
+  }
+
+  const { text, showProgressBar, textColor, progressBarType } = statusConfig[status] || statusConfig.loading
+
+  // Harf animasyonları
   const sentenceVariants = {
     hidden: { opacity: 1 },
     visible: {
       opacity: 1,
       transition: {
-        delayChildren: 1,
-        staggerChildren: 0.05, // Harflerin animasyonu arasındaki gecikme
+        delayChildren: 0.8,
+        staggerChildren: 0.05,
       },
     },
   }
@@ -3007,45 +3039,56 @@ export default function SplashScreen({ hasError }) {
     },
   }
 
+  // Ana uygulamanızdaki 'bg-background' temasını kullanıyoruz
   return (
     <motion.div
-      // Arka plan tamamen beyaz yapıldı
-      className="flex flex-col items-center justify-center h-screen bg-white absolute top-0 left-0 w-full z-50 overflow-hidden"
-      initial={{ opacity: 1 }}
-      exit={{
-        opacity: 0,
-        transition: { duration: 0.5, ease: "easeInOut" },
-      }}
+      className="flex flex-col items-center justify-center h-screen bg-background absolute top-0 left-0 w-full z-50 overflow-hidden"
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.4, ease: "easeInOut" }}
     >
-      <div className="z-10 flex flex-col items-center">
+      <div className="flex flex-col items-center">
         <AnimatedLogo logoData={LOGO_DATA} />
 
         <motion.h2
-          className={`mt-10 text-xl font-light text-center tracking-wider ${hasError ? 'text-red-500' : 'text-gray-600'}`}
+          className={`mt-10 text-xl font-light text-center tracking-wider ${textColor}`}
           variants={sentenceVariants}
           initial="hidden"
           animate="visible"
+          key={text}
         >
-          {textToShow.split("").map((char, index) => (
+          {text.split("").map((char, index) => (
             <motion.span key={char + "-" + index} variants={letterVariants}>
               {char === " " ? "\u00A0" : char}
             </motion.span>
           ))}
         </motion.h2>
 
-        {!hasError && (
-          <div className="w-56 h-1.5 bg-gray-200 rounded-full mt-6 overflow-hidden">
-            <motion.div
-              className="h-full bg-gradient-to-r from-teal-400 to-cyan-500 rounded-full"
-              initial={{ x: "-100%" }}
-              animate={{ x: "100%" }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                repeatType: "loop",
-                ease: "linear",
-              }}
-            />
+        {showProgressBar && (
+          <div className="w-56 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mt-6 overflow-hidden">
+            {progressBarType === 'infinite' ? (
+              // Yükleniyor... (sonsuz animasyon)
+              <motion.div
+                className="h-full bg-gradient-to-r from-teal-400 to-cyan-500 rounded-full"
+                initial={{ x: "-100%" }}
+                animate={{ x: "100%" }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  repeatType: "loop",
+                  ease: "linear",
+                }}
+              />
+            ) : (
+              // İndiriliyor... (dolan bar)
+              <motion.div
+                className="h-full bg-gradient-to-r from-teal-400 to-cyan-500 rounded-full"
+                initial={{ width: "0%" }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
+            )}
           </div>
         )}
       </div>
