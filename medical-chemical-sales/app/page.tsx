@@ -575,7 +575,7 @@ const Tooltip = ({ children, content, side = "top" }) => {
   )
 }
 
-import CustomSplashScreen from "./components/SplashScreen"
+import CustomSplashScreen from "../components/SplashScreen"
 // --------------------------------------------------------------------------------
 // Electron API ve Veri Tipleri
 // --------------------------------------------------------------------------------
