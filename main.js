@@ -94,6 +94,7 @@ function startPythonService() {
               python_services_ready: "services-ready",
               initial_setup_required: "initial-setup-required",
               authentication_error: "authentication-error",
+              // license_error: "license-error", // YENİ SATIRI EKLEYİN
               product_found: "search-product-found",
               search_complete: "search-complete",
               export_result: "export-result",
@@ -112,7 +113,7 @@ function startPythonService() {
               new_settings_available: "new-settings-available",
             }
             const channel = channels[type]
-            const isStartupMessage = ["initial_setup_required", "python_services_ready", "authentication_error"].includes(type)
+            const isStartupMessage = ["initial_setup_required", "python_services_ready", "authentication_error"/*, "license_error"*/].includes(type)
             if (isStartupMessage) {
               initialPythonStateMessage = { channel, data }
               if (handshakeComplete && win && !win.isDestroyed()) {

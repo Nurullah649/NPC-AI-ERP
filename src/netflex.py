@@ -61,7 +61,7 @@ class NetflexAPI:
             login_url = "https://netflex-api.interlab.com.tr/Users/authenticate/"
             headers = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
             try:
-                response = self.session.post(login_url, headers=headers, json=self.credentials, timeout=20)
+                response = self.session.post(login_url, headers=headers, json=self.credentials, timeout=45)
                 response.raise_for_status()  # 4xx veya 5xx hatalarında HTTPError fırlatır
                 token_data = response.json()
 

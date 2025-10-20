@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onSettingsLoaded: createListener("settings-loaded"),
   onSettingsSaved: createListener("settings-saved"),
   onAuthenticationError: createListener("authentication-error"),
+  // onLicenseError: createListener("license-error"), // YENİ SATIRI EKLEYİN
   onPythonCrashed: createListener("python-crashed"),
   onBatchSearchProgress: createListener("batch-search-progress"),
   onBatchSearchComplete: createListener("batch-search-complete"),

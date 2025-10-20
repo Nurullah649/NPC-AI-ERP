@@ -661,6 +661,7 @@ interface AppSettings {
   sigma_coefficient_us: number
   sigma_coefficient_de: number
   sigma_coefficient_gb: number
+  // license_key: string // YENİ SATIRI EKLEYİN
 }
 
 interface SearchHistoryItem {
@@ -715,6 +716,7 @@ declare global {
       onSettingsLoaded: (callback: (settings: any) => void) => () => void
       onSettingsSaved: (callback: (result: any) => void) => () => void
       onAuthenticationError: (callback: () => void) => () => void
+      // onLicenseError: (callback: () => void) => () => void // YENİ SATIRI EKLEYİN
       onPythonCrashed: (callback: () => void) => () => void
       onBatchSearchProgress: (callback: (progress: any) => void) => () => void
       onBatchSearchComplete: (callback: (summary: any) => void) => () => void
@@ -1161,6 +1163,32 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
         </Card>
       </div>
 
+      {/*{/ YENİ LİSANS KARTI BLOĞU BAŞLANGICI /}*/}
+      {/*<Card>*/}
+      {/*  <CardHeader>*/}
+      {/*    <CardTitle className="flex items-center gap-2">*/}
+      {/*      <KeyRound className="h-5 w-5 text-green-600" /> Uygulama Lisansı*/}
+      {/*    </CardTitle>*/}
+      {/*    <CardDescription>*/}
+      {/*      Uygulamayı kullanmak için size atanan lisans anahtarını girin.*/}
+      {/*    </CardDescription>*/}
+      {/*  </CardHeader>*/}
+      {/*  <CardContent className="space-y-4">*/}
+      {/*    <div className="space-y-2">*/}
+      {/*      <Label htmlFor="license_key">Lisans Anahtarı</Label>*/}
+      {/*      <Input*/}
+      {/*        id="license_key"*/}
+      {/*        type="password" // Anahtarın görünmemesi için*/}
+      {/*        value={settings.license_key || ""}*/}
+      {/*        onChange={(e) => handleChange("license_key", e.target.value)}*/}
+      {/*        placeholder="XXXXX-XXXXX-XXXXX-XXXXX"*/}
+      {/*      />*/}
+      {/*    </div>*/}
+      {/*  </CardContent>*/}
+      {/*</Card>*/}
+      {/*{/ YENİ LİSANS KARTI BLOĞU BİTİŞİ /}*/}
+
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -1345,6 +1373,65 @@ const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus
     </div>
   )
 }
+
+// // --- YENİ BİLEŞEN ---
+// const LicenseErrorScreen = ({ setAppStatus }) => {
+//   const [isSaving, setIsSaving] = useState(false)
+//
+//   const onSave = (settings) => {
+//     setIsSaving(true)
+//     // Ayarları kaydet ve durumu 'initializing'e çek.
+//     // Bu, Python'un ayarları yeniden yüklemesini ve lisansı tekrar kontrol etmesini tetikler.
+//     setAppStatus("initializing")
+//     window.electronAPI.saveSettings(settings)
+//   }
+//
+//   return (
+//     <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
+//       <motion.div
+//         initial={{ opacity: 0, y: -20 }}
+//         animate={{ opacity: 1, y: 0 }}
+//         transition={{ duration: 0.5 }}
+//         className="w-full max-w-2xl"
+//       >
+//         <Card className="shadow-2xl border-2 border-destructive">
+//           <CardHeader className="text-center">
+//             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground">
+//               <AlertCircle className="h-6 w-6" />
+//             </div>
+//             <CardTitle className="text-2xl text-destructive">Lisans Hatası!</CardTitle>
+//             <CardDescription>
+//               Lisans anahtarınız geçersiz, cihazınızla eşleşmiyor veya sunucuya ulaşılamıyor.
+//               Lütfen geçerli bir lisans anahtarı girip tekrar deneyin.
+//             </CardDescription>
+//           </CardHeader>
+//           <CardContent>
+//             <SettingsForm
+//               initialSettings={{
+//                 netflex_username: "",
+//                 netflex_password: "",
+//                 orkim_username: "",
+//                 orkim_password: "",
+//                 itk_username: "",
+//                 itk_password: "",
+//                 tci_coefficient: 1.4,
+//                 itk_coefficient: 1.0,
+//                 sigma_coefficient_us: 1.0,
+//                 sigma_coefficient_de: 1.0,
+//                 sigma_coefficient_gb: 1.0,
+//                 license_key: "",
+//               }}
+//               onSave={onSave}
+//               isSaving={isSaving}
+//               isInitialSetup={true} // Buton yazısını "Kaydet ve Başlat" olarak ayarlar
+//             />
+//           </CardContent>
+//         </Card>
+//       </motion.div>
+//     </div>
+//   )
+// }
+// // --- YENİ BİLEŞEN BİTİŞİ ---
 const InitialSetupScreen = ({ setAppStatus }) => {
   const [isSaving, setIsSaving] = useState(false)
   const onSave = (settings) => {
@@ -1382,6 +1469,7 @@ const InitialSetupScreen = ({ setAppStatus }) => {
                 sigma_coefficient_us: 1.0,
                 sigma_coefficient_de: 1.0,
                 sigma_coefficient_gb: 1.0,
+                // license_key: "", // YENİ SATIRI EKLEYİN
               }}
               onSave={onSave}
               isSaving={isSaving}
@@ -4027,6 +4115,7 @@ export default function App() {
       }),
       window.electronAPI.onInitialSetupRequired(() => setAppStatus("setup_required")),
       window.electronAPI.onAuthenticationError(() => setAppStatus("auth_error")),
+      // window.electronAPI.onLicenseError(() => setAppStatus("license_error")),
       window.electronAPI.onPythonCrashed(() => {
         setAppStatus("error")
         toast("error", "Kritik hata: Arka plan servisi çöktü.")
@@ -4132,6 +4221,9 @@ export default function App() {
         return <CustomSplashScreen key="splash" hasError={false} updateState={updateState} />
       case "setup_required":
         return <InitialSetupScreen key="setup" setAppStatus={setAppStatus} />
+      // // YENİ CASE'İ EKLEYİN
+      // case "license_error":
+      //   return <LicenseErrorScreen key="license_error" setAppStatus={setAppStatus} />
       case "ready":
       case "auth_error":
         // MainApplication'a YENİ PROPLARI EKLEYİN

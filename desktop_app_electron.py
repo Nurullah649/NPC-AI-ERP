@@ -3,6 +3,19 @@
 import sys
 import os
 import time
+# import hashlib
+# import requests  # Zaten vardır muhtemelen
+
+# # Sadece Windows'ta çalışacak donanım ID'si için
+# try:
+#     import wmi
+# except ImportError:
+#     # Windows dışı bir sistemde (veya wmi yüklü değilse)
+#     # test için sahte bir sınıf oluştur
+#     class MockWMI:
+#         def Win32_BaseBoard(self):
+#             return [type('obj', (object,), {'SerialNumber': 'TEST-SERIAL-NUMBER'})]
+#     wmi = type('wmi', (object,), {'WMI': MockWMI})
 import json
 import logging
 import re
@@ -123,6 +136,53 @@ notification_running = False
 itk_product_cache = []
 itk_cache_lock = threading.Lock()
 
+#
+# # --- YENİ: Lisans ve Donanım ID Fonksiyonları ---
+#
+# def get_hashed_device_id() -> str:
+#     """
+#     Anakart seri numarasını alır ve bunu SHA-256 ile hash'ler.
+#     Bu, bilgisayar için benzersiz bir "parmak izi" oluşturur.
+#     """
+#     try:
+#         c = wmi.WMI()
+#         # Anakart seri numarasını al
+#         serial = c.Win32_BaseBoard()[0].SerialNumber.strip()
+#
+#         # Seri numarasını hash'le
+#         hashed_id = hashlib.sha256(serial.encode('utf-8')).hexdigest()
+#         logging.info(f"Cihaz ID oluşturuldu. Hash: {hashed_id}")
+#         return hashed_id
+#     except Exception as e:
+#         logging.error(f"Cihaz ID'si oluşturulamadı: {e}", exc_info=True)
+#         # Hata durumunda veya (macOS/Linux'ta) sabit bir ID dön
+#         # Bu, wmi'nin çalışmadığı durumlar için bir geri dönüştür
+#         fallback_id = "error_or_non_windows_device_id"
+#         return hashlib.sha256(fallback_id.encode('utf-8')).hexdigest()
+#
+#
+# def check_license(license_key: str, device_id: str) -> bool:
+#     """
+#     Lisans anahtarını ve cihaz ID'sini Firebase Cloud Function'a gönderir.
+#     """
+#     # !!! BURAYI KENDİ CLOUD FUNCTION URL'NİZ İLE DEĞİŞTİRİN !!!
+#     CLOUD_FUNCTION_URL = "https://YOUR-CLOUD-FUNCTION-URL.cloudfunctions.net/checkLicense"
+#
+#     if not license_key:
+#         logging.warning("Lisans anahtarı girilmemiş.")
+#         return False
+#
+#     try:
+#         payload = {"licenseKey": license_key, "deviceId": device_id}
+#         response = requests.post(CLOUD_FUNCTION_URL, json=payload, timeout=10) # Timeout artırıldı
+#         if response.status_code == 200 and response.json().get("status") == "valid":
+#             logging.info("Lisans doğrulandı (Sunucu yanıtı: Geçerli).")
+#             return True
+#         logging.warning(f"Lisans geçersiz (Sunucu yanıtı: {response.status_code} - {response.text}).")
+#         return False
+#     except requests.RequestException as e:
+#         logging.error(f"Lisans sunucusuna bağlanırken hata: {e}", exc_info=True)
+#         return False
 
 # --- Ayarları Yükleme/Kaydetme Fonksiyonları ---
 def load_settings() -> (Dict[str, Any], bool): # YENİ: bool değeri döndürür (was_upgraded)
@@ -137,6 +197,7 @@ def load_settings() -> (Dict[str, Any], bool): # YENİ: bool değeri döndürür
         "sigma_coefficient_us": 1.0, "sigma_coefficient_de": 1.0, "sigma_coefficient_gb": 1.0,
         "orkim_username": "", "orkim_password": "",
         "itk_username": "", "itk_password": "", "itk_coefficient": 1.0,
+        # "license_key": ""  # YENİ SATIRI EKLEYİN
         # Örnek yeni ayar: "auto_check_for_updates": True
     }
 
@@ -1127,6 +1188,18 @@ def main():
 
         def init_task():
             try:
+                # # --- YENİ: Lisans Kontrol Bloğu ---
+                # logging.info("Lisans kontrolü yapılıyor...")
+                # license_key = settings_data.get("license_key")
+                # device_id = get_hashed_device_id()
+                #
+                # if not check_license(license_key, device_id):
+                #     # Lisans geçerli değilse, hata gönder ve işlemi durdur.
+                #     send_to_frontend("license_error", True)
+                #     return  # Bu thread'i sonlandır
+                #
+                # logging.info("Lisans geçerli. Diğer servisler başlatılıyor.")
+                # # --- Lisans Kontrolü Bitişi ---
                 netflex_api.get_token()
                 engine.initialize_drivers()
                 send_to_frontend("python_services_ready", True)
