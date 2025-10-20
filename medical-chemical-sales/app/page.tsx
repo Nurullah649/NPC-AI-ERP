@@ -4003,7 +4003,7 @@ export default function App() {
       const timer = setTimeout(() => setAppStatus("ready"), 2500)
       return () => clearTimeout(timer)
     }
-
+    window.electronAPI.rendererReady()
     // appVersion'ı buraya taşıyın
     const getVersion = async () => {
       const version = await window.electronAPI.getAppVersion()
