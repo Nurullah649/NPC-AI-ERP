@@ -370,14 +370,17 @@ class OrkimScraper:
         logging.info(f"Orkim: Ürün sayfası ayrıştırma sonucu: {product_data}")
         return [product_data] # Return as a list containing one product
 
-    def search_products(self, search_term: str, cancellation_token) -> List[Dict[str, Any]]:
+    # DEĞİŞİKLİK: 'search_logic' parametresi eklendi
+    def search_products(self, search_term: str, cancellation_token, search_logic: str = "similar") -> List[Dict[str, Any]]:
         if cancellation_token.is_set(): return []
         if not self._login():
             logging.error("Orkim'e giriş yapılamadı, arama atlanıyor.")
             return []
 
-        logging.info(f"Orkim: '{search_term}' aranıyor...")
+        logging.info(f"Orkim: '{search_term}' aranıyor (Mantık: {search_logic})...")
         all_scraped_data = []
+        term_lower = search_term.lower() # Filtreleme için küçük harf
+
         try:
             # Set headers for search POST request
             self.session.headers.update({
@@ -393,7 +396,23 @@ class OrkimScraper:
             if "/urun/" in response.url:
                 # Redirected to a product page
                 logging.info(f"Orkim: '{search_term}' araması doğrudan ürün sayfasına yönlendirdi: {response.url}")
-                return self._parse_product_page(response.text, response.url)
+                parsed_products = self._parse_product_page(response.text, response.url)
+                if not parsed_products:
+                    return [] # Ayrıştırma başarısız olduysa boş dön
+
+                product = parsed_products[0] # Tek ürün var
+
+                # YENİ: Arama mantığı filtresini burada uygula
+                match_found = False
+                if search_logic == "exact":
+                    if (term_lower in product.get('urun_adi', '').lower() or
+                        term_lower in product.get('k_kodu', '').lower() or
+                        term_lower in product.get('uretici_kodu', '').lower()):
+                        match_found = True
+                else: # similar
+                    match_found = True # Doğrudan yönlendirme zaten bir eşleşmedir
+
+                return [product] if match_found else [] # Eşleşiyorsa ürünü, yoksa boş liste döndür
             # --- END FLEXIBLE SEARCH LOGIC ---
 
             # Continue with search results page logic
@@ -489,7 +508,18 @@ class OrkimScraper:
                     product_data['stock_status'] = stock_status
                     product_data['stock_quantity'] = stock_quantity
 
-                    all_scraped_data.append(product_data)
+                    # YENİ: Arama mantığı filtresini burada uygula (arama sonuç sayfası için)
+                    match_found = False
+                    if search_logic == "exact":
+                        if (term_lower in product_data.get('urun_adi', '').lower() or
+                            term_lower in product_data.get('k_kodu', '').lower()):
+                            # Uretici kodu burada mevcut değil, sadece k_kodu ve urun_adi kontrol edilebilir
+                            match_found = True
+                    else: # similar
+                        match_found = True # Arama sonuç sayfasındakiler zaten bir çeşit eşleşmedir
+
+                    if match_found:
+                        all_scraped_data.append(product_data)
 
                 # Find next page link more reliably
                 next_page_link = soup.find('a', class_='sonrakiSayfa') # Check for specific class if available
@@ -631,4 +661,3 @@ class OrkimScraper:
         if self.session:
             self.session.close()
             logging.info("Orkim oturumu kapatıldı.")
-

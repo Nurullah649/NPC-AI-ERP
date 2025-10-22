@@ -101,7 +101,6 @@ def get_resource_path(relative_path: str) -> str:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-
 # --- YENİ VE GÜVENLİ UYGULAMA VERİ YOLU TANIMI ---
 def get_persistent_data_path() -> Path:
     if len(sys.argv) > 1:
@@ -136,7 +135,6 @@ notification_running = False
 # ITK ürünleri için global önbellek
 itk_product_cache = []
 itk_cache_lock = threading.Lock()
-
 
 #
 # # --- YENİ: Lisans ve Donanım ID Fonksiyonları ---
@@ -187,7 +185,7 @@ itk_cache_lock = threading.Lock()
 #         return False
 
 # --- Ayarları Yükleme/Kaydetme Fonksiyonları ---
-def load_settings() -> (Dict[str, Any], bool):  # YENİ: bool değeri döndürür (was_upgraded)
+def load_settings() -> (Dict[str, Any], bool): # YENİ: bool değeri döndürür (was_upgraded)
     """
     Kullanıcı ayarlarını yükler. Eğer ayar dosyası yoksa varsayılanları oluşturur.
     Mevcut ayar dosyasını, koddaki yeni varsayılan ayarlarla akıllıca günceller.
@@ -265,7 +263,6 @@ def save_calendar_notes(notes: list):
             json.dump(notes, f, indent=4, ensure_ascii=False)
     except (IOError, TypeError) as e:
         logging.error(f"Takvim notları kaydedilirken hata: {e}")
-
 
 # ... (Geri kalan tüm Python kodunuz burada hiçbir değişiklik olmadan devam ediyor) ...
 # ...
@@ -609,14 +606,13 @@ def export_to_excel(data: Dict[str, Any]):
             price_str_from_product = str(product.get("price_str", "N/A"))
 
             # KDV oranını ve temiz fiyat metnini ayıkla
-            kdv_str = "Yok"  # Default KDV
-            clean_price_str = price_str_from_product  # KDV'siz fiyat metni
+            kdv_str = "Yok" # Default KDV
+            clean_price_str = price_str_from_product # KDV'siz fiyat metni
             kdv_match = re.search(r'\+\s*%(\d+)\s*KDV', price_str_from_product, re.IGNORECASE)
             if kdv_match:
                 kdv_str = f"%{kdv_match.group(1)}"
                 # KDV kısmını fiyattan temizle
-                clean_price_str = re.sub(r'\s*\+\s*%(\d+)\s*KDV.*', '', price_str_from_product,
-                                         flags=re.IGNORECASE).strip()
+                clean_price_str = re.sub(r'\s*\+\s*%(\d+)\s*KDV.*', '', price_str_from_product, flags=re.IGNORECASE).strip()
 
             # Para birimi sembolünü temiz fiyattan belirle
             currency_symbol = ""
@@ -632,28 +628,28 @@ def export_to_excel(data: Dict[str, Any]):
 
             # Sayısal fiyatı (price_numeric) al, yoksa 0 ata
             price_val = product.get("price_numeric")
-            excel_price_value = 0  # Default to 0 if no numeric price
+            excel_price_value = 0 # Default to 0 if no numeric price
             if isinstance(price_val, (int, float)):
-                excel_price_value = price_val
+                 excel_price_value = price_val
             # Eğer sayısal fiyat yoksa ama temiz fiyattan parse edilebiliyorsa dene
             elif clean_price_str not in ["N/A", "Teklif İsteyiniz", ""]:
-                try:
-                    # Para birimi ve diğer karakterleri temizle
-                    numeric_part = re.sub(r'[^\d,.]', '', clean_price_str).strip()
-                    # Virgül ve nokta dönüşümü
-                    if ',' in numeric_part and '.' in numeric_part:
-                        if numeric_part.rfind(',') > numeric_part.rfind('.'):  # 1.234,56 formatı
-                            numeric_part = numeric_part.replace('.', '').replace(',', '.')
-                        else:  # 1,234.56 formatı
-                            numeric_part = numeric_part.replace(',', '')
-                    else:  # Sadece virgül varsa ondalık ayırıcıdır
-                        numeric_part = numeric_part.replace(',', '.')
+                 try:
+                      # Para birimi ve diğer karakterleri temizle
+                      numeric_part = re.sub(r'[^\d,.]', '', clean_price_str).strip()
+                      # Virgül ve nokta dönüşümü
+                      if ',' in numeric_part and '.' in numeric_part:
+                           if numeric_part.rfind(',') > numeric_part.rfind('.'): # 1.234,56 formatı
+                                numeric_part = numeric_part.replace('.', '').replace(',', '.')
+                           else: # 1,234.56 formatı
+                                numeric_part = numeric_part.replace(',', '')
+                      else: # Sadece virgül varsa ondalık ayırıcıdır
+                           numeric_part = numeric_part.replace(',', '.')
 
-                    parsed_price = float(numeric_part)
-                    if not isinstance(price_val, (int, float)):  # Sadece product.price_numeric yoksa bunu kullan
-                        excel_price_value = parsed_price
-                except ValueError:
-                    pass  # Parse edilemezse 0 olarak kalır
+                      parsed_price = float(numeric_part)
+                      if not isinstance(price_val, (int, float)): # Sadece product.price_numeric yoksa bunu kullan
+                           excel_price_value = parsed_price
+                 except ValueError:
+                      pass # Parse edilemezse 0 olarak kalır
 
             row = [
                 product.get("source", "N/A"),
@@ -662,7 +658,7 @@ def export_to_excel(data: Dict[str, Any]):
                 product.get("product_code", "N/A"),
                 excel_price_value,
                 currency_symbol,
-                kdv_str,  # YENİ KDV SÜTUNU VERİSİ
+                kdv_str, # YENİ KDV SÜTUNU VERİSİ
                 product.get("unit", "Adet"),
                 product.get("cheapest_netflex_stock", "N/A")
             ]
@@ -670,8 +666,8 @@ def export_to_excel(data: Dict[str, Any]):
 
         # Fiyat Sütunu Formatlama (E sütunu)
         price_column = sheet['E']
-        for cell in price_column[1:]:  # Başlık hariç
-            cell.number_format = '#,##0.00'
+        for cell in price_column[1:]: # Başlık hariç
+             cell.number_format = '#,##0.00'
 
         # Sütun genişliklerini ayarla
         for col in sheet.columns:
@@ -679,21 +675,22 @@ def export_to_excel(data: Dict[str, Any]):
             column_letter = col[0].column_letter
             try:
                 # Sayısal sütunlar için genişlik hesaplamasını atla veya farklı yap
-                if column_letter == 'E':  # Fiyat sütunuysa
-                    max_length = 15  # Sabit bir genişlik ayarla
+                if column_letter == 'E': # Fiyat sütunuysa
+                    max_length = 15 # Sabit bir genişlik ayarla
                 else:
                     max_length = max(len(str(cell.value)) for cell in col if cell.value is not None)
             except (ValueError, TypeError):
-                pass  # Boş sütun veya başka bir hata durumunda
+                pass # Boş sütun veya başka bir hata durumunda
 
             # Genişliği ayarla
             adjusted_width = max_length + 2
             if column_letter == 'E':
-                adjusted_width = max_length  # Fiyat için sabit genişlik
-            elif column_letter == 'G':  # KDV sütunu daha dar olabilir
-                adjusted_width = 8
+                 adjusted_width = max_length # Fiyat için sabit genişlik
+            elif column_letter == 'G': # KDV sütunu daha dar olabilir
+                 adjusted_width = 8
 
             sheet.column_dimensions[column_letter].width = adjusted_width
+
 
         workbook.save(filepath)
         logging.info(f"Excel dosyası oluşturuldu: {filepath}")
@@ -809,136 +806,292 @@ class ComparisonEngine:
         logging.info("Ağır servisler (Selenium sürücüleri) başlatılıyor...")
         start_time = time.monotonic()
         try:
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Heavy-Driver-Starter") as executor:
-                f_sigma = executor.submit(self.sigma_api.start_drivers)
-                f_tci = executor.submit(self.tci_api.reinit_driver)
-                f_sigma.result()
-                f_tci.result()
-            logging.info(f"Tüm Selenium sürücüleri {time.monotonic() - start_time:.2f}s içinde başlatıldı.")
+            # Geliştirme modu takılma sorununu çözmek için sıralı başlatma
+            logging.info("initialize_drivers BAŞLADI (Sıralı)")
+            logging.info("Sigma sürücüleri başlatılıyor...")
+            self.sigma_api.start_drivers() # Bu kendi içinde thread kullanabilir, sorun olmaz
+            logging.info("Sigma sürücüleri tamamlandı.")
+
+            logging.info("TCI sürücüsü başlatılıyor...")
+            self.tci_api.reinit_driver()
+            logging.info("TCI sürücüsü tamamlandı.")
+
+            # Orijinal paralel başlatma kodu (şimdilik yorumda)
+            # with ThreadPoolExecutor(max_workers=2, thread_name_prefix="Heavy-Driver-Starter") as executor:
+            #     f_sigma = executor.submit(self.sigma_api.start_drivers)
+            #     f_tci = executor.submit(self.tci_api.reinit_driver)
+            #     f_sigma.result()
+            #     f_tci.result()
+            logging.info(f"Tüm Selenium sürücüleri {time.monotonic() - start_time:.2f}s içinde başlatıldı (Sıralı).")
         except Exception as e:
             logging.critical(f"Selenium sürücüleri başlatılamadı: {e}", exc_info=True)
             raise e
 
-    def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict):
+    # DEĞİŞİKLİK: search_data parametresi eklendi
+    def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict, search_data: dict):
         try:
             if self.search_cancelled.is_set(): return False
             s_num, s_brand, s_key, s_mids = raw_sigma_product.get('product_number'), raw_sigma_product.get(
                 'brand'), raw_sigma_product.get('product_key'), raw_sigma_product.get('material_ids', [])
-            sigma_variations = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key.replace('.', ''), s_mids,
-                                                                     self.search_cancelled)
+
+            # Sigma varyasyonlarını al
+            sigma_variations_data = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key.replace('.', ''), s_mids,
+                                                                          self.search_cancelled)
             if self.search_cancelled.is_set(): return False
+
+            # Netflex eşleşmeleri için terimleri topla
             netflex_terms = {s_num.replace('.', '')} if s_num else set()
-            for country_vars in sigma_variations.values():
-                for var in country_vars:
-                    if mat_num := var.get('material_number'): netflex_terms.add(mat_num.replace('.', ''))
+            for country_vars in sigma_variations_data.values():
+                # GÜNCELLEME: Varyasyonların liste olup olmadığını kontrol et
+                if isinstance(country_vars, list):
+                    for var in country_vars:
+                        if isinstance(var, dict) and (mat_num := var.get('material_number')):
+                             netflex_terms.add(mat_num.replace('.', ''))
+
+            # Netflex araması yap ve sonuçları önbelleğe al
             netflex_cache = {}
             for term in netflex_terms:
                 if self.search_cancelled.is_set(): return False
-                if results := self.netflex_api.search_products(term, self.search_cancelled):
-                    for r in results:
-                        if r_code := r.get('product_code'): netflex_cache[r_code] = r
+                # Dikkat: Netflex API'sinden AuthenticationError gelebilir, bunu yakalamalıyız
+                try:
+                    results = self.netflex_api.search_products(term, self.search_cancelled)
+                    if results:
+                        for r in results:
+                            if r_code := r.get('product_code'): netflex_cache[r_code] = r
+                except netflex.AuthenticationError:
+                     logging.error(f"Netflex kimlik doğrulaması başarısız oldu (Sigma ürünü işlenirken). Ürün: {s_num}")
+                     # Bu durumda Netflex aramasına devam etme, sadece Sigma sonuçlarıyla ilerle
+                     break # Netflex terim döngüsünden çık
+                except Exception as e:
+                     logging.error(f"Netflex araması sırasında beklenmedik hata (Sigma ürünü işlenirken {term}): {e}")
+
+
             if self.search_cancelled.is_set(): return False
-            final_product = self._build_final_sigma_product(raw_sigma_product, netflex_cache, {s_num: sigma_variations},
+
+            # Nihai ürünü oluştur
+            final_product = self._build_final_sigma_product(raw_sigma_product, netflex_cache, {s_num: sigma_variations_data},
                                                             self.settings)
             if final_product:
-                send_to_frontend("product_found", {"product": final_product}, context=context)
-                return True
+                # --- YENİ: "exact" filtrelemeyi burada uygula ---
+                search_term = search_data.get("searchTerm", "").lower()
+                search_logic = search_data.get("searchLogic", "similar")
+                match_found = False
+
+                if search_logic == "exact":
+                    if (search_term in final_product.get('product_name', '').lower() or
+                        search_term in final_product.get('product_number', '').lower() or
+                        search_term in final_product.get('cas_number', '').lower()):
+                        match_found = True
+                else: # similar
+                    match_found = True
+
+                if match_found:
+                    send_to_frontend("product_found", {"product": final_product}, context=context)
+                    return True # Eşleşme bulundu ve gönderildi
+                # --- Filtreleme sonu ---
+                else:
+                    # Eşleşme bulunamadı (exact modunda), gönderme
+                    logging.debug(f"Sigma ürünü '{s_num}' exact filtreyi geçemedi ('{search_term}').")
+                    return False # Eşleşme bulunamadı
+
         except Exception as e:
             logging.error(f"Tekil Sigma ürünü ({raw_sigma_product.get('product_number')}) işlenirken hata: {e}",
                           exc_info=True)
-        return False
+        return False # Hata durumunda veya eşleşme yoksa False dön
 
     def _build_final_sigma_product(self, sigma_product: Dict, netflex_cache: Dict, all_sigma_variations: Dict,
                                    settings: Dict) -> Dict or None:
         s_name, s_num, s_brand, cas = sigma_product.get('product_name_sigma'), sigma_product.get(
             'product_number'), sigma_product.get('brand'), sigma_product.get('cas_number', 'N/A')
-        if not all([s_name, s_num, s_brand]): return None
+
+        # GÜNCELLEME: Temel bilgilerden en az biri eksikse None dönme, yine de objeyi oluşturmaya çalış.
+        # if not all([s_name, s_num, s_brand]): return None
+        if not s_num: return None # Product Number zorunlu olmalı
+
         parities = self.currency_converter.get_parities()
         if "error" in parities: logging.error("Pariteler alınamadı.")
+
         sigma_variations = all_sigma_variations.get(s_num, {})
         all_price_options = []
+
+        # Sigma varyasyonlarından fiyatları işle
+        valid_sigma_variations_exist = False # Sigma'dan geçerli fiyat geldi mi?
         for country_code, variations in sigma_variations.items():
             coefficient = settings.get(f"sigma_coefficient_{country_code}", 1.0)
-            for var in variations:
-                if 'error' in var: continue
-                price_eur, original_price, currency = None, var.get('price'), var.get('currency', '').upper()
-                if original_price is not None:
-                    try:
-                        base_price_eur = None
-                        if currency == 'USD' and parities.get('usd_eur'):
-                            base_price_eur = original_price * parities['usd_eur']
-                        elif currency == 'GBP' and parities.get('gbp_eur'):
-                            base_price_eur = original_price * parities['gbp_eur']
-                        elif currency == 'EUR':
-                            base_price_eur = original_price
-                        if base_price_eur is not None:
-                            price_eur = base_price_eur * coefficient
-                            if mat_num := var.get('material_number'): all_price_options.append(
-                                {'price': price_eur, 'code': mat_num, 'source': f"Sigma ({country_code.upper()})"})
-                    except Exception:
-                        pass
+            if isinstance(variations, list): # Hata objesi değilse devam et
+                for var in variations:
+                    if isinstance(var, dict) and 'error' not in var: # Varyasyon geçerliyse
+                        price_eur, original_price, currency = None, var.get('price'), var.get('currency', '').upper()
+                        if original_price is not None:
+                            try:
+                                base_price_eur = None
+                                if currency == 'USD' and parities.get('usd_eur'):
+                                    base_price_eur = original_price * parities['usd_eur']
+                                elif currency == 'GBP' and parities.get('gbp_eur'):
+                                    base_price_eur = original_price * parities['gbp_eur']
+                                elif currency == 'EUR':
+                                    base_price_eur = original_price
+                                if base_price_eur is not None:
+                                    price_eur = base_price_eur * coefficient
+                                    if mat_num := var.get('material_number'):
+                                        all_price_options.append(
+                                            {'price': price_eur, 'code': mat_num, 'source': f"Sigma ({country_code.upper()})"})
+                                        valid_sigma_variations_exist = True # Geçerli fiyat bulundu
+                            except Exception as e:
+                                logging.warning(f"Sigma fiyat hesaplamada hata ({s_num} - {var.get('material_number')}): {e}")
+                                pass # Hata durumunda bu varyasyonu atla
+
+        # Netflex eşleşmelerini işle ve fiyat ekle
         netflex_matches = []
-        sigma_mat_nums = {var.get('material_number') for vars_list in sigma_variations.values() for var in vars_list if
-                          var.get('material_number')}
+        sigma_mat_nums = set()
+        for vars_list in sigma_variations.values():
+            if isinstance(vars_list, list):
+                for var in vars_list:
+                     if isinstance(var, dict) and (mat_num := var.get('material_number')):
+                          sigma_mat_nums.add(mat_num)
+
+        # Sigma'dan hiç material number gelmediyse ana ürün kodunu kullanmayı dene
+        if not sigma_mat_nums and s_num:
+             sigma_mat_nums.add(s_num)
+
         for mat_num in sigma_mat_nums:
             clean_mat_num = mat_num.replace('.', '')
             if clean_mat_num in netflex_cache:
                 match = netflex_cache[clean_mat_num]
+                # GÜNCELLEME: Netflex eşleşmesini, ana ürün adı ve CAS ile zenginleştir
+                match['product_name'] = match.get('product_name') or s_name # Netflex adı yoksa Sigma adını kullan
+                match['cas_number'] = cas # Ana ürünün CAS numarasını ekle
                 netflex_matches.append(match)
-                if price := match.get('price_numeric'): all_price_options.append(
-                    {'price': price, 'code': match.get('product_code'), 'source': 'Netflex'})
+                if price := match.get('price_numeric'):
+                    all_price_options.append(
+                        {'price': price, 'code': match.get('product_code'), 'source': 'Netflex'})
+
+        # En ucuz seçeneği bul
         cheapest_option = min(all_price_options, key=lambda x: x['price']) if all_price_options else {}
-        return {"source": "Sigma", "product_name": s_name, "product_number": s_num, "cas_number": cas,
-                "brand": f"Sigma ({s_brand})", "sigma_variations": sigma_variations, "netflex_matches": netflex_matches}
+
+        # GÜNCELLEME: Sonuç objesini oluştururken varsayılan değerler kullan
+        final_product = {
+            "source": "Sigma",
+            "product_name": s_name or "N/A", # İsim yoksa N/A
+            "product_number": s_num,
+            "cas_number": cas or "N/A", # CAS yoksa N/A
+            "brand": f"Sigma ({s_brand or 'N/A'})", # Brand yoksa N/A
+            "sigma_variations": sigma_variations if valid_sigma_variations_exist else {}, # Sadece geçerli varyasyon varsa ekle
+            "netflex_matches": netflex_matches,
+            # En ucuz bilgileri ekle (varsa)
+            # GÜNCELLEME: Fiyat formatlamasını düzelt (nokta ve virgül yerini değiştir)
+            "cheapest_eur_price_str": cheapest_option.get('price') and f"{cheapest_option['price']:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".") or "N/A",
+            "cheapest_material_number": cheapest_option.get('code', s_num), # Kod yoksa ana kodu kullan
+            "cheapest_source_country": cheapest_option.get('source', "Netflex" if netflex_matches else "Sigma") # Kaynak yoksa tahmin et
+        }
+
+        # Stok bilgisini en ucuz seçeneğin olduğu Netflex eşleşmesinden al (varsa)
+        cheapest_code = final_product["cheapest_material_number"]
+        cheapest_netflex_match = next((m for m in netflex_matches if m.get('product_code') == cheapest_code), None)
+        if cheapest_netflex_match:
+             final_product["cheapest_netflex_stock"] = cheapest_netflex_match.get('stock', 'N/A')
+        else:
+             final_product["cheapest_netflex_stock"] = 'N/A' # Sigma için stok bilgisi yok
+
+
+        # Eğer sadece Netflex eşleşmesi varsa, kaynağı Netflex olarak ayarlayabiliriz (isteğe bağlı)
+        if not valid_sigma_variations_exist and netflex_matches:
+             final_product["source"] = "Netflex (Sigma eşleşmesi)" # Kaynağı daha belirgin yapabiliriz
+
+
+        # Eğer hiç fiyat bulunamadıysa (ne Sigma ne Netflex)
+        if not all_price_options:
+            final_product["cheapest_eur_price_str"] = "Fiyat Yok"
+            final_product["cheapest_material_number"] = s_num
+            final_product["cheapest_source_country"] = "Sigma/Netflex" # Belirsiz
+
+        return final_product
+
 
     def _process_tci_product(self, tci_product: tci.Product, context: Dict = None) -> Dict[str, Any]:
         parities = self.currency_converter.get_parities()
         tci_coefficient = self.settings.get('tci_coefficient', 1.4)
         processed_variations = []
+        all_price_options = []
+        valid_tci_variations_exist = False # TCI'dan geçerli fiyat geldi mi?
 
-        for variation in tci_product.variations:
-            original_price_str = variation.get('price', 'N/A')
-            currency_symbol = '€' if '€' in original_price_str else '$' if '$' in original_price_str else '£' if '£' in original_price_str else '€'
-            price_float = None
-            calculated_price_eur = None
+        # GÜNCELLEME: Eğer tci_product.variations boş veya None ise, yine de temel bilgileri döndür
+        if not tci_product.variations:
+             logging.warning(f"TCI ürünü ({tci_product.code}) için varyasyon bulunamadı.")
+        else:
+            for variation in tci_product.variations:
+                original_price_str = variation.get('price', 'N/A')
+                currency_symbol = '€' if '€' in original_price_str else '$' if '$' in original_price_str else '£' if '£' in original_price_str else '€'
+                price_float = None
+                calculated_price_eur = None
 
-            try:
-                cleaned = re.sub(r'[^\d,.]', '', original_price_str)
-                standardized = cleaned.replace('.', '').replace(',', '.') if cleaned.rfind(',') > cleaned.rfind(
-                    '.') else cleaned.replace(',', '')
-                price_float = float(standardized) if standardized else None
+                try:
+                    # Fiyatı parse etmeye çalış
+                    cleaned = re.sub(r'[^\d,.]', '', original_price_str)
+                    if cleaned: # Boş string değilse devam et
+                        standardized = cleaned.replace('.', '').replace(',', '.') if cleaned.rfind(',') > cleaned.rfind(
+                            '.') else cleaned.replace(',', '')
+                        price_float = float(standardized) if standardized else None
 
-                if price_float is not None:
-                    base_price_eur = price_float
-                    if currency_symbol == '$' and parities.get('usd_eur'):
-                        base_price_eur = price_float * parities['usd_eur']
-                    elif currency_symbol == '£' and parities.get('gbp_eur'):
-                        base_price_eur = price_float * parities['gbp_eur']
-                    calculated_price_eur = base_price_eur * tci_coefficient
+                    # EUR'a çevir ve katsayı uygula
+                    if price_float is not None:
+                        base_price_eur = price_float
+                        if currency_symbol == '$' and parities.get('usd_eur'):
+                            base_price_eur = price_float * parities['usd_eur']
+                        elif currency_symbol == '£' and parities.get('gbp_eur'):
+                            base_price_eur = price_float * parities['gbp_eur']
+                        calculated_price_eur = base_price_eur * tci_coefficient
+                        valid_tci_variations_exist = True # Geçerli fiyat bulundu
+                        # En ucuzu bulmak için listeye ekle
+                        all_price_options.append({
+                            'price': calculated_price_eur,
+                            'code': f"{tci_product.code}-{variation.get('unit', 'N/A')}",
+                            'source': 'TCI'
+                         })
 
-            except (ValueError, TypeError):
-                pass
+                except (ValueError, TypeError) as e:
+                     logging.warning(f"TCI fiyat parse/hesaplama hatası ({tci_product.code} - {variation.get('unit')}): {e}")
+                     pass # Hata durumunda bu varyasyonu atla, ama logla
 
-            processed_variations.append({
-                "unit": variation.get('unit'),
-                "original_price": original_price_str,
-                "original_price_numeric": price_float,
-                "stock_info": variation.get('stock_info', []),
-                "calculated_price_eur": calculated_price_eur,
-                "calculated_price_eur_str": f"{calculated_price_eur:,.2f}€".replace(",", "X").replace(".", ",").replace(
-                    "X", ".") if calculated_price_eur is not None else "N/A"
-            })
+                processed_variations.append({
+                    "unit": variation.get('unit'),
+                    "original_price": original_price_str,
+                    "original_price_numeric": price_float,
+                    "stock_info": variation.get('stock_info', []),
+                    "calculated_price_eur": calculated_price_eur,
+                    "calculated_price_eur_str": f"{calculated_price_eur:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".") if calculated_price_eur is not None else "N/A"
+                })
 
-        return {
+        # En ucuz TCI seçeneğini bul (eğer varsa)
+        cheapest_option = min(all_price_options, key=lambda x: x['price']) if all_price_options else {}
+
+        # GÜNCELLEME: Sonuç objesini oluştururken varsayılanlar ve en ucuz bilgiyi kullan
+        final_product = {
             "source": "TCI",
-            "product_name": tci_product.name,
-            "product_number": tci_product.code,
-            "cas_number": tci_product.cas_number,
+            "product_name": tci_product.name or "N/A",
+            "product_number": tci_product.code or "N/A",
+            "cas_number": tci_product.cas_number or "N/A",
             "brand": "TCI",
-            "tci_variations": processed_variations,
-            "sigma_variations": {},
-            "netflex_matches": []
+            "tci_variations": processed_variations if valid_tci_variations_exist else [], # Sadece geçerli varyasyon varsa ekle
+            "sigma_variations": {}, # Sigma için boş bırak
+            "netflex_matches": [],  # Netflex için boş bırak
+            # En ucuz bilgileri ekle (varsa)
+            # GÜNCELLEME: Fiyat formatlamasını düzelt
+            "cheapest_eur_price_str": cheapest_option.get('price') and f"{cheapest_option['price']:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".") or "Fiyat Yok",
+            "cheapest_material_number": cheapest_option.get('code', tci_product.code or "N/A"), # Kod yoksa ana kodu kullan
+            "cheapest_source_country": cheapest_option.get('source', "TCI") # Kaynak TCI
         }
+
+        # Stok bilgisini en ucuz varyasyondan almaya çalış (varsa)
+        cheapest_variation_details = next((v for v in processed_variations if v.get('calculated_price_eur_str') == final_product["cheapest_eur_price_str"]), None)
+        if cheapest_variation_details and cheapest_variation_details.get('stock_info'):
+            final_product["cheapest_netflex_stock"] = ", ".join([f"{s['country']}: {s['stock']}" for s in cheapest_variation_details['stock_info']])
+        else:
+            final_product["cheapest_netflex_stock"] = "N/A"
+
+
+        return final_product
+
 
     def _process_orkim_product(self, orkim_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """Orkim'den gelen ürün verisini standart formata çevirir."""
@@ -957,12 +1110,13 @@ class ComparisonEngine:
             "source": "Orkim",
             "product_name": orkim_product.get("urun_adi", "N/A"),
             "product_number": orkim_product.get("k_kodu", "N/A"),
-            "cas_number": "N/A",
-            "brand": "Orkim",
-            "cheapest_eur_price_str": price_str,
+            "cas_number": "N/A", # Orkim'den CAS gelmiyor
+            "brand": orkim_product.get("brand", "Orkim"), # Markayı al, yoksa Orkim yaz
+            "cheapest_eur_price_str": price_str, # Orkim fiyatı doğrudan string olarak kullanılır
             "cheapest_material_number": orkim_product.get("k_kodu", "N/A"),
             "cheapest_source_country": "Orkim",
             "cheapest_netflex_stock": stock_display,
+            # Diğer kaynaklar için boş dict/list
             "sigma_variations": {},
             "netflex_matches": [],
             "tci_variations": []
@@ -976,6 +1130,7 @@ class ComparisonEngine:
         original_currency = itk_product.get("currency", "EUR").upper()
 
         eur_price = None
+        cheapest_price_str = "Fiyat Yok" # Varsayılan
 
         if original_price is not None:
             # Pariteleri al
@@ -995,45 +1150,61 @@ class ComparisonEngine:
                 if original_currency != "EUR":
                     logging.warning(
                         f"ITK için {original_currency} -> EUR dönüşüm oranı bulunamadı. Fiyat dönüştürülemedi.")
-                eur_price = original_price
+                eur_price = original_price # Dönüşemezse orijinali kullan
 
-                # Frontend'e gönderilecek ürün verisini güncelle
-        if eur_price is not None:
-            itk_product["price"] = eur_price
-            itk_product["currency"] = "EUR"
+            # Katsayıyı uygula
+            if eur_price is not None:
+                 eur_price = eur_price * self.settings.get('itk_coefficient', 1.0)
+                 # GÜNCELLEME: Fiyat formatlamasını düzelt
+                 cheapest_price_str = f"{eur_price:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        # Stok bilgisini formatla
+        stock_quantity = itk_product.get("stock_quantity", "N/A")
+
+        # GÜNCELLEME: itk_variations listesini oluştur
+        itk_variation_data = {
+            "product_code": itk_product.get("product_code", "N/A"),
+            "product_name": itk_product.get("product_name", "N/A"),
+            "price_str": cheapest_price_str, # Hesaplanan fiyatı kullan
+            "price": eur_price, # Hesaplanan sayısal fiyat
+            "currency": "EUR", # Artık EUR
+            "stock_quantity": stock_quantity
+        }
 
         return {
             "source": "ITK",
             "product_name": itk_product.get("product_name", "N/A"),
             "product_number": itk_product.get("product_code", "N/A"),
-            "cas_number": "N/A",
+            "cas_number": "N/A", # ITK'dan CAS gelmiyor
             "brand": "ITK",
-            "cheapest_eur_price_str": "Hesaplanıyor...",
+            "cheapest_eur_price_str": cheapest_price_str,
             "cheapest_material_number": itk_product.get("product_code", "N/A"),
             "cheapest_source_country": "ITK",
-            "cheapest_netflex_stock": itk_product.get("stock_quantity", "N/A"),
+            "cheapest_netflex_stock": stock_quantity,
+            # Diğer kaynaklar için boş dict/list
             "sigma_variations": {},
             "netflex_matches": [],
             "tci_variations": [],
-            "itk_variations": [itk_product]
+            "itk_variations": [itk_variation_data] # Varyasyon listesini ekle
         }
 
     def _process_netflex_product(self, netflex_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """Doğrudan Netflex aramasından gelen bir ürünü standart formata çevirir."""
         price_str = netflex_product.get("price_str", "N/A")
+        # GÜNCELLEME: Netflex'ten CAS gelmez, N/A ata
         return {
             "source": "Netflex",
             "product_name": netflex_product.get("product_name", "N/A"),
             "product_number": netflex_product.get("product_code", "N/A"),
-            "cas_number": "N/A",  # Netflex arama sonucu CAS döndürmez
+            "cas_number": "N/A", # Netflex arama sonucu CAS döndürmez
             "brand": netflex_product.get("brand", "Netflex"),
-            "cheapest_eur_price_str": price_str,
+            "cheapest_eur_price_str": price_str, # Netflex fiyatı EUR varsayılır
             "cheapest_material_number": netflex_product.get("product_code", "N/A"),
             "cheapest_source_country": "Netflex",
             "cheapest_netflex_stock": netflex_product.get("stock", "N/A"),
-            # Diğer kaynaklarla uyumluluk için boş listeler
+            # Diğer kaynaklarla uyumluluk için boş listeler/dict'ler
             "sigma_variations": {},
-            "netflex_matches": [],
+            "netflex_matches": [], # Kendisi Netflex olduğu için bu boş olabilir
             "tci_variations": [],
             "itk_variations": []
         }
@@ -1044,7 +1215,7 @@ class ComparisonEngine:
 
         # DEĞİŞİKLİK: search_term ve search_logic'i 'search_data' objesinden al
         search_term = search_data.get("searchTerm", "")
-        search_logic = search_data.get("searchLogic", "similar")  # Varsayılan "similar"
+        search_logic = search_data.get("searchLogic", "similar") # Varsayılan "similar"
 
         logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic})")
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
@@ -1081,11 +1252,11 @@ class ComparisonEngine:
                             term_lower = search_term.lower()
                             if search_logic == "exact":
                                 if (term_lower in product.name.lower() or
-                                        term_lower in product.code.lower() or
-                                        term_lower in product.cas_number.lower()):
+                                    term_lower in product.code.lower() or
+                                    (product.cas_number and term_lower in product.cas_number.lower())): # CAS None olabilir kontrolü
                                     match_found = True
                             else:
-                                match_found = True  # Benzer arama, TCI'ın kendi sonucunu kabul eder
+                                match_found = True # Benzer arama, TCI'ın kendi sonucunu kabul eder
 
                             if match_found:
                                 processed = self._process_tci_product(product, context)
@@ -1104,27 +1275,27 @@ class ComparisonEngine:
 
                         raw_product_stream = self.sigma_api.search_products(search_term, self.search_cancelled)
                         futures = []
-                        term_lower = search_term.lower()
+                        # term_lower = search_term.lower() # Filtreleme _process_single... içine taşındı
 
                         for raw_product in raw_product_stream:
                             if self.search_cancelled.is_set(): break
 
-                            # YENİ: Arama mantığı filtresi
-                            match_found = False
-                            if search_logic == "exact":
-                                if (term_lower in raw_product.get('product_name_sigma', '').lower() or
-                                        term_lower in raw_product.get('product_number', '').lower() or
-                                        term_lower in raw_product.get('cas_number', '').lower()):
-                                    match_found = True
-                            else:
-                                match_found = True  # Benzer arama, Sigma'nın API sonucunu kabul eder
+                            # --- DEĞİŞİKLİK: "exact" filtresi buradan kaldırıldı ---
+                            # match_found = False
+                            # if search_logic == "exact":
+                            #     # ... filtreleme kodu ...
+                            # else: # similar
+                            #     match_found = True
+                            #
+                            # if match_found:
+                            # --- DEĞİŞİKLİK SONU ---
 
-                            if match_found:
-                                futures.append(
-                                    processor.submit(self._process_single_sigma_product_and_send, raw_product, context))
+                            # Görevi gönderirken search_data'yı da ekle
+                            futures.append(processor.submit(self._process_single_sigma_product_and_send, raw_product, context, search_data))
 
+                        # Sonuçları işle (future.result() True/False dönecek)
                         for future in as_completed(futures):
-                            if future.result():
+                            if future.result(): # Eğer _process_single... True döndürdüyse (yani filtreyi geçti ve gönderildi)
                                 with total_found_lock: total_found += 1
                                 with sigma_found_lock: sigma_found_count += 1
                     except Exception as e:
@@ -1138,29 +1309,17 @@ class ComparisonEngine:
                         if is_m_code:
                             for term_var in search_term_variations:
                                 if '.' not in term_var: orkim_search_term = term_var; break
-                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled)
+                        # DEĞİŞİKLİK: search_logic'i Orkim API'sine gönder
+                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled, search_logic)
                         if self.search_cancelled.is_set(): return
 
-                        term_lower = search_term.lower()  # Filtreleme için orijinal terim
-
+                        # Orkim scraper artık filtrelemeyi kendi içinde yapıyor.
                         for product in orkim_results:
                             if self.search_cancelled.is_set(): break
-
-                            # YENİ: Arama mantığı filtresi
-                            match_found = False
-                            if search_logic == "exact":
-                                if (term_lower in product.get('urun_adi', '').lower() or
-                                        term_lower in product.get('k_kodu', '').lower() or
-                                        term_lower in product.get('uretici_kodu', '').lower()):
-                                    match_found = True
-                            else:
-                                match_found = True  # Benzer arama, Orkim'in "contains" sonucunu kabul eder
-
-                            if match_found:
-                                processed = self._process_orkim_product(product, context)
-                                send_to_frontend("product_found", {"product": processed}, context=context)
-                                with total_found_lock:
-                                    total_found += 1
+                            processed = self._process_orkim_product(product, context)
+                            send_to_frontend("product_found", {"product": processed}, context=context)
+                            with total_found_lock:
+                                total_found += 1
                 except Exception as e:
                     logging.error(f"Orkim akış hatası: {e}", exc_info=True)
 
@@ -1209,14 +1368,15 @@ class ComparisonEngine:
             f_orkim.result()
             f_itk.result()
 
-        # 2. Aşama: Eğer SADECE SİGMA'DA sonuç bulunamadıysa Netflex'te ara
-        if sigma_found_count == 0 and not self.search_cancelled.is_set():
-            logging.info(f"Sigma'da sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
+        # 2. Aşama: Eğer ilk aşamada HİÇBİR yerden sonuç bulunamadıysa Netflex'i dene
+        if total_found == 0 and not self.search_cancelled.is_set():
+            logging.info(f"İlk aşamada sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
             try:
+                # Dikkat: Netflex API'sinden AuthenticationError gelebilir
                 netflex_results = self.netflex_api.search_products(search_term, self.search_cancelled)
                 if not self.search_cancelled.is_set():
 
-                    term_lower = search_term.lower()  # Filtreleme için
+                    term_lower = search_term.lower() # Filtreleme için
 
                     for product in netflex_results:
                         if self.search_cancelled.is_set(): break
@@ -1225,16 +1385,18 @@ class ComparisonEngine:
                         match_found = False
                         if search_logic == "exact":
                             if (term_lower in product.get('product_name', '').lower() or
-                                    term_lower in product.get('product_code', '').lower()):
+                                term_lower in product.get('product_code', '').lower()):
                                 match_found = True
                         else:
-                            match_found = True  # Benzer arama, Netflex'in API sonucunu kabul eder
+                            match_found = True # Benzer arama, Netflex'in API sonucunu kabul eder
 
                         if match_found:
                             processed = self._process_netflex_product(product, context)
                             send_to_frontend("product_found", {"product": processed}, context=context)
                             with total_found_lock:
                                 total_found += 1
+            except netflex.AuthenticationError:
+                 logging.error("Netflex kimlik doğrulaması başarısız oldu (2. aşama Netflex araması).")
             except Exception as e:
                 logging.error(f"İkincil Netflex araması sırasında hata: {e}", exc_info=True)
 
@@ -1264,8 +1426,6 @@ class ComparisonEngine:
             admin_logger.info(f"  -> Toplu Arama ({i + 1}/{total_terms}): '{term}'")
 
             # DEĞİŞİKLİK: Toplu arama her zaman "benzer" mantığını kullanır.
-            # (Veya isterseniz buraya da bir UI seçeneği ekleyebilirsiniz,
-            # ancak şimdilik 'benzer' varsayalım)
             search_data = {"searchTerm": term, "searchLogic": "similar"}
             self.search_and_compare(search_data, context={"batch_search_term": term})
 
@@ -1294,62 +1454,65 @@ def main():
         """ITK ürünlerini çekip global önbelleği dolduran thread fonksiyonu."""
         logging.info("ITK ürün önbelleği oluşturuluyor...")
         start_time = time.monotonic()
-        products = api_instance.get_all_products()
-        with itk_cache_lock:
-            global itk_product_cache
-            itk_product_cache = products
-        duration = time.monotonic() - start_time
-        logging.info(f"ITK önbelleği {len(products)} ürünle {duration:.2f} saniyede tamamlandı.")
+        try: # Hata yakalama eklendi
+            products = api_instance.get_all_products()
+            with itk_cache_lock:
+                global itk_product_cache
+                itk_product_cache = products
+            duration = time.monotonic() - start_time
+            logging.info(f"ITK önbelleği {len(products)} ürünle {duration:.2f} saniyede tamamlandı.")
+        except Exception as e:
+            logging.error(f"ITK önbelleği oluşturulurken hata: {e}", exc_info=True)
+
 
     def initialize_services(settings_data: Dict[str, Any]):
         nonlocal netflex_api, engine, orkim_api, itk_api
         logging.info(f"Servisler başlatılıyor...")
-        netflex_api = netflex.NetflexAPI(username=settings_data.get("netflex_username"),
-                                         password=settings_data.get("netflex_password"))
-        orkim_api = orkim.OrkimScraper(
-            username=settings_data.get("orkim_username"),
-            password=settings_data.get("orkim_password"),
-            openai_api_key=os.getenv("OCR_API_KEY")
-        )
+        try: # Genel hata yakalama eklendi
+            netflex_api = netflex.NetflexAPI(username=settings_data.get("netflex_username"),
+                                             password=settings_data.get("netflex_password"))
+            orkim_api = orkim.OrkimScraper(
+                username=settings_data.get("orkim_username"),
+                password=settings_data.get("orkim_password"),
+                openai_api_key=os.getenv("OCR_API_KEY")
+            )
 
-        # ITK scraper'ını ayarlardan gelen bilgilerle güncelle
-        itk_api.USERNAME = settings_data.get("itk_username")
-        itk_api.PASSWORD = settings_data.get("itk_password")
+            # ITK scraper'ını ayarlardan gelen bilgilerle güncelle
+            itk_api.USERNAME = settings_data.get("itk_username")
+            itk_api.PASSWORD = settings_data.get("itk_password")
 
-        engine = ComparisonEngine(sigma_api, netflex_api, tci_api, orkim_api, itk_api, initial_settings=settings_data)
+            engine = ComparisonEngine(sigma_api, netflex_api, tci_api, orkim_api, itk_api, initial_settings=settings_data)
 
-        # Ayrı bir thread'de ITK ürünlerini çek ve önbelleğe al
-        threading.Thread(target=_populate_itk_cache, args=(itk_api,), name="ITK-Cache-Builder", daemon=True).start()
+            # Ayrı bir thread'de ITK ürünlerini çek ve önbelleğe al
+            threading.Thread(target=_populate_itk_cache, args=(itk_api,), name="ITK-Cache-Builder", daemon=True).start()
 
-        def init_task():
-            try:
-                # # --- YENİ: Lisans Kontrol Bloğu ---
-                # logging.info("Lisans kontrolü yapılıyor...")
-                # license_key = settings_data.get("license_key")
-                # device_id = get_hashed_device_id()
-                #
-                # if not check_license(license_key, device_id):
-                #     # Lisans geçerli değilse, hata gönder ve işlemi durdur.
-                #     send_to_frontend("license_error", True)
-                #     return  # Bu thread'i sonlandır
-                #
-                # logging.info("Lisans geçerli. Diğer servisler başlatılıyor.")
-                # # --- Lisans Kontrolü Bitişi ---
-                netflex_api.get_token()
-                engine.initialize_drivers()
-                send_to_frontend("python_services_ready", True)
-                services_initialized.set()
-            except netflex.AuthenticationError:
-                send_to_frontend("authentication_error", True)
-            except Exception as e:
-                logging.critical(f"Servis başlatma hatası: {e}", exc_info=True)
-                send_to_frontend(
-                    "python_services_ready", False)
+            def init_task():
+                try:
+                    # # Lisans kontrolü...
+                    # netflex.AuthenticationError burada yakalanacak
+                    netflex_api.get_token()
+                    # WebDriverException burada yakalanacak
+                    engine.initialize_drivers()
+                    send_to_frontend("python_services_ready", True)
+                    services_initialized.set()
+                except netflex.AuthenticationError:
+                    send_to_frontend("authentication_error", True)
+                    # GÜNCELLEME: Kimlik doğrulama hatasında servislerin hazır olmadığını belirt
+                    services_initialized.clear() # Hazır değil olarak işaretle
+                    send_to_frontend("python_services_ready", False)
+                except Exception as e:
+                    logging.critical(f"Servis başlatma alt görevi (init_task) hatası: {e}", exc_info=True)
+                    send_to_frontend("python_services_ready", False)
+                    services_initialized.clear() # Hazır değil olarak işaretle
 
-        threading.Thread(target=init_task, name="Full-Initializer", daemon=True).start()
+            threading.Thread(target=init_task, name="Full-Initializer", daemon=True).start()
+        except Exception as e:
+             logging.critical(f"Ana servis başlatma (initialize_services) hatası: {e}", exc_info=True)
+             send_to_frontend("python_services_ready", False) # Ana başlatmada hata olursa da hazır değil gönder
 
     if SETTINGS_FILE_PATH.exists():
-        initialize_services(load_settings()[0])  # YENİ: load_settings tuple döndürdüğü için ilk elemanı al
+        loaded_settings, _ = load_settings() # _ ile was_upgraded'i al ama kullanma
+        initialize_services(loaded_settings)
     else:
         send_to_frontend("initial_setup_required", True)
 
@@ -1370,20 +1533,32 @@ def main():
                     send_to_frontend("new_settings_available", True)
             elif action == "save_settings" and isinstance(data, dict):
                 save_settings(data)
+                # Servisler henüz başlamadıysa veya hata aldıysa yeniden başlatmayı dene
+                should_reinitialize = not services_initialized.is_set()
                 if engine:
                     engine.settings = data
-                    engine.netflex_api.update_credentials(data.get("netflex_username"), data.get("netflex_password"))
+                    if engine.netflex_api:
+                        engine.netflex_api.update_credentials(data.get("netflex_username"), data.get("netflex_password"))
                     if engine.orkim_api:
                         engine.orkim_api.username = data.get("orkim_username")
                         engine.orkim_api.password = data.get("orkim_password")
-                        engine.orkim_api.is_logged_in = False
+                        engine.orkim_api.is_logged_in = False # Tekrar giriş yapsın
                     if engine.itk_api:
                         engine.itk_api.USERNAME = data.get("itk_username")
                         engine.itk_api.PASSWORD = data.get("itk_password")
-                if not services_initialized.is_set():
-                    services_initialized.clear()
+                        # ITK cache'i otomatik yenilenmiyor, manuel tetikleme gerekebilir (şimdilik yok)
+                else: # Engine hiç oluşmadıysa da yeniden başlatmayı tetikle
+                     should_reinitialize = True
+
+                if should_reinitialize:
+                    logging.info("Ayarlar kaydedildi, servisler yeniden başlatılıyor...")
+                    services_initialized.clear() # Yeniden başlatma için flag'i temizle
                     initialize_services(data)
+                else:
+                     logging.info("Ayarlar güncellendi.")
+
                 send_to_frontend("settings_saved", {"status": "success"})
+
             elif action == "load_calendar_notes":
                 send_to_frontend("calendar_notes_loaded", load_calendar_notes())
             elif action == "save_calendar_notes" and isinstance(data, list):
@@ -1394,22 +1569,25 @@ def main():
                 if data.get("noteDate") and data.get("meetingId"):
                     _mark_meeting_as_complete(data["noteDate"], data["meetingId"])
             elif action in ["search", "start_batch_search"] and data:
-                if not services_initialized.is_set(): send_to_frontend("search_error",
-                                                                       "Servisler başlatılmadı."); continue
+                if not services_initialized.is_set():
+                    send_to_frontend("search_error", "Servisler henüz başlatılmadı veya başlatılırken hata oluştu.")
+                    continue
+                # Çalışan aramaları durdur
                 if search_thread and search_thread.is_alive(): engine.force_cancel();search_thread.join(5.0)
-                if batch_search_thread and batch_search_thread.is_alive(): engine.force_cancel_batch();batch_search_thread.join(
-                    5.0)
+                if batch_search_thread and batch_search_thread.is_alive(): engine.force_cancel_batch();batch_search_thread.join(5.0)
+
+                # Yeni aramayı başlat
                 if action == "search":
                     engine.search_cancelled.clear()
-                    # DEĞİŞİKLİK: 'data' objesinin tamamını (searchTerm ve searchLogic içerir) gönder
-                    search_thread = threading.Thread(target=engine.search_and_compare, args=(data,),
-                                                     name="Search-Coordinator")
+                    search_thread = threading.Thread(target=engine.search_and_compare, args=(data,), name="Search-Coordinator")
                     search_thread.start()
-                else:
+                else: # start_batch_search
+                    engine.batch_search_cancelled.clear() # Toplu arama iptal flag'ini temizle
                     batch_search_thread = threading.Thread(target=engine.run_batch_search,
                                                            args=(data.get("filePath"), data.get("customerName")),
                                                            name="Batch-Search-Coordinator")
                     batch_search_thread.start()
+
             elif action == "cancel_search" or action == "cancel_current_term_search":
                 if engine: engine.force_cancel()
             elif action == "cancel_batch_search":
@@ -1423,44 +1601,72 @@ def main():
             elif action == "shutdown":
                 logging.info("Kapatma komutu alındı. Sürücüler kapatılıyor...")
                 stop_notification_scheduler()
-                send_to_frontend('python_shutdown_complete', {})
+                # Kapatma sinyalini hemen gönder, Python kapanışının bitmesini bekleme
+                # send_to_frontend('python_shutdown_complete', {}) # -> Bu satırı kaldır
+
                 if engine:
-                    engine.force_cancel_batch()
+                    engine.force_cancel() # Aktif anlık aramayı iptal et
+                    engine.force_cancel_batch() # Aktif toplu aramayı iptal et
+                    # Thread'leri beklemeye al ama çok uzun sürmesin
                     if search_thread and search_thread.is_alive():
+                        logging.debug("Anlık arama thread'inin bitmesi bekleniyor (max 1s)...")
                         search_thread.join(1.0)
                     if batch_search_thread and batch_search_thread.is_alive():
+                        logging.debug("Toplu arama thread'inin bitmesi bekleniyor (max 1s)...")
                         batch_search_thread.join(1.0)
-                    # Tüm sürücülerin düzgün kapatıldığından emin ol
+
+                    # Selenium sürücülerini kapatmayı dene
+                    logging.info("Selenium sürücüleri kapatılıyor...")
+                    driver_shutdown_errors = False
                     try:
                         if sigma_api: sigma_api.stop_drivers()
                     except Exception as e:
                         logging.error(f"Sigma sürücüleri kapatılırken hata: {e}")
+                        driver_shutdown_errors = True
                     try:
                         if tci_api: tci_api.close_driver()
                     except Exception as e:
                         logging.error(f"TCI sürücüsü kapatılırken hata: {e}")
+                        driver_shutdown_errors = True
                     try:
-                        if orkim_api: orkim_api.close_driver()
+                        if orkim_api: orkim_api.close_driver() # Orkim requests session kullanıyor
                     except Exception as e:
-                        logging.error(f"Orkim sürücüsü kapatılırken hata: {e}")
-                    try:
-                        if itk_api: itk_api.close_driver()
-                    except Exception as e:
-                        logging.error(f"ITK sürücüsü kapatılırken hata: {e}")
-                logging.info("Tüm sürücüler kapatıldı. Arka plan servisinden çıkılıyor.")
-                break  # Döngüyü sonlandır ve script'in bitmesini sağla
+                        logging.error(f"Orkim oturumu kapatılırken hata: {e}")
+                        driver_shutdown_errors = True
+                    # ITK da requests session kullanıyor, kapatmaya gerek yok
+
+                    if driver_shutdown_errors:
+                         logging.warning("Bazı sürücüler kapatılırken hata oluştu.")
+                    else:
+                         logging.info("Tüm sürücüler başarıyla kapatıldı.")
+
+                logging.info("Arka plan servisinden çıkılıyor.")
+                 # GÜNCELLEME: Electron'a kapatma işleminin BİTTİĞİNİ burada bildir
+                send_to_frontend('python_shutdown_complete', {})
+                sys.stdout.flush() # Mesajın gittiğinden emin ol
+                time.sleep(0.1) # Küçük bir bekleme
+                break # Ana döngüden çık ve script'i sonlandır
+
         except json.JSONDecodeError:
-            logging.error(f"Geçersiz JSON: {line}")
+            logging.error(f"Geçersiz JSON alındı: {line.strip()}")
         except Exception as e:
-            logging.critical(f"Ana döngüde hata: {e}", exc_info=True)
+            logging.critical(f"Ana döngüde beklenmedik bir hata oluştu: {e}", exc_info=True)
 
-    stop_notification_scheduler()
-    logging.info("Python ana döngüsü sonlandı.")
-    # Kapatma tamamlandığında Electron'a haber veriyoruz.
-    send_to_frontend('python_shutdown_complete', {})
-    sys.stdout.flush()
-    time.sleep(0.5)
 
+    # Döngü bittiğinde (shutdown komutuyla) veya bir hata oluştuğunda buraya gelinir.
+    logging.info("Python ana döngüsü sona erdi.")
+    stop_notification_scheduler() # Zamanlayıcıyı durdurduğumuzdan emin olalım
+    # GÜNCELLEME: Kapatma tamamlandı mesajı zaten yukarıda gönderildi.
+    # sys.stdout.flush()
+    # time.sleep(0.5)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+         logging.critical(f"main() fonksiyonunda yakalanmayan kritik hata: {e}", exc_info=True)
+         # Hata durumunda da Electron'a kapanması gerektiğini söyleyebiliriz (isteğe bağlı)
+         # send_to_frontend('python_shutdown_complete', {'error': True})
+         # sys.stdout.flush()
+         # time.sleep(0.1)
+
