@@ -697,7 +697,7 @@ declare global {
   interface Window {
     electronAPI: {
       rendererReady: () => void
-      performSearch: (searchTerm: string) => void
+      performSearch: (data: { searchTerm: string; searchLogic: string }) => void
       cancelSearch: () => void
       exportToExcel: (data: any) => void
       loadSettings: () => void
@@ -1699,8 +1699,8 @@ const ProductResultItem = ({
   const gridClasses = cn(
     "grid gap-x-4 items-center p-4",
     isProductNameVisible
-      ? "grid-cols-[60px_150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[60px_150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[60px_150px_150px_150px_150px_120px_100px_1fr_auto]" // Stok sütunu eklendi (100px)
+      : "grid-cols-[60px_150px_150px_150px_150px_120px_100px_auto]", // Stok sütunu eklendi (100px)
   )
 
   const getCombinedData = useMemo(() => {
@@ -1736,9 +1736,12 @@ const ProductResultItem = ({
       price_numeric: priceData.price_eur,
       price_str: priceData.price_eur_str,
       source: `Sigma (${countryCode.toUpperCase()})`,
-      cheapest_netflex_stock: "N/A",
-      brand: `Sigma (${product.brand})`,
-      unit: "Adet",
+      // --- DEĞİŞİKLİK BURADA ---
+      // Hardcoded "N/A" yerine ana ürünün hesaplanmış stok bilgisini kullan
+      cheapest_netflex_stock: product.cheapest_netflex_stock ?? "N/A",
+      // --- DEĞİŞİKLİK SONU ---
+      brand: `Sigma (${product.brand})`, // Ana ürünün brand bilgisini kullanmak daha doğru olabilir
+      unit: priceData.package_size || "Adet", // Package size'ı unit olarak alalım
     }
     onSelectionChange(assignmentItem)
   }
@@ -1761,14 +1764,14 @@ const ProductResultItem = ({
   const handleSelectTCI = (product: ProductResult, variation: TciVariation) => {
     const assignmentItem: AssignmentItem = {
       product_name: product.product_name,
-      product_code: `${product.product_number}-${variation.unit}`,
+      product_code: `${product.product_number}-${variation.unit}`, // Kodu benzersiz yapalım
       cas_number: product.cas_number,
       price_numeric: variation.calculated_price_eur,
       price_str: variation.calculated_price_eur_str,
       source: "TCI",
       cheapest_netflex_stock: variation.stock_info?.map((s) => `${s.country}: ${s.stock}`).join(", ") || "N/A",
       brand: "TCI",
-      unit: variation.unit,
+      unit: variation.unit, // TCI varyasyonunun birimini kullan
     }
     onSelectionChange(assignmentItem)
   }
@@ -1780,6 +1783,20 @@ const ProductResultItem = ({
       p.tci_variations?.find((v) => v.calculated_price_eur_str === p.cheapest_eur_price_str)?.calculated_price_eur ||
       null
 
+    // Ana ürün için birim bulmaya çalışalım (varsa ilk varyasyondan)
+    let unit = "Adet" // Default
+    if (p.sigma_variations) {
+      const firstCountry = Object.keys(p.sigma_variations)[0]
+      if (firstCountry && p.sigma_variations[firstCountry]?.length > 0) {
+        unit = p.sigma_variations[firstCountry][0].package_size || "Adet"
+      }
+    } else if (p.tci_variations && p.tci_variations.length > 0) {
+      unit = p.tci_variations[0].unit || "Adet"
+    } else if (p.itk_variations && p.itk_variations.length > 0) {
+      // ITK'da birim bilgisi var mı kontrol et, yoksa default
+      unit = p.itk_variations[0].unit || "Adet" // 'unit' alanı varsa kullan
+    }
+
     const assignmentItem: AssignmentItem = {
       product_name: p.product_name,
       product_code: p.cheapest_material_number || p.product_number,
@@ -1789,7 +1806,7 @@ const ProductResultItem = ({
       source: p.cheapest_source_country || p.source,
       cheapest_netflex_stock: p.cheapest_netflex_stock || "N/A",
       brand: p.brand,
-      unit: "Adet",
+      unit: unit, // Bulunan veya varsayılan birimi ata
     }
     onSelectionChange(assignmentItem)
   }
@@ -1819,6 +1836,15 @@ const ProductResultItem = ({
         <div className="truncate" title={product.cheapest_source_country}>
           {product.cheapest_source_country}
         </div>
+        {/* YENİ: Stok Bilgisi Div'i */}
+        <div>
+          {product.cheapest_netflex_stock === 0 ? (
+            <span className="text-destructive">Stokta Yok</span>
+          ) : (
+            product.cheapest_netflex_stock ?? "N/A"
+          )}
+        </div>
+        {/* --- YENİ DİV SONU --- */}
         {isProductNameVisible && (
           <div
             className="min-w-0 font-medium truncate"
@@ -2032,6 +2058,7 @@ const SearchPage = ({
   toast,
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "")
+  const [searchLogic, setSearchLogic] = useState("similar") // "similar" or "exact"
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
@@ -2050,7 +2077,7 @@ const SearchPage = ({
     if (isMounted.current) {
       if (initialSearchTerm) {
         setSearchTerm(initialSearchTerm)
-        handleSearch(initialSearchTerm)
+        handleSearch(initialSearchTerm, searchLogic)
         onSearchExecuted()
       }
     } else {
@@ -2060,7 +2087,7 @@ const SearchPage = ({
       }
       isMounted.current = true
     }
-  }, [initialSearchTerm, handleSearch, onSearchExecuted])
+  }, [initialSearchTerm, handleSearch, onSearchExecuted, searchLogic])
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -2085,7 +2112,7 @@ const SearchPage = ({
       setFilterTerm("")
       setDebouncedFilterTerm("")
       setCurrentPage(1) // Yeni arama yapıldığında ilk sayfaya dön
-      handleSearch(searchTerm)
+      handleSearch(searchTerm, searchLogic)
     }
   }
 
@@ -2151,8 +2178,8 @@ const SearchPage = ({
   const headerGridClasses = cn(
     "grid gap-x-4 font-semibold text-sm text-muted-foreground items-center",
     isProductNameVisible
-      ? "grid-cols-[60px_150px_150px_150px_150px_120px_1fr_auto]"
-      : "grid-cols-[60px_150px_150px_150px_150px_120px_auto]",
+      ? "grid-cols-[60px_150px_150px_150px_150px_120px_100px_1fr_auto]" // Stok başlığı eklendi
+      : "grid-cols-[60px_150px_150px_150px_150px_120px_100px_auto]", // Stok başlığı eklendi
   )
 
   return (
@@ -2172,6 +2199,32 @@ const SearchPage = ({
               className="pl-8 w-full"
             />
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Filter className="mr-2 h-4 w-4" />
+                <span>{searchLogic === 'similar' ? 'Benzer Arama' : 'İsabetli Arama'}</span>
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Arama Tipi</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={searchLogic === 'similar'}
+                onCheckedChange={() => setSearchLogic('similar')}
+              >
+                Benzer Arama
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={searchLogic === 'exact'}
+                onCheckedChange={() => setSearchLogic('exact')}
+              >
+                İsabetli Arama
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Tooltip content="Orijinal Fiyatları Göster/Gizle">
             <Button variant="outline" size="icon" onClick={() => setShowOriginalPrices(!showOriginalPrices)}>
@@ -2311,6 +2364,9 @@ const SearchPage = ({
                 <div className="truncate">Marka</div>
                 <div className="truncate">En Ucuz Fiyat (EUR)</div>
                 <div className="truncate">Kaynak</div>
+                {/* YENİ: Stok Başlığı */}
+                <div className="truncate">Stok</div>
+                {/* --- YENİ BAŞLIK SONU --- */}
                 {isProductNameVisible && <div className="truncate">Ürün Adı</div>}
                 <div className="w-16 text-right">Detay</div>
               </div>
@@ -3821,7 +3877,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     })
   }
 
-  const handleSearch = useCallback((searchTerm: string) => {
+  const handleSearch = useCallback((searchTerm: string, searchLogic: string) => {
     if (!searchTerm.trim()) return;
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
@@ -3832,7 +3888,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     setError(null);
     setCurrentSearchTerm(searchTerm);
     if (window.electronAPI) {
-      window.electronAPI.performSearch(searchTerm);
+      window.electronAPI.performSearch({ searchTerm, searchLogic });
     } else {
       console.error("Electron API bulunamadı, arama yapılamıyor.");
       setIsLoading(false);

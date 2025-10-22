@@ -13,7 +13,8 @@ const createListener = (channel) => (callback) => {
 contextBridge.exposeInMainWorld("electronAPI", {
   // --- Komut Gönderme (Renderer -> Main) ---
   rendererReady: () => ipcRenderer.send("renderer-ready"),
-  performSearch: (searchTerm) => ipcRenderer.send("perform-search", searchTerm),
+  // DEĞİŞİKLİK: Arama mantığını da içeren 'data' objesini gönder
+  performSearch: (data) => ipcRenderer.send("perform-search", data),
   cancelSearch: () => ipcRenderer.send("cancel-search"),
   exportToExcel: (data) => ipcRenderer.send("export-to-excel", data),
   loadSettings: () => ipcRenderer.send("load-settings"),

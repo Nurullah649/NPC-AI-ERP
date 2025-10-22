@@ -101,6 +101,7 @@ def get_resource_path(relative_path: str) -> str:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+
 # --- YENİ VE GÜVENLİ UYGULAMA VERİ YOLU TANIMI ---
 def get_persistent_data_path() -> Path:
     if len(sys.argv) > 1:
@@ -135,6 +136,7 @@ notification_running = False
 # ITK ürünleri için global önbellek
 itk_product_cache = []
 itk_cache_lock = threading.Lock()
+
 
 #
 # # --- YENİ: Lisans ve Donanım ID Fonksiyonları ---
@@ -185,7 +187,7 @@ itk_cache_lock = threading.Lock()
 #         return False
 
 # --- Ayarları Yükleme/Kaydetme Fonksiyonları ---
-def load_settings() -> (Dict[str, Any], bool): # YENİ: bool değeri döndürür (was_upgraded)
+def load_settings() -> (Dict[str, Any], bool):  # YENİ: bool değeri döndürür (was_upgraded)
     """
     Kullanıcı ayarlarını yükler. Eğer ayar dosyası yoksa varsayılanları oluşturur.
     Mevcut ayar dosyasını, koddaki yeni varsayılan ayarlarla akıllıca günceller.
@@ -263,6 +265,7 @@ def save_calendar_notes(notes: list):
             json.dump(notes, f, indent=4, ensure_ascii=False)
     except (IOError, TypeError) as e:
         logging.error(f"Takvim notları kaydedilirken hata: {e}")
+
 
 # ... (Geri kalan tüm Python kodunuz burada hiçbir değişiklik olmadan devam ediyor) ...
 # ...
@@ -596,52 +599,101 @@ def export_to_excel(data: Dict[str, Any]):
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Ürün Listesi"
-        headers = ["Kaynak", "Ürün Adı", "Marka", "Ürün Kodu", "Fiyat", "Para Birimi", "Birim", "Stok Durumu"]
+        # --- YENİ BAŞLIK EKLEME ---
+        headers = ["Kaynak", "Ürün Adı", "Marka", "Ürün Kodu", "Fiyat", "Para Birimi", "KDV", "Birim", "Stok Durumu"]
+        # --- BAŞLIK GÜNCELLENDİ ---
         sheet.append(headers)
         for cell in sheet["1:1"]: cell.font = openpyxl.styles.Font(bold=True)
 
         for product in products:
             price_str_from_product = str(product.get("price_str", "N/A"))
 
-            # Para birimi sembolünü belirle
+            # KDV oranını ve temiz fiyat metnini ayıkla
+            kdv_str = "Yok"  # Default KDV
+            clean_price_str = price_str_from_product  # KDV'siz fiyat metni
+            kdv_match = re.search(r'\+\s*%(\d+)\s*KDV', price_str_from_product, re.IGNORECASE)
+            if kdv_match:
+                kdv_str = f"%{kdv_match.group(1)}"
+                # KDV kısmını fiyattan temizle
+                clean_price_str = re.sub(r'\s*\+\s*%(\d+)\s*KDV.*', '', price_str_from_product,
+                                         flags=re.IGNORECASE).strip()
+
+            # Para birimi sembolünü temiz fiyattan belirle
             currency_symbol = ""
-            price_str_lower = price_str_from_product.lower()
+            price_str_lower = clean_price_str.lower()
             if '€' in price_str_lower or 'eur' in price_str_lower:
                 currency_symbol = "€"
             elif '$' in price_str_lower or 'usd' in price_str_lower:
                 currency_symbol = "$"
             elif '£' in price_str_lower or 'gbp' in price_str_lower:
                 currency_symbol = "£"
+            elif '₺' in price_str_lower or 'try' in price_str_lower or 'tl' in price_str_lower:
+                currency_symbol = "₺"
 
-            # Fiyatı sayısal formata çevir ve Excel için hazırla
+            # Sayısal fiyatı (price_numeric) al, yoksa 0 ata
             price_val = product.get("price_numeric")
-            price_str_for_excel = "N/A"
+            excel_price_value = 0  # Default to 0 if no numeric price
             if isinstance(price_val, (int, float)):
-                price_str_for_excel = f"{price_val:.2f}".replace('.', ',')
-            else:
-                # Sayısal değer yoksa, string'den sembolleri temizle
-                cleaned_price = re.sub(r'[^\d,.]', '', price_str_from_product).strip()
-                price_str_for_excel = cleaned_price.replace('.', ',')
+                excel_price_value = price_val
+            # Eğer sayısal fiyat yoksa ama temiz fiyattan parse edilebiliyorsa dene
+            elif clean_price_str not in ["N/A", "Teklif İsteyiniz", ""]:
+                try:
+                    # Para birimi ve diğer karakterleri temizle
+                    numeric_part = re.sub(r'[^\d,.]', '', clean_price_str).strip()
+                    # Virgül ve nokta dönüşümü
+                    if ',' in numeric_part and '.' in numeric_part:
+                        if numeric_part.rfind(',') > numeric_part.rfind('.'):  # 1.234,56 formatı
+                            numeric_part = numeric_part.replace('.', '').replace(',', '.')
+                        else:  # 1,234.56 formatı
+                            numeric_part = numeric_part.replace(',', '')
+                    else:  # Sadece virgül varsa ondalık ayırıcıdır
+                        numeric_part = numeric_part.replace(',', '.')
+
+                    parsed_price = float(numeric_part)
+                    if not isinstance(price_val, (int, float)):  # Sadece product.price_numeric yoksa bunu kullan
+                        excel_price_value = parsed_price
+                except ValueError:
+                    pass  # Parse edilemezse 0 olarak kalır
 
             row = [
                 product.get("source", "N/A"),
                 product.get("product_name", "N/A"),
                 product.get("brand", product.get("source", "N/A")),
                 product.get("product_code", "N/A"),
-                price_str_for_excel,
+                excel_price_value,
                 currency_symbol,
+                kdv_str,  # YENİ KDV SÜTUNU VERİSİ
                 product.get("unit", "Adet"),
                 product.get("cheapest_netflex_stock", "N/A")
             ]
             sheet.append(row)
 
+        # Fiyat Sütunu Formatlama (E sütunu)
+        price_column = sheet['E']
+        for cell in price_column[1:]:  # Başlık hariç
+            cell.number_format = '#,##0.00'
+
+        # Sütun genişliklerini ayarla
         for col in sheet.columns:
             max_length = 0
+            column_letter = col[0].column_letter
             try:
-                max_length = max(len(str(cell.value)) for cell in col if cell.value)
+                # Sayısal sütunlar için genişlik hesaplamasını atla veya farklı yap
+                if column_letter == 'E':  # Fiyat sütunuysa
+                    max_length = 15  # Sabit bir genişlik ayarla
+                else:
+                    max_length = max(len(str(cell.value)) for cell in col if cell.value is not None)
             except (ValueError, TypeError):
-                pass
-            sheet.column_dimensions[col[0].column_letter].width = max_length + 2
+                pass  # Boş sütun veya başka bir hata durumunda
+
+            # Genişliği ayarla
+            adjusted_width = max_length + 2
+            if column_letter == 'E':
+                adjusted_width = max_length  # Fiyat için sabit genişlik
+            elif column_letter == 'G':  # KDV sütunu daha dar olabilir
+                adjusted_width = 8
+
+            sheet.column_dimensions[column_letter].width = adjusted_width
 
         workbook.save(filepath)
         logging.info(f"Excel dosyası oluşturuldu: {filepath}")
@@ -873,7 +925,8 @@ class ComparisonEngine:
                 "original_price_numeric": price_float,
                 "stock_info": variation.get('stock_info', []),
                 "calculated_price_eur": calculated_price_eur,
-                "calculated_price_eur_str": f"{calculated_price_eur:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".") if calculated_price_eur is not None else "N/A"
+                "calculated_price_eur_str": f"{calculated_price_eur:,.2f}€".replace(",", "X").replace(".", ",").replace(
+                    "X", ".") if calculated_price_eur is not None else "N/A"
             })
 
         return {
@@ -889,7 +942,7 @@ class ComparisonEngine:
 
     def _process_orkim_product(self, orkim_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """Orkim'den gelen ürün verisini standart formata çevirir."""
-        
+
         # Stok bilgisini al ve formatla
         stock_quantity = orkim_product.get("stock_quantity")
         stock_status = orkim_product.get("stock_status")
@@ -985,11 +1038,17 @@ class ComparisonEngine:
             "itk_variations": []
         }
 
-    def search_and_compare(self, search_term: str, context: Dict = None):
+    # DEĞİŞİKLİK: 'search_term: str' yerine 'search_data: dict' al
+    def search_and_compare(self, search_data: dict, context: Dict = None):
         start_time = time.monotonic()
-        logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}'")
+
+        # DEĞİŞİKLİK: search_term ve search_logic'i 'search_data' objesinden al
+        search_term = search_data.get("searchTerm", "")
+        search_logic = search_data.get("searchLogic", "similar")  # Varsayılan "similar"
+
+        logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic})")
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
-            f"Arama: '{search_term}'")
+            f"Arama: '{search_term}' (Mantık: {search_logic})")
 
         # M-kodu varyasyonlarını yönetme
         search_term_variations = {search_term.lower()}
@@ -1004,7 +1063,6 @@ class ComparisonEngine:
 
         total_found = 0
         total_found_lock = threading.Lock()
-        # YENİ: Sadece Sigma sonuçlarını saymak için yeni bir sayaç ve kilidi oluşturuldu.
         sigma_found_count = 0
         sigma_found_lock = threading.Lock()
 
@@ -1017,26 +1075,56 @@ class ComparisonEngine:
                         if self.search_cancelled.is_set(): break
                         for product in product_page:
                             if self.search_cancelled.is_set(): break
-                            processed = self._process_tci_product(product, context)
-                            send_to_frontend("product_found", {"product": processed}, context=context)
-                            with total_found_lock:
-                                total_found += 1
+
+                            # YENİ: Arama mantığı filtresi
+                            match_found = False
+                            term_lower = search_term.lower()
+                            if search_logic == "exact":
+                                if (term_lower in product.name.lower() or
+                                        term_lower in product.code.lower() or
+                                        term_lower in product.cas_number.lower()):
+                                    match_found = True
+                            else:
+                                match_found = True  # Benzer arama, TCI'ın kendi sonucunu kabul eder
+
+                            if match_found:
+                                processed = self._process_tci_product(product, context)
+                                send_to_frontend("product_found", {"product": processed}, context=context)
+                                with total_found_lock:
+                                    total_found += 1
                 except Exception as e:
                     logging.error(f"TCI akış hatası: {e}", exc_info=True)
 
             def sigma_task():
-                # DEĞİŞİKLİK: 'sigma_found_count' değişkeninin bu fonksiyonda değiştirileceği belirtildi.
                 nonlocal total_found, sigma_found_count
                 with ThreadPoolExecutor(max_workers=self.max_workers,
                                         thread_name_prefix="Sigma-Processor") as processor:
                     try:
                         self.currency_converter.get_parities()
-                        futures = [processor.submit(self._process_single_sigma_product_and_send, raw_product, context)
-                                   for raw_product in self.sigma_api.search_products(search_term, self.search_cancelled)
-                                   if not self.search_cancelled.is_set()]
+
+                        raw_product_stream = self.sigma_api.search_products(search_term, self.search_cancelled)
+                        futures = []
+                        term_lower = search_term.lower()
+
+                        for raw_product in raw_product_stream:
+                            if self.search_cancelled.is_set(): break
+
+                            # YENİ: Arama mantığı filtresi
+                            match_found = False
+                            if search_logic == "exact":
+                                if (term_lower in raw_product.get('product_name_sigma', '').lower() or
+                                        term_lower in raw_product.get('product_number', '').lower() or
+                                        term_lower in raw_product.get('cas_number', '').lower()):
+                                    match_found = True
+                            else:
+                                match_found = True  # Benzer arama, Sigma'nın API sonucunu kabul eder
+
+                            if match_found:
+                                futures.append(
+                                    processor.submit(self._process_single_sigma_product_and_send, raw_product, context))
+
                         for future in as_completed(futures):
                             if future.result():
-                                # DEĞİŞİKLİK: Hem genel sayaç hem de Sigma'ya özel sayaç artırılıyor.
                                 with total_found_lock: total_found += 1
                                 with sigma_found_lock: sigma_found_count += 1
                     except Exception as e:
@@ -1052,12 +1140,27 @@ class ComparisonEngine:
                                 if '.' not in term_var: orkim_search_term = term_var; break
                         orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled)
                         if self.search_cancelled.is_set(): return
+
+                        term_lower = search_term.lower()  # Filtreleme için orijinal terim
+
                         for product in orkim_results:
                             if self.search_cancelled.is_set(): break
-                            processed = self._process_orkim_product(product, context)
-                            send_to_frontend("product_found", {"product": processed}, context=context)
-                            with total_found_lock:
-                                total_found += 1
+
+                            # YENİ: Arama mantığı filtresi
+                            match_found = False
+                            if search_logic == "exact":
+                                if (term_lower in product.get('urun_adi', '').lower() or
+                                        term_lower in product.get('k_kodu', '').lower() or
+                                        term_lower in product.get('uretici_kodu', '').lower()):
+                                    match_found = True
+                            else:
+                                match_found = True  # Benzer arama, Orkim'in "contains" sonucunu kabul eder
+
+                            if match_found:
+                                processed = self._process_orkim_product(product, context)
+                                send_to_frontend("product_found", {"product": processed}, context=context)
+                                with total_found_lock:
+                                    total_found += 1
                 except Exception as e:
                     logging.error(f"Orkim akış hatası: {e}", exc_info=True)
 
@@ -1068,15 +1171,28 @@ class ComparisonEngine:
                 found_codes = set()
                 with itk_cache_lock:
                     cache_to_search = list(itk_product_cache)
+
                 for term_var in itk_search_terms:
                     try:
                         for product in cache_to_search:
                             if self.search_cancelled.is_set(): return
                             code = product.get("product_code", "").lower()
                             name = product.get("product_name", "").lower()
-                            score = 100 if term_var == code else max(fuzz.partial_ratio(term_var, name),
-                                                                     fuzz.partial_ratio(term_var, code))
-                            if score > 85 and code not in found_codes:
+
+                            # YENİ: Arama mantığı
+                            match_found = False
+                            if search_logic == "exact":
+                                # İsabetli Arama: term_var, kod veya isim içinde olmalı
+                                if term_var in code or term_var in name:
+                                    match_found = True
+                            else:
+                                # Benzer Arama: Mevcut fuzzy logic
+                                score = 100 if term_var == code else max(fuzz.partial_ratio(term_var, name),
+                                                                         fuzz.partial_ratio(term_var, code))
+                                if score > 85:
+                                    match_found = True
+
+                            if match_found and code not in found_codes:
                                 processed = self._process_itk_product(product, context)
                                 send_to_frontend("product_found", {"product": processed}, context=context)
                                 with total_found_lock: total_found += 1
@@ -1094,18 +1210,31 @@ class ComparisonEngine:
             f_itk.result()
 
         # 2. Aşama: Eğer SADECE SİGMA'DA sonuç bulunamadıysa Netflex'te ara
-        # Koşul, 'sigma_found_count == 0' olarak güncellendi.
         if sigma_found_count == 0 and not self.search_cancelled.is_set():
             logging.info(f"Sigma'da sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
             try:
                 netflex_results = self.netflex_api.search_products(search_term, self.search_cancelled)
                 if not self.search_cancelled.is_set():
+
+                    term_lower = search_term.lower()  # Filtreleme için
+
                     for product in netflex_results:
                         if self.search_cancelled.is_set(): break
-                        processed = self._process_netflex_product(product, context)
-                        send_to_frontend("product_found", {"product": processed}, context=context)
-                        with total_found_lock:
-                            total_found += 1
+
+                        # YENİ: Arama mantığı filtresi
+                        match_found = False
+                        if search_logic == "exact":
+                            if (term_lower in product.get('product_name', '').lower() or
+                                    term_lower in product.get('product_code', '').lower()):
+                                match_found = True
+                        else:
+                            match_found = True  # Benzer arama, Netflex'in API sonucunu kabul eder
+
+                        if match_found:
+                            processed = self._process_netflex_product(product, context)
+                            send_to_frontend("product_found", {"product": processed}, context=context)
+                            with total_found_lock:
+                                total_found += 1
             except Exception as e:
                 logging.error(f"İkincil Netflex araması sırasında hata: {e}", exc_info=True)
 
@@ -1133,7 +1262,13 @@ class ComparisonEngine:
             send_to_frontend("log_search_term", {"term": term})
             send_to_frontend("batch_search_progress", {"term": term, "current": i + 1, "total": total_terms})
             admin_logger.info(f"  -> Toplu Arama ({i + 1}/{total_terms}): '{term}'")
-            self.search_and_compare(term, context={"batch_search_term": term})
+
+            # DEĞİŞİKLİK: Toplu arama her zaman "benzer" mantığını kullanır.
+            # (Veya isterseniz buraya da bir UI seçeneği ekleyebilirsiniz,
+            # ancak şimdilik 'benzer' varsayalım)
+            search_data = {"searchTerm": term, "searchLogic": "similar"}
+            self.search_and_compare(search_data, context={"batch_search_term": term})
+
         status = "cancelled" if self.batch_search_cancelled.is_set() else "complete"
         send_to_frontend("batch_search_complete", {"status": status})
         if status == 'complete': admin_logger.info(f"Toplu Arama Tamamlandı: Müşteri='{customer_name}'")
@@ -1214,7 +1349,7 @@ def main():
         threading.Thread(target=init_task, name="Full-Initializer", daemon=True).start()
 
     if SETTINGS_FILE_PATH.exists():
-        initialize_services(load_settings()[0]) # YENİ: load_settings tuple döndürdüğü için ilk elemanı al
+        initialize_services(load_settings()[0])  # YENİ: load_settings tuple döndürdüğü için ilk elemanı al
     else:
         send_to_frontend("initial_setup_required", True)
 
@@ -1266,6 +1401,7 @@ def main():
                     5.0)
                 if action == "search":
                     engine.search_cancelled.clear()
+                    # DEĞİŞİKLİK: 'data' objesinin tamamını (searchTerm ve searchLogic içerir) gönder
                     search_thread = threading.Thread(target=engine.search_and_compare, args=(data,),
                                                      name="Search-Coordinator")
                     search_thread.start()
@@ -1324,6 +1460,7 @@ def main():
     send_to_frontend('python_shutdown_complete', {})
     sys.stdout.flush()
     time.sleep(0.5)
+
 
 if __name__ == '__main__':
     main()

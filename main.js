@@ -288,7 +288,8 @@ function sendCommandToPython(command) {
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 // IPC Komutları...
-ipcMain.on("perform-search", (event, searchTerm) => sendCommandToPython({ action: "search", data: searchTerm }))
+// DEĞİŞİKLİK: 'searchTerm' yerine 'data' objesini al
+ipcMain.on("perform-search", (event, data) => sendCommandToPython({ action: "search", data: data }))
 ipcMain.on("cancel-search", () => sendCommandToPython({ action: "cancel_search" }))
 ipcMain.on("export-to-excel", (event, data) => sendCommandToPython({ action: "export", data: data }))
 ipcMain.on("load-settings", () => sendCommandToPython({ action: "load_settings" }))
