@@ -2152,12 +2152,12 @@ const SearchPage = ({
   const filteredResults = useMemo(() => {
     const lowerCaseFilter = debouncedFilterTerm.toLowerCase().trim()
     return searchResults.filter((product) => {
-      const brand = product.brand.toLowerCase()
+      const source = product.source.toLowerCase()
       const brandMatch =
-        (brand.includes("sigma") && filters.brands.sigma) ||
-        (brand.includes("tci") && filters.brands.tci) ||
-        (brand.includes("orkim") && filters.brands.orkim) ||
-        (brand.includes("itk") && filters.brands.itk)
+        (source.includes("sigma") && filters.brands.sigma) ||
+        (source.includes("tci") && filters.brands.tci) ||
+        (source.includes("orkim") && filters.brands.orkim) ||
+        (source.includes("itk") && filters.brands.itk)
 
       if (!brandMatch) return false
       if (lowerCaseFilter) {
