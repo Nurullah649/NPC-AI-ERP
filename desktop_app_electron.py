@@ -878,10 +878,33 @@ class ComparisonEngine:
                 match_found = False
 
                 if search_logic == "exact":
-                    if (search_term in final_product.get('product_name', '').lower() or
-                        search_term in final_product.get('product_number', '').lower() or
-                        search_term in final_product.get('cas_number', '').lower()):
+                    # --- DÜZELTME BAŞLANGICI ---
+                    product_number_lower = final_product.get('product_number', '').lower()
+                    product_name_lower = final_product.get('product_name', '').lower()
+                    cas_number_lower = final_product.get('cas_number', '').lower()
+
+                    # İsim veya CAS tam eşleşiyor mu?
+                    if search_term == product_name_lower or search_term == cas_number_lower:
                         match_found = True
+                    # Arama terimi ana ürün kodunu içeriyor mu VEYA ana ürün kodu arama terimini içeriyor mu?
+                    elif (search_term in product_number_lower or product_number_lower in search_term):
+                        match_found = True
+                    # Eşleşme yoksa Sigma varyasyon kodlarını (material_number) kontrol et
+                    elif (sigma_vars := final_product.get('sigma_variations')):
+                        for country_vars in sigma_vars.values():
+                            if isinstance(country_vars, list):
+                                for var in country_vars:
+                                    if isinstance(var, dict) and search_term == var.get('material_number', '').lower():
+                                        match_found = True
+                                        break
+                            if match_found: break
+                    # Eşleşme yoksa Netflex eşleşme kodlarını (product_code) kontrol et
+                    elif (netflex_matches := final_product.get('netflex_matches')):
+                        for match in netflex_matches:
+                             if isinstance(match, dict) and search_term == match.get('product_code', '').lower():
+                                match_found = True
+                                break
+                    # --- DÜZELTME SONU ---
                 else: # similar
                     match_found = True
 
@@ -1250,11 +1273,17 @@ class ComparisonEngine:
                             # YENİ: Arama mantığı filtresi
                             match_found = False
                             term_lower = search_term.lower()
+                            product_name_lower = (product.name or "").lower()
+                            product_code_lower = (product.code or "").lower()
+                            cas_number_lower = (product.cas_number or "").lower()
+
                             if search_logic == "exact":
-                                if (term_lower in product.name.lower() or
-                                    term_lower in product.code.lower() or
-                                    (product.cas_number and term_lower in product.cas_number.lower())): # CAS None olabilir kontrolü
+                                # --- DÜZELTME BAŞLANGICI (TCI) ---
+                                if (term_lower == product_name_lower or
+                                    (term_lower in product_code_lower or product_code_lower in term_lower) or
+                                    (cas_number_lower and term_lower == cas_number_lower)):
                                     match_found = True
+                                # --- DÜZELTME SONU (TCI) ---
                             else:
                                 match_found = True # Benzer arama, TCI'ın kendi sonucunu kabul eder
 
@@ -1280,16 +1309,6 @@ class ComparisonEngine:
                         for raw_product in raw_product_stream:
                             if self.search_cancelled.is_set(): break
 
-                            # --- DEĞİŞİKLİK: "exact" filtresi buradan kaldırıldı ---
-                            # match_found = False
-                            # if search_logic == "exact":
-                            #     # ... filtreleme kodu ...
-                            # else: # similar
-                            #     match_found = True
-                            #
-                            # if match_found:
-                            # --- DEĞİŞİKLİK SONU ---
-
                             # Görevi gönderirken search_data'yı da ekle
                             futures.append(processor.submit(self._process_single_sigma_product_and_send, raw_product, context, search_data))
 
@@ -1305,17 +1324,7 @@ class ComparisonEngine:
                 nonlocal total_found
                 try:
                     if self.orkim_api:
-                        # --- DEĞİŞİKLİK BAŞLANGICI ---
-                        # M-kodu varyasyon mantığını Orkim için kaldırıyoruz.
-                        # Orijinal arama terimini doğrudan kullanacağız.
                         orkim_search_term = search_term
-                        # if is_m_code:
-                        #     for term_var in search_term_variations:
-                        #         if '.' not in term_var:
-                        #             orkim_search_term = term_var
-                        #             break
-                        # --- DEĞİŞİKLİK SONU ---
-
                         # search_logic'i Orkim API'sine gönder
                         orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled,
                                                                        search_logic)
@@ -1339,33 +1348,34 @@ class ComparisonEngine:
                 with itk_cache_lock:
                     cache_to_search = list(itk_product_cache)
 
-                for term_var in itk_search_terms:
-                    try:
-                        for product in cache_to_search:
-                            if self.search_cancelled.is_set(): return
-                            code = product.get("product_code", "").lower()
-                            name = product.get("product_name", "").lower()
+                term_lower = search_term.lower() # Ana arama terimi
 
-                            # YENİ: Arama mantığı
-                            match_found = False
-                            if search_logic == "exact":
-                                # İsabetli Arama: term_var, kod veya isim içinde olmalı
-                                if term_var in code or term_var in name:
-                                    match_found = True
-                            else:
-                                # Benzer Arama: Mevcut fuzzy logic
-                                score = 100 if term_var == code else max(fuzz.partial_ratio(term_var, name),
-                                                                         fuzz.partial_ratio(term_var, code))
-                                if score > 85:
-                                    match_found = True
+                for product in cache_to_search:
+                    if self.search_cancelled.is_set(): return
+                    code_lower = product.get("product_code", "").lower()
+                    name_lower = product.get("product_name", "").lower()
 
-                            if match_found and code not in found_codes:
-                                processed = self._process_itk_product(product, context)
-                                send_to_frontend("product_found", {"product": processed}, context=context)
-                                with total_found_lock: total_found += 1
-                                found_codes.add(code)
-                    except Exception as e:
-                        logging.error(f"ITK önbellek araması sırasında hata: {e}", exc_info=True)
+                    # YENİ: Arama mantığı
+                    match_found = False
+                    if search_logic == "exact":
+                        # --- DÜZELTME BAŞLANGICI (ITK) ---
+                        if (term_lower == name_lower or
+                            (term_lower in code_lower or code_lower in term_lower)):
+                            match_found = True
+                        # --- DÜZELTME SONU (ITK) ---
+                    else:
+                        # Benzer Arama: Mevcut fuzzy logic
+                        score = 100 if term_lower == code_lower else max(fuzz.partial_ratio(term_lower, name_lower),
+                                                                 fuzz.partial_ratio(term_lower, code_lower))
+                        if score > 85:
+                            match_found = True
+
+                    if match_found and code_lower not in found_codes:
+                        processed = self._process_itk_product(product, context)
+                        send_to_frontend("product_found", {"product": processed}, context=context)
+                        with total_found_lock: total_found += 1
+                        found_codes.add(code_lower)
+
 
             f_tci = executor.submit(tci_task)
             f_sigma = executor.submit(sigma_task)
@@ -1391,10 +1401,15 @@ class ComparisonEngine:
 
                         # YENİ: Arama mantığı filtresi
                         match_found = False
+                        product_name_lower = (product.get('product_name', '') or "").lower()
+                        product_code_lower = (product.get('product_code', '') or "").lower()
+
                         if search_logic == "exact":
-                            if (term_lower in product.get('product_name', '').lower() or
-                                term_lower in product.get('product_code', '').lower()):
+                            # --- DÜZELTME BAŞLANGICI (Netflex 2. Aşama) ---
+                            if (term_lower == product_name_lower or
+                                (term_lower in product_code_lower or product_code_lower in term_lower)):
                                 match_found = True
+                            # --- DÜZELTME SONU (Netflex 2. Aşama) ---
                         else:
                             match_found = True # Benzer arama, Netflex'in API sonucunu kabul eder
 
@@ -1677,4 +1692,3 @@ if __name__ == '__main__':
          # send_to_frontend('python_shutdown_complete', {'error': True})
          # sys.stdout.flush()
          # time.sleep(0.1)
-
