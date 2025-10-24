@@ -2058,7 +2058,7 @@ const SearchPage = ({
   toast,
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "")
-  const [searchLogic, setSearchLogic] = useState("similar") // "similar" or "exact"
+  const [searchLogic, setSearchLogic] = useState("exact") // "similar" or "exact"
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())

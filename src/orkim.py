@@ -371,7 +371,7 @@ class OrkimScraper:
         return [product_data] # Return as a list containing one product
 
     # DEĞİŞİKLİK: 'search_logic' parametresi eklendi
-    def search_products(self, search_term: str, cancellation_token, search_logic: str = "similar") -> List[Dict[str, Any]]:
+    def search_products(self, search_term: str, cancellation_token, search_logic: str = "exact") -> List[Dict[str, Any]]:
         if cancellation_token.is_set(): return []
         if not self._login():
             logging.error("Orkim'e giriş yapılamadı, arama atlanıyor.")

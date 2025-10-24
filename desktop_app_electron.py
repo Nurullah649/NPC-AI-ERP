@@ -874,7 +874,7 @@ class ComparisonEngine:
             if final_product:
                 # --- YENİ: "exact" filtrelemeyi burada uygula ---
                 search_term = search_data.get("searchTerm", "").lower()
-                search_logic = search_data.get("searchLogic", "similar")
+                search_logic = search_data.get("searchLogic", "exact")
                 match_found = False
 
                 if search_logic == "exact":
@@ -1215,7 +1215,7 @@ class ComparisonEngine:
 
         # DEĞİŞİKLİK: search_term ve search_logic'i 'search_data' objesinden al
         search_term = search_data.get("searchTerm", "")
-        search_logic = search_data.get("searchLogic", "similar") # Varsayılan "similar"
+        search_logic = search_data.get("searchLogic", "exact") # Varsayılan "similar"
 
         logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic})")
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
@@ -1305,12 +1305,20 @@ class ComparisonEngine:
                 nonlocal total_found
                 try:
                     if self.orkim_api:
+                        # --- DEĞİŞİKLİK BAŞLANGICI ---
+                        # M-kodu varyasyon mantığını Orkim için kaldırıyoruz.
+                        # Orijinal arama terimini doğrudan kullanacağız.
                         orkim_search_term = search_term
-                        if is_m_code:
-                            for term_var in search_term_variations:
-                                if '.' not in term_var: orkim_search_term = term_var; break
-                        # DEĞİŞİKLİK: search_logic'i Orkim API'sine gönder
-                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled, search_logic)
+                        # if is_m_code:
+                        #     for term_var in search_term_variations:
+                        #         if '.' not in term_var:
+                        #             orkim_search_term = term_var
+                        #             break
+                        # --- DEĞİŞİKLİK SONU ---
+
+                        # search_logic'i Orkim API'sine gönder
+                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled,
+                                                                       search_logic)
                         if self.search_cancelled.is_set(): return
 
                         # Orkim scraper artık filtrelemeyi kendi içinde yapıyor.
