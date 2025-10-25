@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   checkForUpdates: () => ipcRenderer.send("check-for-updates"),
 
+  // YENİ: Orkim Stok Sorgulama
+  getOrkimStock: (productUrl) => ipcRenderer.send("get-orkim-stock", productUrl),
+
 
   // --- Dinleyiciler (Main -> Renderer) ---
   onServicesReady: createListener("services-ready"),
@@ -66,4 +69,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // YENİ: Python'dan gelen yeni ayar bildirimi
   onNewSettingsAvailable: createListener("new-settings-available"),
+
+  // YENİ: Orkim Stok Sonucu Dinleyicisi
+  onOrkimStockResult: createListener("orkim-stock-result"),
 })

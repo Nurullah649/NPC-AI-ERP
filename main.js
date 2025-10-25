@@ -111,6 +111,8 @@ function startPythonService() {
               export_meetings_result: "export-meetings-result",
               // YENİ: Akıllı ayar yükseltme bildirimi
               new_settings_available: "new-settings-available",
+              // YENİ: Orkim Stok Sonucu
+              orkim_stock_result: "orkim-stock-result",
             }
             const channel = channels[type]
             const isStartupMessage = ["initial_setup_required", "python_services_ready", "authentication_error"/*, "license_error"*/].includes(type)
@@ -319,6 +321,10 @@ ipcMain.on("show-notification", (event, { title, body }) => {
         notification.show()
     }
 })
+
+// YENİ: Orkim stok sorgulama
+ipcMain.on("get-orkim-stock", (event, productUrl) => sendCommandToPython({ action: "get_orkim_stock", data: { url: productUrl } }))
+
 // YENİ: Manuel güncelleme kontrolü
 ipcMain.on('check-for-updates', () => {
     autoUpdater.checkForUpdates();

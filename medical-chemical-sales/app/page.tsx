@@ -635,6 +635,7 @@ interface ProductResult {
   cheapest_material_number?: string
   cheapest_source_country?: string
   cheapest_netflex_stock?: number | string
+  product_url?: string // YENİ: Stok sorgulaması için eklendi
 }
 
 interface AssignmentItem {
@@ -736,6 +737,10 @@ declare global {
       onUpdateError: (callback: (error: any) => void) => () => void
       restartAppAndUpdate: () => void
       checkForUpdates: () => void
+
+      // YENİ: Orkim Stok Sorgulama API'ları
+      getOrkimStock: (productUrl: string) => void
+      onOrkimStockResult: (callback: (result: { url: string; stock: number | string }) => void) => () => void
     }
   }
 }
@@ -1728,6 +1733,44 @@ const ProductResultItem = ({
     return Object.values(dataMap)
   }, [product])
 
+  const [orkimStock, setOrkimStock] = useState<number | string | null>(null)
+  const [isCheckingStock, setIsCheckingStock] = useState(false)
+
+  // Stok sorgu sonucunu dinle (Bir sonraki adımda backend'e eklenecek)
+  useEffect(() => {
+    // API henüz yüklenmediyse veya fonksiyon yoksa dinleme
+    if (!window.electronAPI || !window.electronAPI.onOrkimStockResult) return
+
+    const cleanup = window.electronAPI.onOrkimStockResult((result) => {
+      // Bu sonucun bu ürüne ait olup olmadığını kontrol et
+      // (Backend'de product_url eklemesini yapacağız)
+      if (result.url === product.product_url) {
+        setOrkimStock(result.stock)
+        setIsCheckingStock(false)
+      }
+    })
+    return () => cleanup()
+  }, [product.product_url]) // product.product_url'e bağımlı yap
+
+  const handleCheckOrkimStock = (e: React.MouseEvent) => {
+    e.stopPropagation() // Satırın genişlemesini/çökmesini engelle
+
+    // product_url'in backend'den geldiğini varsayıyoruz
+    if (!product.product_url) {
+      // Gerekirse bir toast uyarısı eklenebilir
+      console.error("Bu ürün için URL bulunamadı, stok sorgulanamıyor.")
+      return
+    }
+
+    setIsCheckingStock(true)
+    setOrkimStock(null) // Önceki sonucu temizle
+
+    // Bu API fonksiyonları bir sonraki adımda eklenecek
+    if (window.electronAPI && window.electronAPI.getOrkimStock) {
+      window.electronAPI.getOrkimStock(product.product_url)
+    }
+  }
+
   const handleSelectSigma = (product: ProductResult, item, countryCode, priceData) => {
     const assignmentItem: AssignmentItem = {
       product_name: product.product_name,
@@ -1836,15 +1879,33 @@ const ProductResultItem = ({
         <div className="truncate" title={product.cheapest_source_country}>
           {product.cheapest_source_country}
         </div>
-        {/* YENİ: Stok Bilgisi Div'i */}
-        <div>
-          {product.cheapest_netflex_stock === 0 ? (
+        {/* GÜNCELLENMİŞ: Stok Bilgisi Div'i */}
+        <div className="flex items-center">
+          {isCheckingStock ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+          ) : orkimStock !== null ? (
+            // Sorgulandıktan sonraki sonuç
+            <span className="font-semibold">{orkimStock === 0 ? "Stokta Yok" : `${orkimStock} adet`}</span>
+          ) : product.cheapest_netflex_stock === 0 ? (
             <span className="text-destructive">Stokta Yok</span>
+          ) : product.cheapest_netflex_stock === "Var" &&
+            (product.source === "Orkim" || product.cheapest_source_country === "Orkim") ? (
+            // Orkim ve "Var" ise butonu göster
+            <Button
+              size="xs"
+              variant="outline"
+              className="text-xs h-7"
+              onClick={handleCheckOrkimStock}
+              title="Orkim stoğunu detaylı sorgula"
+            >
+              <Activity className="h-3 w-3 mr-1" />
+              Sorgula
+            </Button>
           ) : (
-            product.cheapest_netflex_stock ?? "N/A"
+            // Diğer her şey (N/A veya Netflex/Sigma/TCI stoğu)
+            <span>{product.cheapest_netflex_stock ?? "N/A"}</span>
           )}
         </div>
-        {/* --- YENİ DİV SONU --- */}
         {isProductNameVisible && (
           <div
             className="min-w-0 font-medium truncate"
