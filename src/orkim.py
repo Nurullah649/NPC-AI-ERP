@@ -63,7 +63,7 @@ class OrkimScraper:
         session.mount('https://', adapter)
         session.mount('http://', adapter)
         session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.37.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/5.37.36",
             "Referer": self.login_page_url,
             "Origin": self.base_url,
             "DNT": "1",
@@ -72,7 +72,6 @@ class OrkimScraper:
         return session
 
     def _process_captcha_image(self, image_bytes: bytes) -> bytes or None:
-        # ... (Bu fonksiyon aynı kaldı) ...
         try:
             image = Image.open(io.BytesIO(image_bytes))
             image = image.convert('L')
@@ -87,7 +86,6 @@ class OrkimScraper:
             return None
 
     def _solve_captcha_with_gpt4o_mini(self, image_bytes: bytes) -> str or None:
-        # ... (Bu fonksiyon aynı kaldı) ...
         if not self.openai_api_key:
             logging.error("Orkim - OpenAI API anahtarı bulunamadı.")
             return None  # Changed from raising error to returning None
@@ -117,7 +115,6 @@ class OrkimScraper:
             return None
 
     def _perform_two_step_login(self, captcha_text: str, re_security_code: str) -> bool:
-        # ... (Bu fonksiyon aynı kaldı) ...
         logging.info("Orkim: 1. Aşama: Giriş bilgileri gönderiliyor...")
         # Ensure correct headers for AJAX request
         self.session.headers.update({
@@ -332,7 +329,6 @@ class OrkimScraper:
         logging.info("Orkim Arka Plan Oturum Yöneticisi durduruldu.")
 
     def _get_product_price_ajax(self, urun_no: str) -> str:
-        # ... (Bu fonksiyon aynı kaldı) ...
         if not urun_no:
             return "N/A"
         try:
@@ -363,7 +359,6 @@ class OrkimScraper:
     def _parse_product_page(self, html_content: str, product_url: str, search_logic: str) -> List[
         Dict[str, Any]]:  # search_logic eklendi
         """Parses a direct product page HTML."""
-        # ... (Fonksiyonun iç mantığı _get_stock_from_page çağrısı hariç aynı) ...
         logging.info(f"Orkim: Ürün sayfası ayrıştırılıyor: {product_url}")
         soup = BeautifulSoup(html_content, 'lxml')
         product_data = {}
@@ -395,7 +390,7 @@ class OrkimScraper:
                     elif 'ambalaj' in header_text:
                         product_data['ambalaj'] = value_text
 
-        # Extract Price (Bu kısım aynı kaldı)
+        # Extract Price
         price_button = soup.find('a', id='fiyatGoster')
         if price_button:
             logging.info("Orkim: 'Fiyatı Göster' butonu bulundu. AJAX isteği yapılacak.")
@@ -418,27 +413,20 @@ class OrkimScraper:
             # Look for direct price
             price_area = soup.find('div', id='fiyatAlani', style=lambda s: s is None or 'display:none' not in s)
             if price_area:
-                # Example 2 structure: Liste Fiyatı, Size Özel Net Fiyat, KDV Hariç TL Fiyat
-                list_price_th = price_area.find_parent('table').find('th',
-                                                                     string=re.compile(r'Liste Fiyatı', re.IGNORECASE))
-                special_price_th = price_area.find_parent('table').find('th', string=re.compile(r'Size Özel Net Fiyat',
-                                                                                                re.IGNORECASE))
-                tl_price_th = price_area.find_parent('table').find('th', string=re.compile(r'KDV Hariç TL Fiyat',
-                                                                                           re.IGNORECASE))
+                # --- Değişiklik Başlangıcı ---
+                # Sadece "Size Özel Net Fiyat" başlığını ara
+                special_price_th = price_area.find_parent('table').find('th', string=re.compile(r'Size Özel Net Fiyat', re.IGNORECASE))
 
-                price_parts = []
-                if list_price_th and (td := list_price_th.find_next_sibling('td')):
-                    list_price_str = td.get_text(separator=' ', strip=True).replace(' + KDV', '+KDV')
-                    if list_price_str: price_parts.append(f"Liste: {list_price_str}")
                 if special_price_th and (td := special_price_th.find_next_sibling('td')):
+                    # Fiyatı ve KDV bilgisini al
                     special_price_str = td.get_text(separator=' ', strip=True).replace(' + KDV', '+KDV')
-                    if special_price_str: price_parts.append(f"Özel: {special_price_str}")
-                if tl_price_th and (td := tl_price_th.find_next_sibling('td')):
-                    tl_price_str = td.get_text(separator=' ', strip=True)
-                    if tl_price_str: price_parts.append(f"TL: {tl_price_str}")
-
-                product_data['price_str'] = " / ".join(price_parts) if price_parts else "N/A"
-                logging.info(f"Orkim: Direkt fiyat bulundu: {product_data['price_str']}")
+                    product_data['price_str'] = special_price_str if special_price_str else "N/A"
+                    logging.info(f"Orkim: Direkt 'Size Özel Net Fiyat' bulundu: {product_data['price_str']}")
+                else:
+                    # Eğer "Size Özel Net Fiyat" bulunamazsa, N/A yap
+                    logging.warning("Orkim: Direkt fiyat alanı var ama 'Size Özel Net Fiyat' bulunamadı.")
+                    product_data['price_str'] = "N/A"
+                # --- Değişiklik Sonu ---
 
             else:
                 logging.warning("Orkim: Fiyat bilgisi bulunamadı (Ne buton ne de direkt alan).")
@@ -486,11 +474,6 @@ class OrkimScraper:
         Dict[str, Any]]:
         if cancellation_token.is_set(): return []
 
-        # --- YENİ: Giriş kontrolü KALDIRILDI ---
-        # Arka plan yöneticisinin oturumu canlı tuttuğunu varsayıyoruz.
-        # if not self._login(): # <-- BU SATIR SİLİNDİ
-        #     logging.error("Orkim'e giriş yapılamadı, arama atlanıyor.")
-        #     return []
         if not self.is_logged_in:  # Hızlı kontrol: Eğer arka plan yöneticisi henüz giriş yapamadıysa
             logging.warning("Orkim oturumu henüz aktif değil. Arama sonuçları eksik olabilir veya hata verebilir.")
             # İsteğe bağlı olarak burada hata döndürebilir veya boş liste döndürebilirsiniz.
@@ -645,7 +628,6 @@ class OrkimScraper:
     # gelecekte eklenebilecek manuel stok sorgulama için kullanılabilir.
     # search_products içinden çağrılmıyor.
     def _get_stock_from_page(self, product_url: str) -> int:
-        # ... (Bu fonksiyonun içeriği aynı kaldı, sadece çağrılma yeri değişti) ...
         try:
             # 1. Ürün sayfasına git
             self.session.headers.update({
