@@ -500,12 +500,18 @@ class OrkimScraper:
                 if not parsed_products: return []
                 product = parsed_products[0]
                 match_found = False
-                if search_logic == "exact":  # Esnek exact mantığı korundu
-                    if (term_lower in product.get('urun_adi', '').lower() or
-                            term_lower in product.get('k_kodu', '').lower() or
-                            term_lower in product.get('uretici_kodu', '').lower()):
+                if search_logic == "exact":
+                    # --- GÜNCELLENMİŞ EXACT MANTIĞI (İsim için de 'in' kullan) ---
+                    product_name_lower = product.get('urun_adi', '').lower()
+                    k_kodu_lower = product.get('k_kodu', '').lower()
+                    uretici_kodu_lower = product.get('uretici_kodu', '').lower()
+
+                    if (term_lower in product_name_lower or
+                            term_lower in k_kodu_lower or
+                            term_lower in uretici_kodu_lower):
                         match_found = True
-                else:
+                    # --- GÜNCELLEME SONU ---
+                else: # 'similar' mantığı
                     match_found = True
                 return [product] if match_found else []
 
@@ -581,11 +587,17 @@ class OrkimScraper:
                     product_data['stock_quantity'] = stock_quantity
 
                     match_found = False
-                    if search_logic == "exact":  # Esnek exact mantığı korundu
-                        if (term_lower in product_data.get('urun_adi', '').lower() or
-                                term_lower in product_data.get('k_kodu', '').lower()):
+                    if search_logic == "exact":
+                        # --- GÜNCELLENMİŞ EXACT MANTIĞI (İsim için de 'in' kullan) ---
+                        product_name_lower = product_data.get('urun_adi', '').lower()
+                        k_kodu_lower = product_data.get('k_kodu', '').lower()
+                        # uretici_kodu bu listede yok, sadece k_kodu var
+
+                        if (term_lower in product_name_lower or
+                                term_lower in k_kodu_lower):
                             match_found = True
-                    else:
+                        # --- GÜNCELLEME SONU ---
+                    else: # 'similar' mantığı
                         match_found = True
 
                     if match_found:

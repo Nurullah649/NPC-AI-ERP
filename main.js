@@ -290,7 +290,7 @@ function sendCommandToPython(command) {
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 // IPC Komutları...
-// DEĞİŞİKLİK: 'searchTerm' yerine 'data' objesini al
+// DEĞİŞİKLİK: 'data' objesi artık { searchTerm, searchLogic, enabledBrands: [...] } gibi ek bilgiler içerebilir.
 ipcMain.on("perform-search", (event, data) => sendCommandToPython({ action: "search", data: data }))
 ipcMain.on("cancel-search", () => sendCommandToPython({ action: "cancel_search" }))
 ipcMain.on("export-to-excel", (event, data) => sendCommandToPython({ action: "export", data: data }))

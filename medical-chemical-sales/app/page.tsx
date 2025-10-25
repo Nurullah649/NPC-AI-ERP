@@ -698,7 +698,7 @@ declare global {
   interface Window {
     electronAPI: {
       rendererReady: () => void
-      performSearch: (data: { searchTerm: string; searchLogic: string }) => void
+      performSearch: (data: { searchTerm: string; searchLogic: string; enabledBrands: string[] }) => void
       cancelSearch: () => void
       exportToExcel: (data: any) => void
       loadSettings: () => void
@@ -3783,41 +3783,51 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     }
   }, [assignments, searchHistory, isDataLoaded])
 
-  useEffect(() => {
-    const today = new Date()
-    const upcomingNotifications: any[] = []
-    calendarNotes.forEach((note) => {
-      note.meetings.forEach((meeting) => {
-        if (meeting.completed || !meeting.nextMeetingDate || meeting.notificationFrequency === "none") {
-          return
-        }
-        const meetingDate = new Date(meeting.nextMeetingDate + "T00:00:00")
-        const notificationDate = new Date(meetingDate)
-        switch (meeting.notificationFrequency) {
-          case "on_day":
-            break
-          case "1_day_before":
-            notificationDate.setDate(notificationDate.getDate() - 1)
-            break
-          case "1_week_before":
-            notificationDate.setDate(notificationDate.getDate() - 7)
-            break
-          default:
-            return
-        }
-        const notificationDateOnly = new Date(
-          notificationDate.getFullYear(),
-          notificationDate.getMonth(),
-          notificationDate.getDate(),
-        )
-        const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-        if (notificationDateOnly.getTime() <= todayOnly.getTime()) {
-          upcomingNotifications.push({ ...meeting, parentNoteDate: note.date })
-        }
-      })
-    })
-    setActiveNotifications(upcomingNotifications)
-  }, [calendarNotes])
+    useEffect(() => {
+        const today = new Date();
+        const upcomingNotifications: any[] = [];
+        calendarNotes.forEach((note) => {
+            note.meetings.forEach((meeting) => {
+                // Görüşme tipi için mantık
+                if (meeting.type === 'görüşme') {
+                    const startDate = new Date(note.date + "T00:00:00");
+                    const freq = meeting.notificationFrequency; // "for_3_days"
+                    if (!meeting.completed && freq.startsWith('for_')) {
+                        try {
+                            const parts = freq.split('_');
+                            const durationVal = parseInt(parts[1], 10);
+                            const durationUnit = parts[2];
+                            let endDate = new Date(startDate);
+                            if (durationUnit.includes('day')) endDate.setDate(startDate.getDate() + durationVal);
+                            if (durationUnit.includes('week')) endDate.setDate(startDate.getDate() + durationVal * 7);
+
+                            if (today >= startDate && today < endDate) {
+                                upcomingNotifications.push({ ...meeting, parentNoteDate: note.date });
+                            }
+                        } catch (e) { console.error("Görüşme bildirim tarihi ayrıştırılamadı:", e); }
+                    }
+                }
+                // Toplantı tipi için mevcut mantık
+                else if (meeting.type === 'toplantı') {
+                    if (meeting.completed || !meeting.nextMeetingDate || meeting.notificationFrequency === "none") return;
+                    const meetingDate = new Date(meeting.nextMeetingDate + "T00:00:00");
+                    const notificationDate = new Date(meetingDate);
+                    switch (meeting.notificationFrequency) {
+                        case "on_day": break;
+                        case "1_day_before": notificationDate.setDate(notificationDate.getDate() - 1); break;
+                        case "1_week_before": notificationDate.setDate(notificationDate.getDate() - 7); break;
+                        default: return;
+                    }
+                    const notificationDateOnly = new Date(notificationDate.getFullYear(), notificationDate.getMonth(), notificationDate.getDate());
+                    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                    if (notificationDateOnly.getTime() <= todayOnly.getTime() && todayOnly <= meetingDate) {
+                        upcomingNotifications.push({ ...meeting, parentNoteDate: note.date });
+                    }
+                }
+            });
+        });
+        setActiveNotifications(upcomingNotifications);
+    }, [calendarNotes]);
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3929,32 +3939,37 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     }
   }, [setAppStatus])
 
-  const handleAssignProducts = (products: AssignmentItem[]) => {
-    setAssignments((prev) => {
-      const newProducts = products.filter(
-        (p) => !prev.some((ap) => ap.product_code === p.product_code && ap.source === ap.source),
-      )
-      return [...prev, ...newProducts]
-    })
-  }
+    const handleAssignProducts = (products: AssignmentItem[]) => {
+        setAssignments((prev) => {
+            const newProducts = products.filter(
+                (p) => !prev.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
+            );
+            // Müşteri adı ve diğer bilgileri de ekleyerek geçmişe kaydet
+            const customerName = batchSearchState.customerName || "Bireysel Atama";
+            return [...prev, ...newProducts];
+        });
+    };
 
   const handleSearch = useCallback((searchTerm: string, searchLogic: string) => {
     if (!searchTerm.trim()) return;
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
     }
+    const enabledBrands = Object.entries(filters.brands)
+        .filter(([, isEnabled]) => isEnabled)
+        .map(([brand]) => brand);
     productQueueRef.current = [];
     setIsLoading(true);
     setRawSearchResults([]);
     setError(null);
     setCurrentSearchTerm(searchTerm);
     if (window.electronAPI) {
-      window.electronAPI.performSearch({ searchTerm, searchLogic });
+      window.electronAPI.performSearch({ searchTerm, searchLogic, enabledBrands });
     } else {
       console.error("Electron API bulunamadı, arama yapılamıyor.");
       setIsLoading(false);
     }
-  }, []); // Bağımlılık dizisi boş (tüm bağımlılıklar ref veya state setter)
+  }, [filters.brands]);
 
   const handleReSearch = (term: string) => {
     setSearchTermForPage(term)
@@ -4104,7 +4119,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
         <Sidebar
           setPage={setPage}
           currentPage={page}
-          notifications={[]} // Bildirimler şimdilik devre dışı
+          notifications={activeNotifications}
           onToggleComplete={handleToggleMeetingCompleteForNotification}
           updateStatus={updateStatus}
           onGoToDate={handleGoToDate}

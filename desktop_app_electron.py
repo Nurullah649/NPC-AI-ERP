@@ -863,7 +863,6 @@ class ComparisonEngine:
     # DEĞİŞİKLİK: search_data parametresi eklendi
     def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict,
                                                search_data: dict):
-        # BU FONKSİYON İÇİNDEKİ "exact" MANTIĞI KULLANICININ İSTEĞİ ÜZERİNE DEĞİŞTİRİLMEDİ
         try:
             if self.search_cancelled.is_set(): return False
             s_num, s_brand, s_key, s_mids = raw_sigma_product.get('product_number'), raw_sigma_product.get(
@@ -908,19 +907,19 @@ class ComparisonEngine:
                                                             {s_num: sigma_variations_data},
                                                             self.settings)
             if final_product:
-                # --- KULLANICININ İSTEDİĞİ ESNEK "exact" FİLTRELEME ---
                 search_term = search_data.get("searchTerm", "").lower()
                 search_logic = search_data.get("searchLogic", "exact")
                 match_found = False
 
                 if search_logic == "exact":
-                    # --- KULLANICININ ORİJİNAL MANTIĞI KORUNDU ---
                     product_number_lower = final_product.get('product_number', '').lower()
                     product_name_lower = final_product.get('product_name', '').lower()
                     cas_number_lower = final_product.get('cas_number', '').lower()
 
-                    if (search_term == product_name_lower or search_term == cas_number_lower):
+                    # --- GÜNCELLEME BAŞLANGICI (Sigma İsim Kontrolü) ---
+                    if (search_term in product_name_lower or search_term == cas_number_lower):
                         match_found = True
+                    # --- GÜNCELLEME SONU ---
                     elif (search_term in product_number_lower or product_number_lower in search_term):
                         match_found = True
                     elif (sigma_vars := final_product.get('sigma_variations')):
@@ -936,7 +935,6 @@ class ComparisonEngine:
                             if isinstance(match, dict) and search_term == match.get('product_code', '').lower():
                                 match_found = True
                                 break
-                    # --- KULLANICININ ORİJİNAL MANTIĞI SONU ---
                 else:  # similar
                     match_found = True
 
@@ -1238,11 +1236,14 @@ class ComparisonEngine:
         # DEĞİŞİKLİK: search_term ve search_logic'i 'search_data' objesinden al
         search_term = search_data.get("searchTerm", "")
         search_logic = search_data.get("searchLogic",
-                                       "exact")  # Kullanıcının istediği esnek mantık için "exact" kalıyor
+                                       "exact")
+        # YENİ: Aktif markaları al, eğer belirtilmemişse hepsini varsay
+        enabled_brands = search_data.get("enabledBrands", ["sigma", "tci", "orkim", "itk", "netflex"])
+        enabled_brands = {brand.lower() for brand in enabled_brands} # Hızlı kontrol için sete çevir
 
         logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic})")
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
-            f"Arama: '{search_term}' (Mantık: {search_logic})")
+            f"Arama: '{search_term}' (Mantık: {search_logic}, Aktif Markalar: {enabled_brands})")
 
         # M-kodu varyasyonlarını yönetme
         search_term_variations = {search_term.lower()}
@@ -1261,7 +1262,7 @@ class ComparisonEngine:
         sigma_found_lock = threading.Lock()
 
         # 1. Aşama: Sigma, TCI, Orkim ve ITK'da paralel arama
-        with ThreadPoolExecutor(max_workers=5, thread_name_prefix="Source-Streamer") as executor:
+        with ThreadPoolExecutor(max_workers=len(enabled_brands), thread_name_prefix="Source-Streamer") as executor:
             def tci_task():
                 nonlocal total_found
                 try:
@@ -1270,7 +1271,6 @@ class ComparisonEngine:
                         for product in product_page:
                             if self.search_cancelled.is_set(): break
 
-                            # KULLANICININ İSTEDİĞİ ESNEK "exact" FİLTRELEME (TCI)
                             match_found = False
                             term_lower = search_term.lower()
                             product_name_lower = (product.name or "").lower()
@@ -1278,13 +1278,13 @@ class ComparisonEngine:
                             cas_number_lower = (product.cas_number or "").lower()
 
                             if search_logic == "exact":
-                                # --- KULLANICININ ORİJİNAL MANTIĞI KORUNDU ---
-                                if (term_lower == product_name_lower or
+                                # --- GÜNCELLEME BAŞLANGICI (TCI İsim Kontrolü) ---
+                                if (term_lower in product_name_lower or
                                         (term_lower in product_code_lower or product_code_lower in term_lower) or
                                         (cas_number_lower and term_lower == cas_number_lower)):
                                     match_found = True
-                                # --- KULLANICININ ORİJİNAL MANTIĞI SONU ---
-                            else:
+                                # --- GÜNCELLEME SONU ---
+                            else: # similar
                                 match_found = True
 
                             if match_found:
@@ -1372,18 +1372,23 @@ class ComparisonEngine:
                         with total_found_lock: total_found += 1
                         found_codes.add(code_lower)
 
-            f_tci = executor.submit(tci_task)
-            f_sigma = executor.submit(sigma_task)
-            f_orkim = executor.submit(orkim_task)
-            f_itk = executor.submit(itk_task)
+            # YENİ: Sadece aktif markalar için görevleri gönder
+            futures = []
+            if 'tci' in enabled_brands:
+                futures.append(executor.submit(tci_task))
+            if 'sigma' in enabled_brands:
+                futures.append(executor.submit(sigma_task))
+            if 'orkim' in enabled_brands:
+                futures.append(executor.submit(orkim_task))
+            if 'itk' in enabled_brands:
+                futures.append(executor.submit(itk_task))
+
             # Görevlerin bitmesini bekle
-            f_tci.result()
-            f_sigma.result()
-            f_orkim.result()
-            f_itk.result()
+            for future in as_completed(futures):
+                future.result() # Hataları yakalamak için
 
         # 2. Aşama: Eğer ilk aşamada HİÇBİR yerden sonuç bulunamadıysa Netflex'i dene
-        if total_found == 0 and not self.search_cancelled.is_set():
+        if total_found == 0 and not self.search_cancelled.is_set() and 'netflex' in enabled_brands:
             logging.info(f"İlk aşamada sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
             try:
                 # Dikkat: Netflex API'sinden AuthenticationError gelebilir
@@ -1401,12 +1406,12 @@ class ComparisonEngine:
                         product_code_lower = (product.get('product_code', '') or "").lower()
 
                         if search_logic == "exact":
-                            # --- KULLANICININ ORİJİNAL MANTIĞI KORUNDU ---
-                            if (term_lower == product_name_lower or
+                            # --- GÜNCELLEME BAŞLANGICI (Netflex İsim Kontrolü) ---
+                            if (term_lower in product_name_lower or
                                     (term_lower in product_code_lower or product_code_lower in term_lower)):
                                 match_found = True
-                            # --- KULLANICININ ORİJİNAL MANTIĞI SONU ---
-                        else:
+                            # --- GÜNCELLEME SONU ---
+                        else: # similar
                             match_found = True
 
                         if match_found:
