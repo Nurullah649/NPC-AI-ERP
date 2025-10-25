@@ -2122,8 +2122,6 @@ const SearchPage = ({
   const [searchLogic, setSearchLogic] = useState("exact") // "similar" or "exact"
   const [filterTerm, setFilterTerm] = useState("")
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
-  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true } })
   const [isProductNameVisible] = useState(true) // Her zaman görünür olması için sabitlendi
   const [showOriginalPrices, setShowOriginalPrices] = useState(false)
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
@@ -2131,6 +2129,10 @@ const SearchPage = ({
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
   const isMounted = useRef(false)
+  const {
+    filters,
+    expandedProducts, setExpandedProducts
+  } = props
 
   useEffect(() => {
     // Bu effect'in yalnızca component mount edildikten sonra çalışmasını sağlıyoruz
@@ -2177,18 +2179,6 @@ const SearchPage = ({
     }
   }
 
-  const toggleProductExpansion = (productNumber: string) => {
-    setExpandedProducts((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(productNumber)) {
-        newSet.delete(productNumber)
-      } else {
-        newSet.add(productNumber)
-      }
-      return newSet
-    })
-  }
-
   const handleSelectionChange = (item: AssignmentItem) => {
     setSelectedForAssignment((prev) => {
       const isSelected = prev.some((p) => p.product_code === item.product_code && p.source === item.source)
@@ -2204,10 +2194,6 @@ const SearchPage = ({
     onAssignProducts(products)
     toast("success", `${products.length} ürün, müşteri listesine atandı!`)
     setSelectedForAssignment([])
-  }
-
-  const handleFilterChange = (type, key, value) => {
-    setFilters((prev) => ({ ...prev, [type]: { ...prev[type], [key]: value } }))
   }
 
   const filteredResults = useMemo(() => {
@@ -2313,7 +2299,7 @@ const SearchPage = ({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Marka</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
+              {/* <DropdownMenuCheckboxItem
                 checked={filters.brands.sigma}
                 onCheckedChange={(checked) => handleFilterChange("brands", "sigma", checked)}
               >
@@ -2336,7 +2322,7 @@ const SearchPage = ({
                 onCheckedChange={(checked) => handleFilterChange("brands", "itk", checked)}
               >
                 ITK
-              </DropdownMenuCheckboxItem>
+              </DropdownMenuCheckboxItem> */}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button 
@@ -2440,7 +2426,7 @@ const SearchPage = ({
                     product={product}
                     settings={settings}
                     expandedProducts={expandedProducts}
-                    toggleProductExpansion={toggleProductExpansion}
+                    toggleProductExpansion={props.toggleProductExpansion}
                     selectedForAssignment={selectedForAssignment}
                     onSelectionChange={handleSelectionChange}
                     isProductNameVisible={isProductNameVisible}
@@ -3834,6 +3820,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
   const [rawSearchResults, setRawSearchResults] = useState<ProductResult[]>([])
   const [currentSearchTerm, setCurrentSearchTerm] = useState("")
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [filters, setFilters] = useState({ brands: { sigma: true, tci: true, orkim: true, itk: true, netflex: true } })
   const [searchTermForPage, setSearchTermForPage] = useState<string | null>(null)
   const [historyResults, setHistoryResults] = useState<{ term: string; products: AssignmentItem[] } | null>(null)
 
@@ -3967,7 +3954,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
       window.electronAPI.performSearch({ searchTerm, searchLogic, enabledBrands });
     } else {
       console.error("Electron API bulunamadı, arama yapılamıyor.");
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }, [filters.brands]);
 
@@ -3985,6 +3972,22 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
 
   const onSearchExecuted = useCallback(() => {
     setSearchTermForPage(null)
+  }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
+
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
+  const toggleProductExpansion = useCallback((productNumber: string) => {
+    setExpandedProducts((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(productNumber)) {
+        newSet.delete(productNumber)
+      } else {
+        newSet.add(productNumber)
+      }
+      return newSet
+    })
+  }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
+  const handleFilterChange = useCallback((type, key, value) => {
+    setFilters((prev) => ({ ...prev, [type]: { ...prev[type], [key]: value } }))
   }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
 
   const handleSaveSettings = (newSettings: AppSettings) => {
@@ -4064,6 +4067,10 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
             initialSearchTerm={searchTermForPage}
             onSearchExecuted={onSearchExecuted}
             toast={toast}
+            filters={filters}
+            expandedProducts={expandedProducts}
+            setExpandedProducts={setExpandedProducts}
+            toggleProductExpansion={toggleProductExpansion}
           />
         )
       case "batch-search":
