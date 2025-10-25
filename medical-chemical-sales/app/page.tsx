@@ -343,7 +343,7 @@ const DropdownMenuTrigger = ({ children, asChild = false }) => {
 }
 
 const DropdownMenuContent = ({ children, align = "start", side = "bottom", className, ...props }) => {
-  const { isOpen } = useContext(DropdownContext)
+  const { isOpen } = useContext(HoverMenuContext)
   const alignClasses = {
     start: "origin-top-left left-0",
     end: "origin-top-right right-0",
