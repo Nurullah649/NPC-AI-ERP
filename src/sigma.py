@@ -346,7 +346,7 @@ class SigmaAldrichAPI:
             logging.info(f"Search loop finished or cancelled. Total products yielded: {product_count}.")
             if producer_future and not producer_future.done():
                 logging.debug("Waiting for producer thread to finish...")
-                cancellation_token.set()
+                #cancellation_token.set()
                 try:
                     producer_future.result(timeout=10)
                     logging.debug("Producer thread finished.")

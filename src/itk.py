@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import requests
+from urllib3 import Retry
 from bs4 import BeautifulSoup
 import time
 import logging
@@ -8,14 +9,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any
 
 # Güvensiz SSL istekleri hakkındaki uyarıları bastırmak için
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 # --- Optimizasyon için eklendi ---
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 
 # --- Eklendi sonu ---
-
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 class ItkScraper:
@@ -35,7 +32,7 @@ class ItkScraper:
         # --- Optimizasyon: Sağlam Session oluşturma (orkim.py'den uyarlandı) ---
         self.session = self._create_session()
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.37.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.37.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/5.37.36',
             'Referer': self.LOGIN_URL
         }
         self.session.headers.update(self.headers)
@@ -210,3 +207,74 @@ class ItkScraper:
         logging.info(
             f"ITK Scraper: Toplam {len(all_products)} adet ürün {end_time - start_time:.2f} saniyede (paralel olarak) çekildi.")
         return all_products
+
+
+# --- YENİ TEST BLOĞU ---
+"""if __name__ == "__main__":
+    import json
+    import getpass  # Güvenli şifre girişi için
+    import sys
+
+    # 1. Konsolda loglamayı görmek için temel yapılandırma
+    # (Ana uygulamadaki loglama ayarlarını etkilemez)
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - [%(levelname)s] - (%(threadName)s) - %(message)s',
+                        stream=sys.stdout)
+
+    logging.info("--- ITK Scraper Test Modu Başlatıldı ---")
+
+    # 2. Kullanıcıdan kimlik bilgilerini al
+    try:
+        username = "12042029"
+        password = "12345"
+
+        if not username or not password:
+            logging.error("Kullanıcı adı ve şifre gereklidir. Çıkılıyor.")
+            sys.exit(1)
+
+    except (KeyboardInterrupt, EOFError):
+        logging.warning("\nGiriş iptal edildi. Çıkılıyor.")
+        sys.exit(0)
+
+    # 3. Scraper'ı başlat ve çalıştır
+    logging.info(f"'{username}' kullanıcısı ile giriş yapılıyor...")
+    scraper = ItkScraper(username=username, password=password)
+
+    logging.info("Ürünler çekilmeye başlanıyor... (Bu işlem birkaç dakika sürebilir)")
+    test_start_time = time.monotonic()
+    all_products = scraper.get_all_products()
+    test_end_time = time.monotonic()
+
+    logging.info("--- Test Tamamlandı ---")
+    logging.info(f"Toplam {len(all_products)} ürün {test_end_time - test_start_time:.2f} saniyede çekildi.")
+
+    # 4. Sonuçları dosyaya kaydet ve stok durumunu analiz et
+    if all_products:
+        try:
+            output_filename = "itk_test_output.json"
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                json.dump(all_products, f, indent=4, ensure_ascii=False)
+            logging.info(f"Tüm sonuçlar '{output_filename}' dosyasına kaydedildi.")
+
+            # 5. Stok durumu için hızlı kontrol
+            logging.info("--- Stok Durumu Kontrolü (İlk 20 Ürün) ---")
+            count_with_stock_qty = 0
+            for i, product in enumerate(all_products[:20]):
+                stock_qty = product.get('stock_quantity', 'N/A')
+                stock_stat = product.get('stock_status', 'N/A')
+                logging.info(f"  Ürün: {product.get('product_name', 'Bilinmeyen')[:40]}...")
+                logging.info(f"    -> Stok Adeti (stock_quantity): {stock_qty}")
+                logging.info(f"    -> Stok Durumu (stock_status): {stock_stat}")
+                if stock_qty != 'N/A':
+                    count_with_stock_qty += 1
+
+            logging.info(f"İlk 20 üründen {count_with_stock_qty} tanesinde 'stock_quantity' (adet) bilgisi ('N/A' olmayan) bulundu.")
+
+            # Genel stok analizi
+            total_with_stock_qty = sum(1 for p in all_products if p.get('stock_quantity', 'N/A') != 'N/A')
+            logging.info(f"TÜM {len(all_products)} ÜRÜN İÇİNDE: {total_with_stock_qty} tanesinde stok adeti ('stock_quantity') bilgisi bulundu.")
+
+        except Exception as e:
+            logging.error(f"Sonuçlar dosyaya yazılırken hata oluştu: {e}")
+    else:
+        logging.warning("Hiç ürün bulunamadı. Giriş bilgilerinizi veya site yapısını (HTML) kontrol edin.")"""

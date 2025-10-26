@@ -452,7 +452,7 @@ def setup_logging():
     dev_log_file = log_dir / "developer.log"
     dev_handler = logging.FileHandler(dev_log_file, encoding='utf-8')
     dev_handler.setFormatter(formatter)
-    dev_handler.setLevel(logging.INFO)
+    dev_handler.setLevel(logging.INFO) # DEBUG yerine INFO kullanıyoruz, daha az log için
     admin_log_file = log_dir / "admin_activity.log"
     admin_handler = logging.FileHandler(admin_log_file, encoding='utf-8')
     admin_formatter = logging.Formatter('%(asctime)s - %(message)s')
@@ -465,9 +465,9 @@ def setup_logging():
     # Konsol çıktısını stderr'e yönlendiriyoruz
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.INFO) # DEBUG yerine INFO kullanıyoruz
 
-    logging.basicConfig(level=logging.INFO, handlers=[dev_handler, console_handler])
+    logging.basicConfig(level=logging.INFO, handlers=[dev_handler, console_handler]) # DEBUG yerine INFO
     for logger_name in ["urllib3", "selenium", "googletrans"]: logging.getLogger(logger_name).setLevel(logging.WARNING)
     return admin_logger
 
@@ -823,6 +823,77 @@ def _get_orkim_stock_task(orkim_api_instance, product_url: str):
         send_to_frontend("orkim_stock_result", {"url": product_url, "stock": "Hata"})
 
 
+# --- YENİ YARDIMCI FONKSİYONLAR ---
+def is_cas_number(term: str) -> bool:
+    """Verilen string'in CAS numarası formatında olup olmadığını kontrol eder."""
+    return bool(re.match(r'^\d{2,7}-\d{2}-\d$', term))
+
+
+def extract_merck_core(product_code: str) -> str | None:
+    """'M.123456.789' veya 'M123456.789' formatından '123456' kısmını ayıklar."""
+    if not isinstance(product_code, str):
+        return None
+    match = re.search(r'^m\.?(\d{6})', product_code.lower())
+    return match.group(1) if match else None
+
+
+# --- YENİ: ESNEK MERCK KODU VARYASYON FONKSİYONU ---
+def get_merck_code_variations(term: str) -> set:
+    """
+    Verilen bir Merck ürün kodundan olası tüm eşleşme varyasyonlarını (formatlarını) oluşturur.
+    Örn: 'M100056.2500' -> {'m100056', 'm.100056', '1.00056'}
+    Örn: '1.00056'      -> {'1.00056', 'm100056', 'm.100056'}
+    """
+    term = term.lower().strip()
+    # Sadece prefix (ön ek) ile ilgileniyoruz, .2500 gibi son ekleri dikkate almıyoruz.
+
+    variations = {term}  # Orijinal terimi (küçük harfli) her zaman ekle
+
+    # Desen 1: M-Kodu (M100056.2500 veya M.100056.2500 gibi başlayanlar)
+    # 6 haneli çekirdeği (core) ayıkla
+    m_match = re.search(r'^m\.?(\d{6})', term)
+    if m_match:
+        core_6_digits = m_match.group(1)  # Örn: '100056'
+
+        # Temel M-Kodu varyasyonlarını ekle (sadece 6 haneli kısım)
+        variations.add(f'm{core_6_digits}')
+        variations.add(f'm.{core_6_digits}')
+
+        # Kuralı uygula: M[d1][d2-d6] -> [d1].[d2-d6]
+        if len(core_6_digits) == 6:
+            d1 = core_6_digits[0]  # '1'
+            d2_d6 = core_6_digits[1:]  # '00056'
+            variations.add(f'{d1}.{d2_d6}')  # '1.00056'
+
+        logging.debug(f"M-Kodu '{term}' için varyasyonlar: {variations}")
+        return variations
+
+    # Desen 2: 1-Kodu (1.00056 gibi başlayanlar)
+    # 1 haneli ve 5 haneli kısımları ayıkla
+    one_match = re.search(r'^(\d)\.(\d{5})', term)
+    if one_match:
+        d1 = one_match.group(1)  # '1'
+        d2_d6 = one_match.group(2)  # '00056'
+
+        # Temel 1-Kodu varyasyonunu ekle
+        variations.add(f'{d1}.{d2_d6}')  # '1.00056'
+
+        # Kuralı uygula: [d1].[d2-d6] -> M[d1][d2-d6]
+        core_6_digits = f'{d1}{d2_d6}'  # '100056'
+        variations.add(f'm{core_6_digits}')
+        variations.add(f'm.{core_6_digits}')
+
+        logging.debug(f"1-Kodu '{term}' için varyasyonlar: {variations}")
+        return variations
+
+    # Eğer bilinen bir Merck deseni değilse, sadece orijinal terimi (ve boşluksuz halini) içeren seti döndür
+    variations.add(term.replace(".", "").replace("-", ""))  # Ekstra güvenlik
+    return variations
+
+
+# --- YENİ FONKSİYON SONU ---
+
+
 # --- Karşılaştırma Motoru ---
 class ComparisonEngine:
     def __init__(self, sigma_api: sigma.SigmaAldrichAPI, netflex_api: netflex.NetflexAPI, tci_api: tci.TciScraper,
@@ -834,6 +905,10 @@ class ComparisonEngine:
         self.search_cancelled = threading.Event()
         self.batch_search_cancelled = threading.Event()
         self.settings = initial_settings
+        # --- YENİ: CAS ARAMA EŞLEŞTİRME İÇİN PAYLAŞILAN VERİ YAPISI ---
+        self.cas_search_sigma_codes: Dict[str, str] = {}
+        self.cas_search_lock = threading.Lock()
+        # --- YENİ SONU ---
 
     def initialize_drivers(self):
         logging.info("Ağır servisler (Selenium sürücüleri) başlatılıyor...")
@@ -860,13 +935,71 @@ class ComparisonEngine:
             logging.critical(f"Selenium sürücüleri başlatılamadı: {e}", exc_info=True)
             raise e  # Hatanın yukarıya iletilip programın hata vermesini sağla
 
-    # DEĞİŞİKLİK: search_data parametresi eklendi
+    # --- YENİ YARDIMCI FONKSİYON ---
+    def _get_cas_from_sigma_for_merck_code(self, merck_code: str) -> str:
+        """
+        Verilen bir Merck (ITK/Orkim) ürün kodu için Sigma'da CAS araması yapar.
+        Örn: 'M.803238.2500' -> '803238'
+        """
+        if not merck_code:
+            return "N/A"
+
+        # Regex to extract the 6-digit code, e.g., from 'M.803238.2500' or 'M803238.2500'
+        # 6 haneli kodu (örn: 803238) ayıklar
+        # --- DEĞİŞİKLİK: extract_merck_core kullanıldı ---
+        extracted_code = extract_merck_core(merck_code)
+        if not extracted_code:
+            return "N/A"  # İşleyebileceğimiz bir Merck kodu değil
+        # --- DEĞİŞİKLİK SONU ---
+
+        try:
+            # search_products bir jeneratördür. Bize sadece ilk geçerli sonuç lazım.
+            search_generator = self.sigma_api.search_products(extracted_code, self.search_cancelled)
+            first_sigma_result = next(search_generator, None)
+
+            if self.search_cancelled.is_set():
+                return "N/A"
+
+            if first_sigma_result and (cas := first_sigma_result.get('cas_number', 'N/A')) != 'N/A':
+                logging.info(
+                    f"CAS Tespiti (Kod Arama): Merck kodu '{merck_code}' için Sigma'dan '{extracted_code}' arandı, CAS '{cas}' bulundu.")
+                return cas
+            else:
+                logging.info(
+                    f"CAS Tespiti (Kod Arama): Merck kodu '{merck_code}' için Sigma'da ('{extracted_code}') CAS bulunamadı.")
+                return "N/A"
+        except Exception as e:
+            # Bu kritik bir hata değil, sadece CAS bulunamadı demektir.
+            logging.error(f"CAS Tespiti (Kod Arama): Sigma araması sırasında hata ({extracted_code}): {e}")
+            return "N/A"
+
+    # --- YENİ FONKSİYON SONU ---
+
+    # DEĞİŞİKLİK: 'search_data' parametresi eklendi
     def _process_single_sigma_product_and_send(self, raw_sigma_product: Dict[str, Any], context: Dict,
                                                search_data: dict):
         try:
             if self.search_cancelled.is_set(): return False
-            s_num, s_brand, s_key, s_mids = raw_sigma_product.get('product_number'), raw_sigma_product.get(
-                'brand'), raw_sigma_product.get('product_key'), raw_sigma_product.get('material_ids', [])
+            s_num, s_brand, s_key, s_mids, s_cas = (
+                raw_sigma_product.get('product_number'), raw_sigma_product.get('brand'),
+                raw_sigma_product.get('product_key'), raw_sigma_product.get('material_ids', []),
+                raw_sigma_product.get('cas_number')  # CAS numarasını al
+            )
+
+            # --- YENİ: EXACT CAS ARAMASI İÇİN KOD EKLEME ---
+            search_term = search_data.get("searchTerm", "")
+            search_logic = search_data.get("searchLogic", "exact")
+            is_exact_cas_search = search_logic == "exact" and is_cas_number(search_term)
+
+            if is_exact_cas_search and s_cas == search_term:
+                merck_core = extract_merck_core(s_num)
+                if merck_core:
+                    with self.cas_search_lock:
+                        if merck_core not in self.cas_search_sigma_codes:
+                            self.cas_search_sigma_codes[merck_core] = search_term
+                            logging.info(
+                                f"CAS Eşleştirme: Sigma ürünü '{s_num}' (çekirdek: {merck_core}) CAS '{search_term}' için listeye eklendi.")
+            # --- YENİ SONU ---
 
             # Sigma varyasyonlarını al
             sigma_variations_data = self.sigma_api.get_all_product_prices(s_num, s_brand, s_key.replace('.', ''),
@@ -907,34 +1040,47 @@ class ComparisonEngine:
                                                             {s_num: sigma_variations_data},
                                                             self.settings)
             if final_product:
-                search_term = search_data.get("searchTerm", "").lower()
-                search_logic = search_data.get("searchLogic", "exact")
+                # search_term = search_data.get("searchTerm", "").lower() # Zaten yukarıda tanımlı
+                # search_logic = search_data.get("searchLogic", "exact") # Zaten yukarıda tanımlı
                 match_found = False
+
+                # --- YENİ: ESNEK KOD EŞLEŞMESİ İÇİN VARYASYONLARI KULLAN ---
+                # Arama için kullanılan varyasyonları al (artık 'search_term' yerine 'search_data["searchTerm"]' gelecek)
+                # Not: Bu fonksiyon çağrıldığında search_data["searchTerm"] zaten varyasyonlardan biridir.
+                # Bu yüzden get_merck_code_variations'ı burada tekrar çağırmak yerine,
+                # gelen 'search_term'i (varyasyonu) doğrudan kullanırız.
+                search_term_lower = search_data.get("searchTerm", "").lower()
 
                 if search_logic == "exact":
                     product_number_lower = final_product.get('product_number', '').lower()
                     product_name_lower = final_product.get('product_name', '').lower()
                     cas_number_lower = final_product.get('cas_number', '').lower()
 
-                    # --- GÜNCELLEME BAŞLANGICI (Sigma İsim Kontrolü) ---
-                    if (search_term in product_name_lower or search_term == cas_number_lower):
+                    # --- GÜNCELLEME BAŞLANGICI (Sigma İsim Kontrolü ve ESNEK KOD EŞLEŞMESİ) ---
+                    # 1. İsim veya CAS eşleşmesi
+                    if (search_term_lower in product_name_lower or search_term_lower == cas_number_lower):
                         match_found = True
-                    # --- GÜNCELLEME SONU ---
-                    elif (search_term in product_number_lower or product_number_lower in search_term):
+                    # 2. Ürün Kodu eşleşmesi (search_term_lower artık '1.00056' gibi bir varyasyon olabilir)
+                    # '1.00056' nın '1.00056.1000' (product_number_lower) içinde olup olmadığını kontrol et
+                    elif (search_term_lower in product_number_lower):
                         match_found = True
+                    # 3. Varyasyon (material_number) eşleşmesi
                     elif (sigma_vars := final_product.get('sigma_variations')):
                         for country_vars in sigma_vars.values():
                             if isinstance(country_vars, list):
                                 for var in country_vars:
-                                    if isinstance(var, dict) and search_term == var.get('material_number', '').lower():
+                                    if isinstance(var, dict) and search_term_lower == var.get('material_number',
+                                                                                              '').lower():
                                         match_found = True
                                         break
                             if match_found: break
+                    # 4. Netflex eşleşmesi
                     elif (netflex_matches := final_product.get('netflex_matches')):
                         for match in netflex_matches:
-                            if isinstance(match, dict) and search_term == match.get('product_code', '').lower():
+                            if isinstance(match, dict) and search_term_lower == match.get('product_code', '').lower():
                                 match_found = True
                                 break
+                    # --- GÜNCELLEME SONU ---
                 else:  # similar
                     match_found = True
 
@@ -942,7 +1088,7 @@ class ComparisonEngine:
                     send_to_frontend("product_found", {"product": final_product}, context=context)
                     return True  # Eşleşme bulundu ve gönderildi
                 else:
-                    logging.debug(f"Sigma ürünü '{s_num}' esnek exact filtreyi geçemedi ('{search_term}').")
+                    logging.debug(f"Sigma ürünü '{s_num}' esnek exact filtreyi geçemedi ('{search_term_lower}').")
                     return False  # Eşleşme bulunamadı
 
         except Exception as e:
@@ -1125,42 +1271,81 @@ class ComparisonEngine:
 
         return final_product
 
-    def _process_orkim_product(self, orkim_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
+    # --- DEĞİŞİKLİK: is_cas_search parametresi eklendi ---
+    def _process_orkim_product(self, orkim_product: Dict[str, Any], search_data: Dict[str, Any], is_cas_search: bool,
+                               context: Dict = None) -> Dict[str, Any]:
         """Orkim'den gelen ürün verisini standart formata çevirir."""
-        # BU FONKSİYON İÇİNDEKİ STOK MANTIĞI ÖNCEKİ ADIMDA GÜNCELLENDİ (DETAYLI SORGULAMA KALDIRILDI)
-        stock_quantity = orkim_product.get("stock_quantity")  # Bu artık "Var" veya 0 olabilir
+        # ... (stok mantığı aynı kaldı) ...
+        stock_quantity = orkim_product.get("stock_quantity")
         stock_status = orkim_product.get("stock_status")
         stock_display = "N/A"
         if stock_status == "Stokta Yok" or stock_quantity == 0:
-            stock_display = 0  # 0 olarak gönder
-        elif stock_quantity == "Var":  # "Var" metnini işle
+            stock_display = 0
+        elif stock_quantity == "Var":
             stock_display = "Var"
-        elif isinstance(stock_quantity, int):  # _get_stock_from_page çağrılırsa diye (ürün sayfasında)
+        elif isinstance(stock_quantity, int):
             stock_display = stock_quantity
         else:
-            stock_display = orkim_product.get("stock_quantity", "N/A")  # Orijinal değeri koru
+            stock_display = orkim_product.get("stock_quantity", "N/A")
 
         price_str = orkim_product.get("price_str", "N/A")
+        product_code = orkim_product.get("k_kodu", "N/A")
+
+        # --- GÜNCELLENMİŞ CAS ARAMA LOGIĞI ---
+        found_cas = "N/A"
+        original_search_term = search_data.get("searchTerm", "").lower()
+        search_logic = search_data.get("searchLogic", "exact")
+        product_code_lower = product_code.lower() if product_code else ""
+
+        # --- YENİ: ESNEK KOD EŞLEŞMESİ İÇİN VARYASYONLARI KULLAN ---
+        # Arama için kullanılan varyasyonları al
+        search_term_variations = get_merck_code_variations(original_search_term)
+
+        # Durum 1: Kullanıcı direkt Merck kodu aradıysa (optimize edilmiş)
+        # Orijinal arama terimi (veya varyasyonlarından biri) ürün kodunun içindeyse
+        is_direct_code_search = search_logic == "exact" and any(
+            term in product_code_lower for term in search_term_variations)
+
+        if product_code_lower.startswith('m') and is_direct_code_search:
+            found_cas = self._get_cas_from_sigma_for_merck_code(product_code)
+
+        # Durum 2: Kullanıcı CAS ile exact arama yaptıysa ve Sigma'da eşleşme bulunduysa
+        elif search_logic == "exact" and is_cas_search and product_code_lower.startswith('m'):
+            merck_core = extract_merck_core(product_code)
+            if merck_core:
+                with self.cas_search_lock:
+                    # Sigma'dan gelen kodlarla eşleşiyor mu kontrol et
+                    matched_cas = self.cas_search_sigma_codes.get(merck_core)
+                    if matched_cas and matched_cas == original_search_term:  # Sadece aranan CAS ile eşleşiyorsa al
+                        found_cas = matched_cas
+                        logging.info(
+                            f"CAS Eşleştirme: Orkim ürünü '{product_code}' (çekirdek: {merck_core}) Sigma koduyla eşleşti, CAS '{found_cas}' atandı.")
+        # --- CAS ARAMA SONU ---
+
         return {
             "source": "Orkim",
             "product_name": orkim_product.get("urun_adi", "N/A"),
-            "product_number": orkim_product.get("k_kodu", "N/A"),
-            "cas_number": "N/A",
+            "product_number": product_code,
+            "cas_number": found_cas,  # --- DEĞİŞİKLİK ---
             "brand": orkim_product.get("brand", "Orkim"),
             "cheapest_eur_price_str": price_str,
-            "cheapest_material_number": orkim_product.get("k_kodu", "N/A"),
+            "cheapest_material_number": product_code,
             "cheapest_source_country": "Orkim",
             "cheapest_netflex_stock": stock_display,
             "sigma_variations": {},
             "netflex_matches": [],
             "tci_variations": [],
-            "product_url": orkim_product.get("product_url")  # YENİ EKLENEN SATIR
+            "product_url": orkim_product.get("product_url")
         }
 
-    def _process_itk_product(self, itk_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
+    # --- DEĞİŞİKLİK: is_cas_search parametresi eklendi ---
+    # --- YENİ LOGLAR EKLENDİ ---
+    def _process_itk_product(self, itk_product: Dict[str, Any], search_data: Dict[str, Any], is_cas_search: bool,
+                             context: Dict = None) -> Dict[str, Any]:
         """ITK'den gelen ürün verisini standart formata çevirir ve para birimini EUR'ya dönüştürür."""
         original_price = itk_product.get("price")
         original_currency = itk_product.get("currency", "EUR").upper()
+        product_code = itk_product.get("product_code", "N/A")
         eur_price = None
         cheapest_price_str = "Fiyat Yok"
 
@@ -1180,35 +1365,73 @@ class ComparisonEngine:
                 eur_price = original_price
 
             if eur_price is not None:
-                eur_price = eur_price * self.settings.get('itk_coefficient', 1.0)
                 cheapest_price_str = f"{eur_price:,.2f}€".replace(",", "X").replace(".", ",").replace("X", ".")
 
         stock_quantity = itk_product.get("stock_quantity", "N/A")
 
+        # --- GÜNCELLENMİŞ CAS ARAMA LOGIĞI ---
+        found_cas = "N/A"
+        original_search_term = search_data.get("searchTerm", "").lower()
+        search_logic = search_data.get("searchLogic", "exact")
+        product_code_lower = product_code.lower() if product_code else ""
+
+        # --- YENİ: ESNEK KOD EŞLEŞMESİ İÇİN VARYASYONLARI KULLAN ---
+        # Arama için kullanılan varyasyonları al
+        search_term_variations = get_merck_code_variations(original_search_term)
+
+        # Durum 1: Kullanıcı direkt Merck kodu aradıysa (optimize edilmiş)
+        # Orijinal arama terimi (veya varyasyonlarından biri) ürün kodunun içindeyse
+        is_direct_code_search = search_logic == "exact" and any(
+            term in product_code_lower for term in search_term_variations)
+
+        if product_code_lower.startswith('m') and is_direct_code_search:
+            found_cas = self._get_cas_from_sigma_for_merck_code(product_code)
+
+        # Durum 2: Kullanıcı CAS ile exact arama yaptıysa ve Sigma'da eşleşme bulunduysa
+        elif search_logic == "exact" and is_cas_search and product_code_lower.startswith('m'):
+            merck_core = extract_merck_core(product_code)
+            if merck_core:
+                with self.cas_search_lock:
+                    # Sigma'dan gelen kodlarla eşleşiyor mu kontrol et
+                    matched_cas = self.cas_search_sigma_codes.get(merck_core)
+                    if matched_cas and matched_cas == original_search_term:  # Sadece aranan CAS ile eşleşiyorsa al
+                        found_cas = matched_cas
+                        logging.info(
+                            f"CAS Eşleştirme: ITK ürünü '{product_code}' (çekirdek: {merck_core}) Sigma koduyla eşleşti, CAS '{found_cas}' atandı.")
+
+        # --- CAS ARAMA SONU ---
+
         itk_variation_data = {
-            "product_code": itk_product.get("product_code", "N/A"),
+            "product_code": product_code,
             "product_name": itk_product.get("product_name", "N/A"),
             "price_str": cheapest_price_str,
-            "price": eur_price,
+            "price": eur_price, # Katsayı uygulanmış fiyat
             "currency": "EUR",
             "stock_quantity": stock_quantity
         }
 
+        # --- LOG 4: Fonksiyondan dönen nihai veri ---
+        logging.info(f"ITK Debug (Dönüş): {itk_variation_data}")
+        logging.info(f"--- ITK İşleme Bitti: Kod='{product_code}' ---")
+
+
         return {
             "source": "ITK",
             "product_name": itk_product.get("product_name", "N/A"),
-            "product_number": itk_product.get("product_code", "N/A"),
-            "cas_number": "N/A",
+            "product_number": product_code,
+            "cas_number": found_cas,  # --- DEĞİŞİKLİK ---
             "brand": "ITK",
             "cheapest_eur_price_str": cheapest_price_str,
-            "cheapest_material_number": itk_product.get("product_code", "N/A"),
+            "cheapest_material_number": product_code,
             "cheapest_source_country": "ITK",
             "cheapest_netflex_stock": stock_quantity,
             "sigma_variations": {},
             "netflex_matches": [],
             "tci_variations": [],
-            "itk_variations": [itk_variation_data]
+            "itk_variations": [itk_variation_data] # Katsayı uygulanmış veriyi içerir
         }
+    # --- LOG EKLEME SONU ---
+
 
     def _process_netflex_product(self, netflex_product: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """Doğrudan Netflex aramasından gelen bir ürünü standart formata çevirir."""
@@ -1233,28 +1456,35 @@ class ComparisonEngine:
     def search_and_compare(self, search_data: dict, context: Dict = None):
         start_time = time.monotonic()
 
+        if self.search_cancelled.is_set():
+            logging.warning("Arama başlamadan iptal edildi (search_and_compare başlangıç kontrolü)!")
+            send_to_frontend("search_complete", {"status": "cancelled"})
+            return
+
         # DEĞİŞİKLİK: search_term ve search_logic'i 'search_data' objesinden al
-        search_term = search_data.get("searchTerm", "")
-        search_logic = search_data.get("searchLogic",
-                                       "exact")
+        search_term = search_data.get("searchTerm", "").strip()  # YENİ: Boşlukları temizle
+        search_logic = search_data.get("searchLogic", "exact")
         # YENİ: Aktif markaları al, eğer belirtilmemişse hepsini varsay
         enabled_brands = search_data.get("enabledBrands", ["sigma", "tci", "orkim", "itk", "netflex"])
-        enabled_brands = {brand.lower() for brand in enabled_brands} # Hızlı kontrol için sete çevir
+        enabled_brands = {brand.lower() for brand in enabled_brands}  # Hızlı kontrol için sete çevir
 
-        logging.info(f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic})")
+        # --- YENİ: CAS ARAMA KONTROLÜ ---
+        is_exact_cas_search = search_logic == "exact" and is_cas_number(search_term)
+        with self.cas_search_lock:  # Başlamadan önce temizle
+            self.cas_search_sigma_codes.clear()
+        # --- YENİ SONU ---
+
+        logging.info(
+            f"ANLIK ARAMA BAŞLATILDI: '{search_term}' (Mantık: {search_logic}, CAS Araması: {is_exact_cas_search})")  # Log güncellendi
         if not context: send_to_frontend("log_search_term", {"term": search_term}); admin_logger.info(
             f"Arama: '{search_term}' (Mantık: {search_logic}, Aktif Markalar: {enabled_brands})")
 
-        # M-kodu varyasyonlarını yönetme
-        search_term_variations = {search_term.lower()}
+        # --- GÜNCELLENDİ: M-kodu ve 1-kodu varyasyonlarını yönetme ---
         normalized_term = search_term.lower().strip()
-        is_m_code = False
-        if normalized_term.startswith('m'):
-            is_m_code = True
-            if '.' in normalized_term:
-                search_term_variations.add(normalized_term.replace('.', '', 1))
-            elif re.match(r'^m\d+$', normalized_term):
-                search_term_variations.add(f"m.{normalized_term[1:]}")
+        search_term_variations = get_merck_code_variations(normalized_term)  # <-- YENİ FONKSİYON KULLANILDI
+        logging.info(f"Oluşturulan arama varyasyonları: {search_term_variations}")
+        is_m_code = any(t.startswith('m') for t in search_term_variations)  # <-- is_m_code mantığı güncellendi
+        # --- GÜNCELLEME SONU ---
 
         total_found = 0
         total_found_lock = threading.Lock()
@@ -1263,52 +1493,88 @@ class ComparisonEngine:
 
         # 1. Aşama: Sigma, TCI, Orkim ve ITK'da paralel arama
         with ThreadPoolExecutor(max_workers=len(enabled_brands), thread_name_prefix="Source-Streamer") as executor:
+
+            # --- TCI GÖREVİ GÜNCELLENDİ (Varyasyonları döngüye al) ---
             def tci_task():
                 nonlocal total_found
+                found_product_codes = set()  # Yinelenenleri önlemek için
                 try:
-                    for product_page in self.tci_api.get_products(search_term, self.search_cancelled):
+                    for term_variation in search_term_variations:  # <-- YENİ: Varyasyonları döngüye al
                         if self.search_cancelled.is_set(): break
-                        for product in product_page:
+                        logging.info(f"TCI: Varyasyon aranıyor: '{term_variation}'")
+
+                        for product_page in self.tci_api.get_products(term_variation,
+                                                                      self.search_cancelled):  # <-- YENİ: Varyasyonu kullan
                             if self.search_cancelled.is_set(): break
+                            for product in product_page:
+                                if self.search_cancelled.is_set(): break
 
-                            match_found = False
-                            term_lower = search_term.lower()
-                            product_name_lower = (product.name or "").lower()
-                            product_code_lower = (product.code or "").lower()
-                            cas_number_lower = (product.cas_number or "").lower()
+                                product_code_lower = (product.code or "").lower()
+                                if product_code_lower in found_product_codes:  # <-- YENİ: Yineleneni atla
+                                    continue
 
-                            if search_logic == "exact":
-                                # --- GÜNCELLEME BAŞLANGICI (TCI İsim Kontrolü) ---
-                                if (term_lower in product_name_lower or
-                                        (term_lower in product_code_lower or product_code_lower in term_lower) or
-                                        (cas_number_lower and term_lower == cas_number_lower)):
+                                match_found = False
+                                term_lower = term_variation.lower()  # <-- YENİ: Eşleşme için varyasyonu kullan
+                                product_name_lower = (product.name or "").lower()
+                                product_code_lower = (product.code or "").lower()
+                                cas_number_lower = (product.cas_number or "").lower()
+
+                                if search_logic == "exact":
+                                    # --- GÜNCELLEME BAŞLANGICI (TCI İsim Kontrolü) ---
+                                    if (term_lower in product_name_lower or
+                                            (term_lower in product_code_lower or product_code_lower in term_lower) or
+                                            (cas_number_lower and term_lower == cas_number_lower)):
+                                        match_found = True
+                                    # --- GÜNCELLEME SONU ---
+                                else:  # similar
                                     match_found = True
-                                # --- GÜNCELLEME SONU ---
-                            else: # similar
-                                match_found = True
 
-                            if match_found:
-                                processed = self._process_tci_product(product, context)
-                                send_to_frontend("product_found", {"product": processed}, context=context)
-                                with total_found_lock:
-                                    total_found += 1
+                                if match_found:
+                                    processed = self._process_tci_product(product, context)
+                                    send_to_frontend("product_found", {"product": processed}, context=context)
+                                    with total_found_lock:
+                                        total_found += 1
+                                    if product_code_lower: # None olmayanları ekle
+                                      found_product_codes.add(product_code_lower)  # <-- YENİ: Bulunanı sete ekle
                 except Exception as e:
                     logging.error(f"TCI akış hatası: {e}", exc_info=True)
 
+            # --- SIGMA GÖREVİ GÜNCELLENDİ (Varyasyonları döngüye al) ---
             def sigma_task():
                 nonlocal total_found, sigma_found_count
+                found_product_numbers = set()  # Yinelenenleri önlemek için
                 with ThreadPoolExecutor(max_workers=self.max_workers,
                                         thread_name_prefix="Sigma-Processor") as processor:
                     try:
                         self.currency_converter.get_parities()
-                        raw_product_stream = self.sigma_api.search_products(search_term, self.search_cancelled)
                         futures = []
-                        for raw_product in raw_product_stream:
+
+                        for term_variation in search_term_variations:  # <-- YENİ: Varyasyonları döngüye al
                             if self.search_cancelled.is_set(): break
-                            # Görevi gönderirken search_data'yı da ekle
-                            futures.append(
-                                processor.submit(self._process_single_sigma_product_and_send, raw_product, context,
-                                                 search_data))
+                            logging.info(f"Sigma: Varyasyon aranıyor: '{term_variation}'")
+
+                            # Arama verisini (search_data) bu varyasyon için kopyala ve güncelle
+                            variation_search_data = search_data.copy()
+                            variation_search_data["searchTerm"] = term_variation
+
+                            raw_product_stream = self.sigma_api.search_products(term_variation,
+                                                                                self.search_cancelled)  # <-- YENİ: Varyasyonu kullan
+
+                            for raw_product in raw_product_stream:
+                                if self.search_cancelled.is_set(): break
+
+                                product_number = raw_product.get('product_number')
+                                if product_number in found_product_numbers:  # <-- YENİ: Yineleneni atla
+                                    continue
+                                if product_number:  # None olmayanları ekle
+                                    found_product_numbers.add(product_number)  # <-- YENİ: Bulunanı sete ekle
+
+                                # Görevi gönderirken *varyasyonlu* search_data'yı da ekle
+                                futures.append(
+                                    processor.submit(self._process_single_sigma_product_and_send, raw_product, context,
+                                                     variation_search_data))  # <-- YENİ: variation_search_data kullan
+
+                        # Asenkron sonuçları topla
                         for future in as_completed(futures):
                             if future.result():
                                 with total_found_lock: total_found += 1
@@ -1316,36 +1582,57 @@ class ComparisonEngine:
                     except Exception as e:
                         logging.error(f"Sigma akış hatası: {e}", exc_info=True)
 
+            # --- ORKIM GÖREVİ GÜNCELLENDİ (Varyasyonları döngüye al) ---
             def orkim_task():
                 nonlocal total_found
+                found_product_codes = set()  # Yinelenenleri önlemek için
                 try:
                     # ORKİM OPTİMİZASYONU: Arka plan yöneticisi olduğu için _login çağrısı yok
                     if self.orkim_api:
-                        orkim_search_term = search_term
-                        # search_logic'i Orkim API'sine gönder
-                        orkim_results = self.orkim_api.search_products(orkim_search_term, self.search_cancelled,
-                                                                       search_logic)
-                        if self.search_cancelled.is_set(): return
-
-                        # Orkim scraper artık filtrelemeyi kendi içinde yapıyor (esnek exact mantığıyla).
-                        for product in orkim_results:
+                        for term_variation in search_term_variations:  # <-- YENİ: Varyasyonları döngüye al
                             if self.search_cancelled.is_set(): break
-                            processed = self._process_orkim_product(product, context)
-                            send_to_frontend("product_found", {"product": processed}, context=context)
-                            with total_found_lock:
-                                total_found += 1
+                            logging.info(f"Orkim: Varyasyon aranıyor: '{term_variation}'")
+
+                            # search_logic'i Orkim API'sine gönder
+                            orkim_results = self.orkim_api.search_products(term_variation, self.search_cancelled,
+                                                                           # <-- YENİ: Varyasyonu kullan
+                                                                           search_logic)
+                            if self.search_cancelled.is_set(): return
+
+                            # Arama verisini (search_data) bu varyasyon için kopyala ve güncelle
+                            variation_search_data = search_data.copy()
+                            variation_search_data["searchTerm"] = term_variation
+
+                            # Orkim scraper artık filtrelemeyi kendi içinde yapıyor (esnek exact mantığıyla).
+                            for product in orkim_results:
+                                if self.search_cancelled.is_set(): break
+
+                                product_code = product.get("k_kodu", "N/A")
+                                if product_code in found_product_codes:  # <-- YENİ: Yineleneni atla
+                                    continue
+
+                                # --- DEĞİŞİKLİK: is_exact_cas_search eklendi ---
+                                processed = self._process_orkim_product(product, variation_search_data,
+                                                                        is_exact_cas_search,
+                                                                        context)  # <-- YENİ: variation_search_data kullan
+                                send_to_frontend("product_found", {"product": processed}, context=context)
+                                with total_found_lock:
+                                    total_found += 1
+                                if product_code != "N/A":
+                                    found_product_codes.add(product_code)  # <-- YENİ: Bulunanı sete ekle
                 except Exception as e:
                     logging.error(f"Orkim akış hatası: {e}", exc_info=True)
 
+            # --- ITK GÖREVİ GÜNCELLENDİ (Değişikliğe gerek yok, zaten varyasyonları kullanıyor) ---
             def itk_task():
                 nonlocal total_found
-                itk_search_terms = {search_term.lower()}
-                if is_m_code: itk_search_terms = search_term_variations
+                # itk_search_terms = {search_term.lower()} # <-- ESKİ
+                # if is_m_code: itk_search_terms = search_term_variations # <-- ESKİ
+                itk_search_terms = search_term_variations  # <-- YENİ (Daha basit, her zaman tüm varyasyonları kullanır)
+
                 found_codes = set()
                 with itk_cache_lock:
                     cache_to_search = list(itk_product_cache)
-
-                term_lower = search_term.lower()
 
                 for product in cache_to_search:
                     if self.search_cancelled.is_set(): return
@@ -1354,23 +1641,39 @@ class ComparisonEngine:
 
                     # KULLANICININ İSTEDİĞİ ESNEK "exact" FİLTRELEME (ITK)
                     match_found = False
-                    if search_logic == "exact":
-                        # --- KULLANICININ ORİJİNAL MANTIĞI KORUNDU ---
-                        if (term_lower == name_lower or
-                                (term_lower in code_lower or code_lower in term_lower)):
-                            match_found = True
-                        # --- KULLANICININ ORİJİNAL MANTIĞI SONU ---
-                    else:
+                    # Arama teriminin tüm varyasyonlarını (M. ve M'siz ve 1. kod) kontrol et
+                    for term_variation in itk_search_terms:
+                        if search_logic == "exact":
+                            # Varyasyonun, tam ürün kodunun *içinde* geçip geçmediğini kontrol et
+                            # Örn: 'm.100056' nın 'm.100056.2500' içinde geçmesi
+                            if (term_variation == name_lower or
+                                    (
+                                            term_variation in code_lower)):  # <-- 'code_lower in term_variation' kaldırıldı, M.100056.2500'nin m.100056'da aranması hataydı.
+                                match_found = True
+                                break  # Eşleşme bulundu, diğer varyasyonları denemeye gerek yok
+                        else:  # similar
+                            score = 100 if term_variation == code_lower else max(
+                                fuzz.partial_ratio(term_variation, name_lower),
+                                fuzz.partial_ratio(term_variation, code_lower))
+                            if score > 85:
+                                match_found = True
+                                break  # Eşleşme bulundu
+
+                    if not match_found and search_logic != "exact":  # similar için orijinal terimle de bir kontrol yapalım
+                        term_lower = search_term.lower()
                         score = 100 if term_lower == code_lower else max(fuzz.partial_ratio(term_lower, name_lower),
                                                                          fuzz.partial_ratio(term_lower, code_lower))
                         if score > 85:
                             match_found = True
 
                     if match_found and code_lower not in found_codes:
-                        processed = self._process_itk_product(product, context)
+                        # --- DEĞİŞİKLİK: is_exact_cas_search eklendi ---
+                        # NOT: ITK search_data'yı orijinal terimle kullanır, bu sorun değil
+                        # çünkü _process_itk_product KENDİ varyasyonlarını oluşturur.
+                        processed = self._process_itk_product(product, search_data, is_exact_cas_search, context)
                         send_to_frontend("product_found", {"product": processed}, context=context)
                         with total_found_lock: total_found += 1
-                        found_codes.add(code_lower)
+                        if code_lower: found_codes.add(code_lower) # None olmayanları ekle
 
             # YENİ: Sadece aktif markalar için görevleri gönder
             futures = []
@@ -1385,40 +1688,56 @@ class ComparisonEngine:
 
             # Görevlerin bitmesini bekle
             for future in as_completed(futures):
-                future.result() # Hataları yakalamak için
+                try: # Hataları yakala
+                    future.result()
+                except Exception as task_exc:
+                    logging.error(f"Arama görevi sırasında hata: {task_exc}", exc_info=True)
 
-        # 2. Aşama: Eğer ilk aşamada HİÇBİR yerden sonuç bulunamadıysa Netflex'i dene
+
+        # --- GÜNCELLENDİ: 2. Aşama: Netflex (Varyasyonları döngüye al) ---
         if total_found == 0 and not self.search_cancelled.is_set() and 'netflex' in enabled_brands:
-            logging.info(f"İlk aşamada sonuç bulunamadı, şimdi Netflex'te aranıyor: '{search_term}'")
+            logging.info(
+                f"İlk aşamada sonuç bulunamadı, şimdi Netflex'te varyasyonlar aranıyor: {search_term_variations}")
+            found_product_codes = set()  # Yinelenenleri önlemek için
             try:
-                # Dikkat: Netflex API'sinden AuthenticationError gelebilir
-                netflex_results = self.netflex_api.search_products(search_term, self.search_cancelled)
-                if not self.search_cancelled.is_set():
+                for term_variation in search_term_variations:  # <-- YENİ: Varyasyonları döngüye al
+                    if self.search_cancelled.is_set(): break
+                    logging.info(f"Netflex: Varyasyon aranıyor: '{term_variation}'")
 
-                    term_lower = search_term.lower()
+                    # Dikkat: Netflex API'sinden AuthenticationError gelebilir
+                    netflex_results = self.netflex_api.search_products(term_variation,
+                                                                       self.search_cancelled)  # <-- YENİ: Varyasyonu kullan
+                    if not self.search_cancelled.is_set():
 
-                    for product in netflex_results:
-                        if self.search_cancelled.is_set(): break
+                        term_lower = term_variation.lower()  # <-- YENİ: Eşleşme için varyasyonu kullan
 
-                        # KULLANICININ İSTEDİĞİ ESNEK "exact" FİLTRELEME (Netflex 2. Aşama)
-                        match_found = False
-                        product_name_lower = (product.get('product_name', '') or "").lower()
-                        product_code_lower = (product.get('product_code', '') or "").lower()
+                        for product in netflex_results:
+                            if self.search_cancelled.is_set(): break
 
-                        if search_logic == "exact":
-                            # --- GÜNCELLEME BAŞLANGICI (Netflex İsim Kontrolü) ---
-                            if (term_lower in product_name_lower or
-                                    (term_lower in product_code_lower or product_code_lower in term_lower)):
+                            product_code_lower = (product.get('product_code', '') or "").lower()
+                            if product_code_lower in found_product_codes:  # <-- YENİ: Yineleneni atla
+                                continue
+
+                            # KULLANICININ İSTEDİĞİ ESNEK "exact" FİLTRELEME (Netflex 2. Aşama)
+                            match_found = False
+                            product_name_lower = (product.get('product_name', '') or "").lower()
+
+                            if search_logic == "exact":
+                                # --- GÜNCELLEME BAŞLANGICI (Netflex İsim Kontrolü) ---
+                                if (term_lower in product_name_lower or
+                                        (term_lower in product_code_lower or product_code_lower in term_lower)):
+                                    match_found = True
+                                # --- GÜNCELLEME SONU ---
+                            else:  # similar
                                 match_found = True
-                            # --- GÜNCELLEME SONU ---
-                        else: # similar
-                            match_found = True
 
-                        if match_found:
-                            processed = self._process_netflex_product(product, context)
-                            send_to_frontend("product_found", {"product": processed}, context=context)
-                            with total_found_lock:
-                                total_found += 1
+                            if match_found:
+                                processed = self._process_netflex_product(product, context)
+                                send_to_frontend("product_found", {"product": processed}, context=context)
+                                with total_found_lock:
+                                    total_found += 1
+                                if product_code_lower:
+                                    found_product_codes.add(product_code_lower)  # <-- YENİ: Bulunanı sete ekle
             except netflex.AuthenticationError:
                 logging.error("Netflex kimlik doğrulaması başarısız oldu (2. aşama Netflex araması).")
             except Exception as e:
@@ -1606,7 +1925,7 @@ def main():
         try:
             request = json.loads(line.strip())
             action, data = request.get("action"), request.get("data")
-            logging.debug(f"Komut alındı: Eylem='{action}'")  # INFO yerine DEBUG
+            logging.debug(f"Komut alındı: Eylem='{action}'") # INFO yerine DEBUG kullanıldı
 
             if action == "load_settings":
                 settings_data, was_upgraded = load_settings()
@@ -1656,6 +1975,7 @@ def main():
                     # Yeni aramayı başlat
                     if action == "search":
                         engine.search_cancelled.clear()
+                        logging.info(f"[BACKEND] ARAMA KOMUTU ALINDI: '{data.get('searchTerm')}'")
                         search_thread = threading.Thread(target=engine.search_and_compare, args=(data,),
                                                          name="Search-Coordinator", daemon=True)
                         search_thread.start()
@@ -1711,15 +2031,18 @@ def main():
                 try:
                     if sigma_api: sigma_api.stop_drivers()
                 except Exception as e:
-                    logging.error(f"Sigma sürücüleri kapatılırken hata: {e}"); driver_shutdown_errors = True
+                    logging.error(f"Sigma sürücüleri kapatılırken hata: {e}");
+                    driver_shutdown_errors = True
                 try:
                     if tci_api: tci_api.close_driver()
                 except Exception as e:
-                    logging.error(f"TCI sürücüsü kapatılırken hata: {e}"); driver_shutdown_errors = True
+                    logging.error(f"TCI sürücüsü kapatılırken hata: {e}");
+                    driver_shutdown_errors = True
                 try:
                     if orkim_api: orkim_api.close_driver()  # Session'ı kapatır ve arka plan thread'ine sinyal gönderir
                 except Exception as e:
-                    logging.error(f"Orkim oturumu kapatılırken hata: {e}"); driver_shutdown_errors = True
+                    logging.error(f"Orkim oturumu kapatılırken hata: {e}");
+                    driver_shutdown_errors = True
 
                 if driver_shutdown_errors:
                     logging.warning("Bazı sürücüler kapatılırken hata oluştu.")
@@ -1751,3 +2074,4 @@ if __name__ == '__main__':
         send_to_frontend('python_shutdown_complete', {'error': True})
         sys.stdout.flush()
         time.sleep(0.1)
+

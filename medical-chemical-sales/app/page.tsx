@@ -343,7 +343,7 @@ const DropdownMenuTrigger = ({ children, asChild = false }) => {
 }
 
 const DropdownMenuContent = ({ children, align = "start", side = "bottom", className, ...props }) => {
-  const { isOpen } = useContext(HoverMenuContext)
+  const { isOpen } = useContext(DropdownContext)
   const alignClasses = {
     start: "origin-top-left left-0",
     end: "origin-top-right right-0",
@@ -449,7 +449,7 @@ const HoverMenuTrigger = ({ children }) => {
 }
 
 const HoverMenuContent = ({ children, align = "start", className, ...props }) => {
-  const { isOpen } = useContext(DropdownContext)
+  const { isOpen } = useContext(HoverMenuContext)
   const alignClasses = {
     start: "origin-top-left left-0",
     end: "origin-top-right right-0",
@@ -888,7 +888,14 @@ const calculateProductPrices = (product: ProductResult, settings: AppSettings, p
     newProduct.cheapest_netflex_stock =
       cheapestTciVariation?.stock_info?.map((s) => `${s.country}: ${s.stock}`).join(", ") || "N/A"
   } else {
-    newProduct.cheapest_netflex_stock = "N/A"
+    // --- DÜZELTME BAŞLANGICI ---
+    // Eğer stok bilgisi (ITK'dan veya Orkim'den) zaten gelmişse, onu koru.
+    // Sadece boşsa (null veya undefined) "N/A" ata.
+    if (newProduct.cheapest_netflex_stock === null || newProduct.cheapest_netflex_stock === undefined) {
+      newProduct.cheapest_netflex_stock = "N/A"
+    }
+    // (Eğer doluysa, hiçbir şey yapma, mevcut değeri koru)
+    // --- DÜZELTME SONU ---
   }
 
   return newProduct
@@ -2117,6 +2124,12 @@ const SearchPage = ({
   initialSearchTerm,
   onSearchExecuted,
   toast,
+  // EKSİK PROPLARI BURAYA EKLEYİN:
+  filters,
+  expandedProducts,
+  setExpandedProducts,
+  handleFilterChange,
+  toggleProductExpansion, // Bu da eksikti
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "")
   const [searchLogic, setSearchLogic] = useState("exact") // "similar" or "exact"
@@ -2124,33 +2137,30 @@ const SearchPage = ({
   const [debouncedFilterTerm, setDebouncedFilterTerm] = useState("")
   const [isProductNameVisible] = useState(true) // Her zaman görünür olması için sabitlendi
   const [showOriginalPrices, setShowOriginalPrices] = useState(false)
+  const [isSearching, setIsSearching] = useState(false) // Double-click koruması için
   const [selectedForAssignment, setSelectedForAssignment] = useState<AssignmentItem[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [isHovering, setIsHovering] = useState(false)
   const [progress, setProgress] = useState(0)
   const isMounted = useRef(false)
-  const {
-    filters,
-    expandedProducts, setExpandedProducts
-  } = props
 
-  useEffect(() => {
-    // Bu effect'in yalnızca component mount edildikten sonra çalışmasını sağlıyoruz
-    // Arama geçmişinden gelindiğinde ilk render'da aramayı tetiklememek için
-    if (isMounted.current) {
-      if (initialSearchTerm) {
-        setSearchTerm(initialSearchTerm)
-        handleSearch(initialSearchTerm, searchLogic)
-        onSearchExecuted()
-      }
-    } else {
-      // Component mount olduğunda, initialSearchTerm'i state'e ata
-      if (initialSearchTerm) {
-        setSearchTerm(initialSearchTerm)
-      }
-      isMounted.current = true
+useEffect(() => {
+    // Bu effect, Arama Geçmişi'nden bir terim (initialSearchTerm)
+    // geldiğinde arama kutusunu (searchTerm) doldurur.
+    // Kullanıcının "sadece buton/enter tetiklesin" isteği üzerine
+    // otomatik arama fonksiyonu (handleSearch) buradan kaldırıldı.
+
+    if (initialSearchTerm) {
+      // 1. Arama kutusunu doldur.
+      setSearchTerm(initialSearchTerm)
+      
+      // 2. Arama terimini (MainApplication state'inde) sıfırla ki
+      //    filtreleme veya arama tipi değişikliği gibi başka işlemler 
+      //    bu terimi tekrar kullanmasın.
+      onSearchExecuted()
     }
-  }, [initialSearchTerm, handleSearch, onSearchExecuted, searchLogic])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearchTerm]) // <-- Bağımlılığı SADECE 'initialSearchTerm' yapın
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -2169,13 +2179,17 @@ const SearchPage = ({
   }, [searchResults.length, isLoading])
 
   const onSearchOrCancelClick = () => {
+    if (isSearching && !isLoading) return // Arama zaten başlatılıyorsa tekrar başlatma
+
     if (isLoading) {
       handleCancel()
     } else {
+      setIsSearching(true)
       setFilterTerm("")
       setDebouncedFilterTerm("")
       setCurrentPage(1) // Yeni arama yapıldığında ilk sayfaya dön
       handleSearch(searchTerm, searchLogic)
+      setTimeout(() => setIsSearching(false), 1000) // 1 saniyelik koruma
     }
   }
 
@@ -2241,8 +2255,8 @@ const SearchPage = ({
               placeholder="Ürün adı, kodu veya CAS..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !isLoading && onSearchOrCancelClick()}
-              disabled={isLoading}
+              onKeyDown={(e) => e.key === "Enter" && !isLoading && !isSearching && onSearchOrCancelClick()}
+              disabled={isLoading || isSearching}
               className="pl-8 w-full"
             />
           </div>
@@ -2299,7 +2313,7 @@ const SearchPage = ({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>Marka</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {/* <DropdownMenuCheckboxItem
+              <DropdownMenuCheckboxItem
                 checked={filters.brands.sigma}
                 onCheckedChange={(checked) => handleFilterChange("brands", "sigma", checked)}
               >
@@ -2322,68 +2336,71 @@ const SearchPage = ({
                 onCheckedChange={(checked) => handleFilterChange("brands", "itk", checked)}
               >
                 ITK
-              </DropdownMenuCheckboxItem> */}
+              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button 
-            onClick={onSearchOrCancelClick} 
-            onMouseEnter={() => { 
-              if (isLoading) setIsHovering(true) 
-            }} 
-            onMouseLeave={() => { 
-              if (isLoading) setIsHovering(false) 
-            }} 
-            className={cn("relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out")} 
-            variant={isLoading && isHovering ? "destructive" : "default"} 
-          > 
-            <div className="relative z-10"> 
-              <AnimatePresence mode="wait"> 
-                {isLoading && isHovering ? ( 
-                  <motion.span 
-                    key="cancel" 
-                    className="flex items-center justify-center" 
-                    initial={{ opacity: 0, y: 5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    exit={{ opacity: 0, y: -5 }} 
-                    transition={{ duration: 0.2 }} 
-                  > 
-                    <XCircle className="mr-2 h-5 w-5" /> Aramayı İptal Et 
-                  </motion.span> 
-                ) : isLoading ? ( 
-                  <motion.span 
-                    key="searching" 
-                    className="flex items-center justify-center" 
-                    initial={{ opacity: 0, y: 5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    exit={{ opacity: 0, y: -5 }} 
-                    transition={{ duration: 0.2 }} 
-                  > 
-                    <LoaderCircle className="h-4 w-4 animate-spin mr-2" /> Aranıyor... 
-                  </motion.span> 
-                ) : ( 
-                  <motion.span 
-                    key="search" 
-                    className="flex items-center justify-center" 
-                    initial={{ opacity: 0, y: 5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    exit={{ opacity: 0, y: -5 }} 
-                    transition={{ duration: 0.2 }} 
-                  > 
-                    <Search className="mr-2 h-4 w-4" /> Ara 
-                  </motion.span> 
-                )} 
-              </AnimatePresence> 
-            </div> 
-            {isLoading && !isHovering && ( 
-              <motion.div 
-                className="absolute bottom-0 left-0 right-0 bg-primary/20" 
-                initial={{ height: "0%" }} 
-                animate={{ height: `${progress * 100}%` }} 
-                transition={{ type: "spring", stiffness: 50, damping: 20 }} 
-                style={{ zIndex: 5 }} 
-              /> 
-            )} 
-          </Button> 
+          <Button
+            onClick={onSearchOrCancelClick}
+            disabled={isSearching && !isLoading}
+            onMouseEnter={() => {
+              if (isLoading) setIsHovering(true)
+            }}
+            onMouseLeave={() => {
+              if (isLoading) setIsHovering(false)
+            }}
+            className={cn("relative w-48 flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out")}
+            variant={isLoading && isHovering ? "destructive" : "default"}
+          >
+            <div className="relative z-10">
+            <AnimatePresence mode="wait" initial={false}>
+              {isLoading ? (
+                isHovering ? (
+                  <motion.span
+                    key="cancel"
+                    className="flex items-center justify-center"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <XCircle className="mr-2 h-5 w-5" /> Aramayı İptal Et
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="searching"
+                    className="flex items-center justify-center"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <LoaderCircle className="h-4 w-4 animate-spin mr-2" /> Aranıyor...
+                  </motion.span>
+                )
+              ) : (
+                  <motion.span
+                  key="search"
+                    className="flex items-center justify-center"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Search className="mr-2 h-4 w-4" /> Ara
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </div>
+            {isLoading && !isHovering && (
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 bg-primary/20"
+                initial={{ height: "0%" }}
+                animate={{ height: `${progress * 100}%` }}
+                transition={{ type: "spring", stiffness: 50, damping: 20 }}
+                style={{ zIndex: 5 }}
+              />
+            )}
+          </Button>
         </div>
       </div>
 
@@ -2426,7 +2443,7 @@ const SearchPage = ({
                     product={product}
                     settings={settings}
                     expandedProducts={expandedProducts}
-                    toggleProductExpansion={props.toggleProductExpansion}
+                    toggleProductExpansion={toggleProductExpansion}
                     selectedForAssignment={selectedForAssignment}
                     onSelectionChange={handleSelectionChange}
                     isProductNameVisible={isProductNameVisible}
@@ -3926,49 +3943,52 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
     }
   }, [setAppStatus])
 
-    const handleAssignProducts = (products: AssignmentItem[]) => {
-        setAssignments((prev) => {
-            const newProducts = products.filter(
-                (p) => !prev.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
-            );
-            // Müşteri adı ve diğer bilgileri de ekleyerek geçmişe kaydet
-            const customerName = batchSearchState.customerName || "Bireysel Atama";
-            return [...prev, ...newProducts];
-        });
-    };
+  const handleAssignProducts = (products: AssignmentItem[]) => {
+    setAssignments((prev) => {
+      const newProducts = products.filter(
+        (p) => !prev.some((ap) => ap.product_code === p.product_code && ap.source === p.source),
+      )
+      // Müşteri adı ve diğer bilgileri de ekleyerek geçmişe kaydet
+      const customerName = batchSearchState.customerName || "Bireysel Atama"
+      return [...prev, ...newProducts]
+    })
+  }
 
   const handleSearch = useCallback((searchTerm: string, searchLogic: string) => {
-    if (!searchTerm.trim()) return;
+    const trimmedSearchTerm=searchTerm.trim()
+    console.log(`[FRONTEND] handleSearch çağrıldı: "${searchTerm}", Logic: ${searchLogic}`)
+    if (!trimmedSearchTerm) return;
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
     }
     const enabledBrands = Object.entries(filters.brands)
         .filter(([, isEnabled]) => isEnabled)
-        .map(([brand]) => brand);
+        .map(([brand]) => brand)
     productQueueRef.current = [];
     setIsLoading(true);
     setRawSearchResults([]);
     setError(null);
-    setCurrentSearchTerm(searchTerm);
+    setCurrentSearchTerm(trimmedSearchTerm);
     if (window.electronAPI) {
-      window.electronAPI.performSearch({ searchTerm, searchLogic, enabledBrands });
+      window.electronAPI.performSearch({ searchTerm:trimmedSearchTerm, searchLogic, enabledBrands });
     } else {
       console.error("Electron API bulunamadı, arama yapılamıyor.");
       setIsLoading(false)
     }
-  }, [filters.brands]);
+  }, [filters.brands]) // filters.brands bağımlılığını ekledim
 
   const handleReSearch = (term: string) => {
     setSearchTermForPage(term)
     setPage("search")
   }
 
-  const handleCancel = useCallback(() => {
-    if (isLoading && window.electronAPI) {
+  const handleCancel = useCallback(() => { // isLoading bağımlılığı kaldırıldı
+    console.log(`handleCancel called! Timestamp: ${Date.now()}`)
+    if (window.electronAPI) {
       toast("info", "Arama iptal ediliyor...")
       window.electronAPI.cancelSearch()
     }
-  }, [isLoading, toast]); // 'isLoading' ve 'toast' bağımlılık olarak eklenmeli
+  }, [toast]) // Dependency array'den isLoading kaldırıldı
 
   const onSearchExecuted = useCallback(() => {
     setSearchTermForPage(null)
@@ -3986,7 +4006,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
       return newSet
     })
   }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
-  const handleFilterChange = useCallback((type, key, value) => {
+  const handleFilterChange = useCallback((type: string, key: string, value: boolean) => {
     setFilters((prev) => ({ ...prev, [type]: { ...prev[type], [key]: value } }))
   }, []); // Bağımlılık dizisi boş (sadece state setter kullanıyor)
 
@@ -4069,6 +4089,7 @@ function MainApplication({ appStatus, setAppStatus, updateStatus, updateInfo, ap
             toast={toast}
             filters={filters}
             expandedProducts={expandedProducts}
+            handleFilterChange={handleFilterChange}
             setExpandedProducts={setExpandedProducts}
             toggleProductExpansion={toggleProductExpansion}
           />

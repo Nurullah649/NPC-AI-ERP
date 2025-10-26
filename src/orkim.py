@@ -528,9 +528,22 @@ class OrkimScraper:
             while not cancellation_token.is_set():
                 current_url = response.url
                 logging.info(f"Orkim: Sayfa {page_number} taranıyor ({current_url})...")
+
+                # --- ADD THIS LOGGING ---
+                logging.debug(f"Orkim Raw HTML for page {page_number}:\n{response.text[:2000]}...") # Log first 2000 chars
+                # --- END LOGGING ---
+
                 soup = BeautifulSoup(response.text, 'lxml')
-                main_content = soup.find('div', class_='main_content')
-                product_items = main_content.find_all('div', class_='asinItem') if main_content else []
+
+                # --- DEĞİŞİKLİK: Daha doğru bir CSS seçici kullanıldı ---
+                # Eski kod:
+                # main_content = soup.find('div', class_='main_content')
+                # product_items = main_content.find_all('div', class_='asinItem') if main_content else []
+                # Yeni kod:
+                product_items = soup.select('div.main_content div.products_box div.products_content div.row div.asinItem')
+                # --- DEĞİŞİKLİK SONU ---
+                logging.info(f"Orkim: Found {len(product_items)} product items using selector.") # Add count log
+
                 current_content_hash = hashlib.md5(str(product_items).encode()).hexdigest()
                 if current_content_hash == last_page_content_hash and page_number > 1:
                     logging.warning(f"Orkim: Sayfa {page_number} içeriği öncekiyle aynı, döngüden çıkılıyor.")
@@ -540,21 +553,23 @@ class OrkimScraper:
                     logging.info(f"Orkim: Sayfa {page_number} üzerinde ürün bulunamadı, tarama tamamlandı.")
                     break
 
-                for item in product_items:
+                for item_index, item in enumerate(product_items): # Add index
                     if cancellation_token.is_set(): break
+                    logging.debug(f"Processing Orkim item {item_index + 1}") # Log item processing start
                     product_data = {}
                     product_data['source'] = "Orkim"
                     product_name_tag = item.select_one('h3 a')
                     product_data['urun_adi'] = product_name_tag.get_text(strip=True) if product_name_tag else 'N/A'
-                    product_url = urljoin(self.base_url,
-                                          product_name_tag['href']) if product_name_tag and product_name_tag.get(
-                        'href') else None
+                    product_url_tag = item.select_one('h3 a') # Select again for clarity
+                    product_url = urljoin(self.base_url, product_url_tag['href']) if product_url_tag and product_url_tag.get('href') else None
                     product_data['product_url'] = product_url
+                    logging.debug(f"  Item {item_index + 1}: Name='{product_data['urun_adi']}', URL='{product_url}'") # Log extracted name/url
 
                     kkodu_td = item.find('td', string='K.Kodu')
-                    product_data['k_kodu'] = kkodu_td.find_next_sibling('td').get_text(
-                        strip=True) if kkodu_td and kkodu_td.find_next_sibling('td') else 'N/A'
-                    product_data['brand'] = "Orkim"
+                    kkodu_next_td = kkodu_td.find_next_sibling('td') if kkodu_td else None
+                    product_data['k_kodu'] = kkodu_next_td.get_text(strip=True) if kkodu_next_td else 'N/A'
+                    logging.debug(f"  Item {item_index + 1}: K.Kodu TD found: {bool(kkodu_td)}, Next TD found: {bool(kkodu_next_td)}, Value: {product_data['k_kodu']}") # Log K.Kodu finding
+                    product_data['brand'] = "Orkim" # Default
 
                     fiyat_td = item.find('td', string='Fiyat')
                     if fiyat_td and (fiyat_cell := fiyat_td.find_next_sibling('td')):
@@ -602,6 +617,8 @@ class OrkimScraper:
 
                     if match_found:
                         all_scraped_data.append(product_data)
+                    # Add log even if no match is needed by logic, to see if parsing worked
+                    logging.debug(f"  Item {item_index + 1}: Parsed data before match check: {product_data}")
 
                 next_page_link = soup.find('a', class_='sonrakiSayfa')
                 if not next_page_link:
@@ -743,4 +760,3 @@ class OrkimScraper:
         if self.session:
             self.session.close()
             logging.info("Orkim oturumu kapatıldı.")
-
