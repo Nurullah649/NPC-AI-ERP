@@ -1,118 +1,204 @@
 <div align="center">
-<img src="assets/icon.png" alt="Tales Job Logo" width="150" style="border-radius: 50%; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"/>
-<h1 style="font-size: 3em; font-weight: bold; color: #2c3e50; margin-top: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">Tales Job</h1>
-<p style="font-size: 1.2em; color: #34495e;">
-Medikal ve Kimyasal Tedarikçiler için Gelişmiş Ürün Arama Motoru
+<img src="assets/icon.png" alt="NPC-AI ERP Logo" width="120" style="border-radius: 20%;" />
+
+<h1 align="center">NPC-AI ERP</h1>
+
+<h3 align="center">
+Yeni Nesil Akıllı Kurumsal Kaynak Planlama ve 
+
+
+
+
+Tedarik Zinciri Yönetim Sistemi
+</h3>
+
+<p align="center">
+<b>Sigma, TCI, Netflex</b> entegrasyonları ile güçlendirilmiş, AI tabanlı satın alma ve stok yönetim çözümü.
 </p>
-<p>
-<!-- Teknolojilere ait rozetler -->
-<img src="https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54" alt="Python"/>
-<img src="https://img.shields.io/badge/-electron-F1C40F?style=for-the-badge&labelColor=17202A&logo=electron&logoColor=61DBFB" alt="Electron.js"/>
-<img src="https://img.shields.io/badge/-ReactJs-61DAFB?logo=react&logoColor=white&style=for-the-badge" alt="React"/>
-<img src="https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js"/>
-<img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/>
-<img src="https://img.shields.io/badge/Tailwind_CSS-grey?style=for-the-badge&logo=tailwind-css&logoColor=38B2AC" alt="Tailwind CSS"/>
+
+<!-- Rozetler -->
+
+<p align="center">
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Backend-Python-3776AB%3Fstyle%3Dfor-the-badge%26logo%3Dpython%26logoColor%3Dwhite" />
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Framework-Electron-47848F%3Fstyle%3Dfor-the-badge%26logo%3Delectron%26logoColor%3Dwhite" />
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Frontend-React-61DAFB%3Fstyle%3Dfor-the-badge%26logo%3Dreact%26logoColor%3Dblack" />
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/Database-SQLite-003B57%3Fstyle%3Dfor-the-badge%26logo%3Dsqlite%26logoColor%3Dwhite" />
+<img src="https://www.google.com/search?q=https://img.shields.io/badge/License-MIT-green%3Fstyle%3Dfor-the-badge" />
 </p>
 </div>
 
-<!-- Proje Hakkında Bölümü -->
+🚀 Proje Hakkında
 
-<div id="about" style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin-top: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-<h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">🚀 Proje Hakkında</h2>
-<p style="color: #34495e; line-height: 1.6;">
-<b>Tales Job</b>, kimya ve medikal sektöründe faaliyet gösteren profesyonellerin, birden fazla tedarikçi sitesindeki ürünleri tek bir platform üzerinden hızlıca aratmasını sağlayan bir masaüstü uygulamasıdır. Python tabanlı güçlü web scraping yetenekleri ile Electron.js'in cross-platform gücünü birleştirerek, kullanıcılara zaman kazandıran modern ve etkili bir çözüm sunar.
-</p>
-</div>
+NPC-AI ERP, özellikle medikal, kimya ve laboratuvar sektörleri için tasarlanmış, yapay zeka destekli bir masaüstü ERP (Enterprise Resource Planning) yazılımıdır.
 
-<!-- Özellikler Bölümü -->
+Geleneksel ERP sistemlerinin hantallığını ortadan kaldırarak; ürün arama, stok takibi, teklif oluşturma ve faturalandırma süreçlerini tek bir modern arayüzde birleştirir. Python tabanlı akıllı veri motoru sayesinde, global tedarikçi veritabanlarında (Sigma Aldrich, TCI vb.) saniyeler içinde arama yapar ve en uygun fiyat/stok bilgisini kullanıcının önüne getirir.
 
-<div id="features" style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-<h2 style="color: #2c3e50; border-bottom: 2px solid #2ecc71; padding-bottom: 10px;">✨ Temel Özellikler</h2>
-<ul style="list-style-type: none; padding: 0; color: #34495e;">
-<li style="margin-bottom: 10px; font-size: 1.1em;">🌐 <b>Çoklu Tedarikçi Desteği:</b> Sigma, TCI, Netflex gibi birden fazla tedarikçi sitesinde aynı anda arama yapabilme.</li>
-<li style="margin-bottom: 10px; font-size: 1.1em;">💻 <b>Platform Bağımsız:</b> Electron.js sayesinde Windows, macOS ve Linux işletim sistemlerinde sorunsuz çalışır.</li>
-<li style="margin-bottom: 10px; font-size: 1.1em;">🎨 <b>Modern Arayüz:</b> Next.js, TypeScript ve Tailwind CSS ile geliştirilmiş, kullanıcı dostu ve şık bir arayüz.</li>
-<li style="margin-bottom: 10px; font-size: 1.1em;">💾 <b>Sonuçları Kaydetme:</b> Arama sonuçlarını JSON formatında yerel olarak saklayarak daha sonra inceleme imkanı.</li>
-<li style="margin-bottom: 10px; font-size: 1.1em;">⚙️ <b>Esnek Altyapı:</b> Yeni tedarikçilerin (scraper'ların) sisteme kolayca entegre edilebileceği modüler Python altyapısı.</li>
-</ul>
-</div>
+Neden NPC-AI ERP?
 
-<!-- Teknolojiler Bölümü -->
+Akıllı Tedarik: Manuel ürün aramaya son. Tek tıkla 5+ global tedarikçiyi tarayın.
 
-<div id="tech-stack" style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-<h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">🛠️ Kullanılan Teknolojiler</h2>
-<div style="display: flex; justify-content: space-around; flex-wrap: wrap; text-align: center;">
-<div style="margin: 15px;">
-<h4 style="color: #34495e;">Backend (Veri Çekme)</h4>
-<ul style="list-style: none; padding: 0;">
-<li>Python</li>
-<li>BeautifulSoup4</li>
-<li>Requests</li>
-<li>Selenium</li>
-</ul>
-</div>
-<div style="margin: 15px;">
-<h4 style="color: #34495e;">Masaüstü Uygulama</h4>
-<ul style="list-style: none; padding: 0;">
-<li>Electron.js</li>
-<li>Node.js</li>
-</ul>
-</div>
-<div style="margin: 15px;">
-<h4 style="color: #34495e;">Frontend (Arayüz)</h4>
-<ul style="list-style: none; padding: 0;">
-<li>Next.js</li>
-<li>React</li>
-<li>TypeScript</li>
-<li>Tailwind CSS</li>
-<li>Shadcn/ui</li>
-</ul>
-</div>
-</div>
-</div>
+Tam Entegrasyon: Arama sonuçlarını doğrudan stok kartına veya teklife dönüştürün.
 
-<!-- Kurulum ve Başlatma Bölümü -->
+Çevrimdışı Çalışma: SQLite altyapısı ile internet kesintilerinde bile verilere erişim.
 
-<div id="installation" style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-<h2 style="color: #2c3e50; border-bottom: 2px solid #f39c12; padding-bottom: 10px;">🚀 Kurulum ve Başlatma</h2>
-<p style="color: #34495e;">Projeyi yerel makinenizde çalıştırmak için aşağıdaki adımları izleyin:</p>
+✨ Temel Özellikler
 
-<h4 style="color: #34495e;">1. Depoyu Klonlayın</h4>
-<pre style="background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px;"><code>git clone https://www.google.com/search?q=https://github.com/Nurullah649/Tales_Job.git
-cd Tales_Job</code></pre>
+🔍 AI Destekli Ürün Arama Motoru
 
-<h4 style="color: #34495e;">2. Python Bağımlılıklarını Yükleyin</h4>
-<p style="color: #7f8c8d; font-style: italic;">(Proje ana dizininde bulunan <code>requirements.txt</code> dosyasını kullanarak bağımlılıkları yükleyin.)</p>
-<pre style="background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px;"><code>pip install -r requirements.txt</code></pre>
+Global Tarama: Sigma Aldrich, TCI Chemicals, Netflex ve yerel tedarikçilerde eş zamanlı CAS No / Ürün Adı araması.
 
-<h4 style="color: #34495e;">3. Node.js Bağımlılıklarını Yükleyin</h4>
-<pre style="background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px;"><code>npm install</code></pre>
+Otomatik Veri Çekme: Ürün görselleri, teknik spekler ve fiyat bilgilerini otomatik olarak sisteme kaydeder.
 
-<h4 style="color: #34495e;">4. Uygulamayı Başlatın</h4>
-<pre style="background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px;"><code>npm start</code></pre>
-</div>
+💼 Finans ve Müşteri Yönetimi
 
-<!-- Katkıda Bulunma Bölümü -->
+Teklif & Fatura: Sürükle-bırak yöntemiyle profesyonel PDF teklifler ve faturalar oluşturun.
 
-<div id="contributing" style="background: #f8f9fa; padding: 25px; border-radius: 15px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-<h2 style="color: #2c3e50; border-bottom: 2px solid #9b59b6; padding-bottom: 10px;">🤝 Katkıda Bulunma</h2>
-<p style="color: #34495e; line-height: 1.6;">
-Katkılarınız projeyi daha iyi bir hale getirecektir. Bir katkıda bulunmak isterseniz, lütfen depoyu 'fork'layın ve bir 'pull request' oluşturun. Hata bildirimleri ve özellik önerileri için 'Issues' bölümünü kullanabilirsiniz.
-</p>
-<ol style="color: #34495e;">
-<li>Projeyi Fork'layın.</li>
-<li>Yeni bir özellik dalı oluşturun (<code>git checkout -b feature/YeniOzellik</code>).</li>
-<li>Değişikliklerinizi Commit'leyin (<code>git commit -m 'Yeni bir özellik eklendi'</code>).</li>
-<li>Dalınızı Push'layın (<code>git push origin feature/YeniOzellik</code>).</li>
-<li>Bir Pull Request açın.</li>
-</ol>
-</div>
+CRM Modülü: Müşteri cari hesapları, geçmiş siparişler ve iletişim bilgileri yönetimi.
 
-<!-- Lisans Bölümü -->
+💻 Modern Masaüstü Deneyimi
 
-<div id="license" align="center" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-<p style="color: #7f8c8d;">Bu proje MIT Lisansı altında lisanslanmıştır. Daha fazla bilgi için <code>LICENSE</code> dosyasına bakın.</p>
-<p style="color: #7f8c8d;">
-Geliştirici: <b>Nurullah</b>
-</p>
+Cross-Platform: Electron.js sayesinde Windows, macOS ve Linux üzerinde sorunsuz çalışır.
+
+Otomatik Güncelleme: Yazılım, yeni özellikler geldiğinde kendini otomatik olarak günceller.
+
+Güvenli Lisanslama: Sunucu tabanlı lisans doğrulama sistemi ile yazılım güvenliği.
+
+🛠️ Teknik Mimari
+
+Proje, performans, güvenlik ve geliştirme hızı için Hybrid bir mimari kullanır:
+
+Katman
+
+Teknoloji
+
+Görevi
+
+Core (Backend)
+
+Python / Node.js
+
+Veri kazıma (Scraping), İş mantığı ve API yönetimi.
+
+Application
+
+Electron.js
+
+Masaüstü pencere yönetimi ve işletim sistemi entegrasyonu.
+
+Interface (UI)
+
+React
+
+Hızlı, reaktif ve modern kullanıcı arayüzü.
+
+Database
+
+SQLite
+
+Yerel, hızlı ve güvenilir veri depolama.
+
+Security
+
+License Key
+
+Uzaktan sunucu doğrulamalı lisans ve aktivasyon sistemi.
+
+🚀 Kurulum ve Başlatma
+
+Projeyi yerel ortamınızda geliştirmek veya kaynak koddan derlemek için aşağıdaki adımları izleyin:
+
+Ön Gereksinimler
+
+Node.js (v16+)
+
+Python (v3.8+)
+
+Git
+
+1. Depoyu Klonlayın
+
+git clone [https://github.com/Nurullah649/NPC-AI-ERP.git](https://github.com/Nurullah649/NPC-AI-ERP.git)
+cd NPC-AI-ERP
+
+
+2. Bağımlılıkları Yükleyin (Frontend & Backend)
+
+# Node.js paketleri (Electron ve React için)
+npm install
+
+# Python bağımlılıkları (Veri motoru için)
+pip install -r requirements.txt
+
+
+3. Geliştirme Modunda Başlatın
+
+# Hem React sunucusunu hem de Electron penceresini başlatır
+npm run dev
+
+
+4. Uygulamayı Derleyin (Build)
+
+# İşletim sisteminize uygun dağıtılabilir dosya (.exe, .dmg, .AppImage) oluşturur
+npm run build
+
+
+🛣️ Yol Haritası (Roadmap)
+
+[x] Temel ERP Modülleri (Stok, Cari, Fatura)
+
+[x] Python tabanlı Tedarikçi Scraper Motoru
+
+[x] Electron ve React Entegrasyonu
+
+[ ] v1.5: AI destekli fiyat tahminleme modülü
+
+[ ] v2.0: Bulut (Cloud) senkronizasyonu ve Mobil Uygulama
+
+[ ] v2.1: E-Fatura entegrasyonu
+
+🤝 Katkıda Bulunma
+
+Açık kaynak topluluğunun gücüne inanıyoruz! NPC-AI ERP'ye katkıda bulunmak isterseniz:
+
+Bu depoyu Fork'layın.
+
+Yeni bir özellik dalı (branch) oluşturun (git checkout -b feature/HarikaOzellik).
+
+Değişikliklerinizi commit'leyin (git commit -m 'HarikaOzellik eklendi').
+
+Dalınızı push'layın (git push origin feature/HarikaOzellik).
+
+Bir Pull Request oluşturun.
+
+Lütfen büyük değişiklikler yapmadan önce tartışmak için bir "Issue" açınız.
+
+📄 Lisans
+
+Bu proje MIT Lisansı altında lisanslanmıştır.
+
+MIT License
+
+Copyright (c) 2025 Nurullah Kurnaz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+<div align="center">
+<p>Geliştirici: <a href="https://github.com/Nurullah649">Nurullah Kurnaz</a></p>
 </div>
