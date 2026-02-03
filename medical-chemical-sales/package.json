@@ -1,6 +1,6 @@
 {
   "name": "NPC-AI ERP",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -27,7 +27,7 @@
     "@radix-ui/react-progress": "1.1.1",
     "@radix-ui/react-radio-group": "1.2.2",
     "@radix-ui/react-scroll-area": "1.2.2",
-    "@radix-ui/react-select": "2.1.4",
+    "@radix-ui/react-select": "^2.1.4",
     "@radix-ui/react-separator": "1.1.1",
     "@radix-ui/react-slider": "1.2.2",
     "@radix-ui/react-slot": "1.1.1",

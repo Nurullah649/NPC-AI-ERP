@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiyat Teklifi - Tales Analitik</title>
+    <style>
+        /* Genel Sayfa Stilleri */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            font-size: 10pt;
+        }
+
+        .page-wrapper {
+            width: 1300px;
+            min-height: 794px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 25px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* --- 1. Bölüm: Header --- */
+        .site-header {
+            display: flex;
+            align-items: flex-start;
+            padding-bottom: 15px;
+        }
+
+        /* Sol: Logo ve Link */
+        .header-left {
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding-left: 10px;
+        }
+        .header-left img {
+            height: 100px;
+        }
+        .header-left a {
+            font-size: 1.3rem;
+            color: #0000ff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        /* Orta: Sertifikalar ve BAŞLIK */
+        .header-middle {
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding-top: 10px;
+            gap: 15px;
+        }
+        .service-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.8rem;
+            color: #444;
+        }
+        .service-info img {
+            height: 60px;
+            margin: 5px 0;
+        }
+        .header-middle h1 {
+            font-size: 2rem;
+            color: #333;
+            margin: 0;
+            letter-spacing: 10px;
+            display: inline-block;
+        }
+
+
+        /* Sağ: Teklif Bilgileri */
+        .header-right {
+            width: 40%;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .header-info-top {
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .iso-logo-container {
+            display: flex;
+            gap: 5px;
+        }
+
+        .iso-logo-header {
+            height: 80px;
+        }
+
+        .info-row {
+            display: flex;
+            gap: 10px;
+        }
+        .info-row .label {
+            font-weight: bold;
+            width: 120px;
+            text-align: left;
+        }
+        .info-row .value {
+            flex-grow: 1;
+        }
+
+        .customer-info-box {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-top: 5px;
+            padding: 0 5px;
+            border: 1px solid #bebebe;
+            background-color: #ffffff;
+            box-sizing: border-box;
+            min-height: 120px;
+            width: 420px;
+            text-align: left;
+        }
+
+        .customer-info-box p {
+            margin: 0;
+        }
+
+        /* --- 2. Bölüm: Müşteri ve Başlık --- */
+        .customer-section {
+           display: none;
+        }
+
+        /* --- 3. Bölüm: Ürün Tablosu --- */
+        .main-content {
+            padding-top: 0;
+            flex-grow: 1;
+        }
+
+        .product-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            margin-top: 15px;
+        }
+        .product-table th, .product-table td {
+            padding: 8px 5px;
+            text-align: left;
+        }
+        .product-table thead tr {
+            background-color: #ffe5e5;
+            color: #000000;
+            border: none;
+        }
+        .product-table th {
+            font-weight: bold;
+            border: none;
+        }
+        .product-table tbody tr {
+            border-bottom: 1px solid #ccc;
+        }
+
+        .product-table th:nth-child(1), .product-table td:nth-child(1) { width: 40px; }
+        .product-table th:nth-child(2) { width: 30%; }
+        .product-table .col-right { text-align: right; }
+        .product-table .col-center { text-align: center; }
+
+        /* --- 4. Bölüm: Notlar ve Toplamlar --- */
+        .summary-section {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+        }
+        .summary-notes {
+            font-weight: bold;
+        }
+        .summary-totals {
+            text-align: right;
+            min-width: 300px;
+            padding: 0;
+        }
+        .total-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 5px;
+        }
+        .total-row .label {
+            width: 150px;
+            font-weight: bold;
+            padding-right: 10px;
+        }
+        .total-row .value {
+            width: 100px;
+            text-align: right;
+        }
+        .written-total {
+            text-align: right;
+            margin-top: 15px;
+            font-style: italic;
+            color: #555;
+            clear: both;
+        }
+
+        /* --- 5. Bölüm: Footer --- */
+        .site-footer {
+            margin-top: auto;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #555;
+            line-height: 1.6;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        .site-footer p {
+            margin: 2px 0;
+        }
+        .footer-address {
+            flex-grow: 1;
+            text-align: center;
+        }
+        .page-number {
+            text-align: right;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #000;
+            width: 100px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="page-wrapper">
+
+        <header class="site-header">
+            <div class="header-left">
+                <img src="tales_logo2.jpg" alt="Tales Analitik Logo">
+                <a href="http://www.tales.com.tr">www.tales.com.tr</a>
+            </div>
+
+            <div class="header-middle">
+                <div class="service-info">
+                     <span>Servisimiz</span>
+                    <img src="TSE-HYB.jpg" alt="TSE-HYB Belgesi">
+                    <span>Belgelidir</span>
+                </div>
+                <h1>FİYAT TEKLİFİ</h1>
+            </div>
+
+            <div class="header-right">
+
+                <div class="header-info-top">
+                    <div class="iso-logo-container">
+                        <img src="UNICERT-ISO-9001.png" alt="UNICERT ISO 9001" class="iso-logo-header">
+                        </div>
+
+                    <div>
+                        <div class="info-row">
+                            <span class="label">Teklif Tarihi :</span>
+                            <span class="value">{{TEKLIF_TARIHI}}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Teklif Numarası</span>
+                            <span class="value">{{TEKLIF_NUMARASI}}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Teklifi Hazırlayan</span>
+                            <span class="value">{{HAZIRLAYAN}}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="customer-info-box">
+                    <p>{{MUSTERI_ADI}}<br>
+                    {{MUSTERI_KURUM}}<br>
+                    {{MUSTERI_BOLUM}}<br>
+                    {{MUSTERI_SEHIR}}<br>
+                    <strong>Sayın ;</strong></p>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <table class="product-table">
+                <thead>
+                    <tr>
+                        <th>Sı ra</th>
+                        <th>Ürün İ smi</th>
+                        <th>Marka</th>
+                        <th>Ürün Kodu</th>
+                        <th class="col-center">Miktar</th>
+                        <th></th>
+                        <th class="col-right">Fiyat</th>
+                        <th class="col-right">Tutar</th>
+                        <th class="col-right">KDV</th>
+                        <th class="col-right">KDV Dahil</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{URUN_SATIRLARI}}
+                </tbody>
+            </table>
+
+            <section class="summary-section">
+                <div class="summary-notes">
+                    NOTLAR
+                </div>
+
+                <div class="summary-totals">
+                    <div class="total-row">
+                        <span class="label">Ara Toplam</span>
+                        <span class="value">{{ARA_TOPLAM}}</span>
+                    </div>
+                    <div class="total-row">
+                        <span class="label">KDV Dahil Toplam</span>
+                        <span class="value">{{KDV_DAHIL_TOPLAM}}</span>
+                    </div>
+                    <div class="written-total">
+                        {{YAZI_ILE_TOPLAM}}
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            <div class="footer-address">
+                <p>Tales Analitik Cihaz ve Lab.Don.Kim.Med.Bil.San.ve Tic.Ltd.Şti.</p>
+                <p>Şehit Cevdet Özdemir mah. Kabil Caddesi 1352 Sokak 3/1 Çankaya-ANKARA</p>
+                <p>Yeniköy Mahallesi 307 Sokak Damla Apartmanı No:9/6 Döşemealtı-ANTALYLA</p>
+                <p>Yazır mh. Ulusal Sokak 21/A Selçuklu-KONYA</p>
+            </div>
+            <p class="page-number">Sayfa No: {{SAYFA_NO}}</p>
+        </footer>
+
+    </div>
+
+</body>
+</html>

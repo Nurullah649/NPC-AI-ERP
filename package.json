@@ -1,8 +1,8 @@
 {
   "name": "NPC-AI-ERP",
-  "version": "1.5.18",
+  "version": "1.6.0",
   "description": "NPC-AI ERP Electron Uygulaması",
-  "main": "main.js",
+  "main": "electron/main.js",
   "homepage": "./",
   "author": "Nurullah Kurnaz & Adem TURGUT",
   "license": "ISC",
@@ -41,8 +41,8 @@
     },
     "files": [
       "package.json",
-      "main.js",
-      "preload.js",
+      "electron/main.js",
+      "electron/preload.js",
       {
         "from": "medical-chemical-sales/out",
         "to": "out"

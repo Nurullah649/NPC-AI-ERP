@@ -10,8 +10,8 @@ echo [1/5] Next.js arayuz projesi derleniyor (npm run build)...
 cd medical-chemical-sales
 call npm run build
 IF %ERRORLEVEL% NEQ 0 (
-echo HATA: Next.js derlemesi basarisiz oldu.
-goto :error
+    echo HATA: Next.js derlemesi basarisiz oldu.
+    goto :error
 )
 cd ..
 echo Arayuz derlemesi basariyla tamamlandi.
@@ -19,10 +19,11 @@ echo.
 
 REM Adım 2: PyInstaller ile Python arka plan servisini EXE yap
 echo [2/5] Python arka plan servisi EXE'ye donusturuluyor (PyInstaller)...
-pyinstaller --onefile --noconsole --name desktop_app --add-data ".env;." desktop_app_electron.py
+REM --> DEGISTI: Python script'inin yolu yeni konumuyla guncellendi.
+pyinstaller --onefile --noconsole --name desktop_app --add-data ".env;." python_backend/main.py
 IF %ERRORLEVEL% NEQ 0 (
-echo HATA: PyInstaller paketlemesi basarisiz oldu.
-goto :error
+    echo HATA: PyInstaller paketlemesi basarisiz oldu.
+    goto :error
 )
 echo Python EXE dosyasi basariyla olusturuldu.
 echo.
@@ -30,13 +31,13 @@ echo.
 REM Adım 3: Oluşturulan EXE'yi bin klasörüne taşı
 echo [3/5] Olusturulan EXE dosyasi 'bin' klasorune tasiniyor...
 IF NOT EXIST "bin" (
-mkdir bin
-echo 'bin' klasoru olusturuldu.
+    mkdir bin
+    echo 'bin' klasoru olusturuldu.
 )
 move /Y "dist\desktop_app.exe" "bin\desktop_app.exe"
 IF %ERRORLEVEL% NEQ 0 (
-echo HATA: EXE dosyasi tasinamadi.
-goto :error
+    echo HATA: EXE dosyasi tasinamadi.
+    goto :error
 )
 echo EXE dosyasi basariyla tasindi.
 echo.
@@ -45,8 +46,8 @@ REM Adım 4: Electron Builder ile kurulum dosyasını oluştur
 echo [4/5] Kurulum dosyasi (setup.exe) olusturuluyor (npm run dist)...
 call npm run dist
 IF %ERRORLEVEL% NEQ 0 (
-echo HATA: Kurulum dosyasi olusturulamadi.
-goto :error
+    echo HATA: Kurulum dosyasi olusturulamadi.
+    goto :error
 )
 echo Kurulum dosyasi basariyla olusturuldu.
 echo.
@@ -54,6 +55,7 @@ echo.
 REM Adım 5: Temizlik
 echo [5/5] Gecici derleme dosyalari temizleniyor...
 rmdir /S /Q "build"
+
 del "*.spec"
 echo Temizlik tamamlandi.
 echo.

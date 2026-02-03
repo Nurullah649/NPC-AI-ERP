@@ -1,0 +1,64 @@
+// preload.js
+
+const { contextBridge, ipcRenderer } = require("electron")
+
+const createListener = (channel) => (callback) => {
+  const subscription = (_event, ...args) => callback(...args)
+  ipcRenderer.on(channel, subscription)
+  return () => {
+    ipcRenderer.removeListener(channel, subscription)
+  }
+}
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  // --- Komut Gönderme (Renderer -> Main) ---
+  rendererReady: () => ipcRenderer.send("renderer-ready"),
+  performSearch: (data) => ipcRenderer.send("perform-search", data),
+  cancelSearch: () => ipcRenderer.send("cancel-search"),
+  exportToExcel: (data) => ipcRenderer.send("export-to-excel", data),
+  generatePdf: (data) => ipcRenderer.send("generate-pdf", data),
+  loadSettings: () => ipcRenderer.send("load-settings"),
+  saveSettings: (settings) => ipcRenderer.send("save-settings", settings),
+  selectFile: () => ipcRenderer.invoke("select-file"),
+  startBatchSearch: (data) => ipcRenderer.send("start-batch-search", data),
+  cancelBatchSearch: () => ipcRenderer.send("cancel-batch-search"),
+  cancelCurrentTermSearch: () => ipcRenderer.send("cancel-current-term-search"),
+  getParities: () => ipcRenderer.send("get-parities"),
+  loadCalendarNotes: () => ipcRenderer.send("load-calendar-notes"),
+  saveCalendarNotes: (notes) => ipcRenderer.send("save-calendar-notes", notes),
+  exportMeetings: (data) => ipcRenderer.send("export-meetings", data),
+  checkNotificationsNow: () => ipcRenderer.send("check-notifications-now"),
+  showNotification: (data) => ipcRenderer.send("show-notification", data),
+  restartAppAndUpdate: () => ipcRenderer.send("restart-app-and-update"),
+  getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  checkForUpdates: () => ipcRenderer.send("check-for-updates"),
+  getOrkimStock: (productUrl) => ipcRenderer.send("get-orkim-stock", productUrl),
+
+  // --- Dinleyiciler (Main -> Renderer) ---
+  onPythonReady: createListener("services-ready"), // Python'un hazır olduğunu bildirir
+  onPythonError: createListener("python-crashed"), // Python'un çöktüğünü bildirir
+  onInitialSetupRequired: createListener("initial-setup-required"),
+  onProductFound: createListener("search-product-found"),
+  onSearchComplete: createListener("search-complete"),
+  onExportResult: createListener("export-result"),
+  onGeneratePdfResult: createListener("generate-pdf-result"),
+  onSearchError: createListener("search-error"),
+  onSettingsLoaded: createListener("settings-loaded"),
+  onSettingsSaved: createListener("settings-saved"),
+  onAuthenticationError: createListener("authentication-error"),
+  onBatchSearchProgress: createListener("batch-search-progress"),
+  onBatchSearchComplete: createListener("batch-search-complete"),
+  onLogSearchTerm: createListener("log-search-term"),
+  onParitiesUpdated: createListener("parities-updated"),
+  onCalendarNotesLoaded: createListener("calendar-notes-loaded"),
+  onCalendarNotesSaved: createListener("calendar-notes-saved"),
+  onShowNotification: createListener("show-notification"),
+  onExportMeetingsResult: createListener("export-meetings-result"),
+  onUpdateAvailable: createListener("update-available"),
+  onUpdateNotAvailable: createListener("update-not-available"),
+  onUpdateDownloadProgress: createListener("update-download-progress"),
+  onUpdateDownloaded: createListener("update-downloaded"),
+  onUpdateError: createListener("update-error"),
+  onNewSettingsAvailable: createListener("new-settings-available"),
+  onOrkimStockResult: createListener("orkim-stock-result"),
+})
