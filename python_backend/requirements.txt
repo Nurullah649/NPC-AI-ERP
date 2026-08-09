@@ -162,6 +162,7 @@ scikit-image @ file:///C:/b/abs_2075zg1pia/croot/scikit-image_1682528361447/work
 scikit-learn @ file:///C:/b/abs_45qemhn4lg/croot/scikit-learn_1753427401078/work
 scipy==1.10.1
 selenium @ file:///C:/b/abs_0fryk0y0zp/croot/selenium_1727169285181/work
+playwright==1.58.0
 sentence-transformers==5.1.1
 shapely @ file:///C:/b/abs_cc3baejowf/croot/shapely_1754380826228/work
 six @ file:///C:/b/abs_149wuyuo1o/croot/six_1744271521515/work

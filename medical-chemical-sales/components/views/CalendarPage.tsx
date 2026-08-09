@@ -27,11 +27,6 @@ import {
   Input,
   Label,
   Checkbox,
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
   Dialog,
   DialogTrigger,
   DialogContent,
@@ -40,6 +35,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../ui"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { CalendarNote, Meeting } from "../../types"
 
 export const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }: any) => {
@@ -455,9 +451,8 @@ export const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }: any) =>
                           <Select
                             value={newMeeting.notificationFrequency}
                             onValueChange={(value) => setNewMeeting({ ...newMeeting, notificationFrequency: value })}
-                            id="notificationFrequency"
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger id="notificationFrequency"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Bildirme</SelectItem>
                               <SelectItem value="for_1_day">1 Gün Boyunca</SelectItem>
@@ -469,9 +464,8 @@ export const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }: any) =>
                           <Select
                             value={newMeeting.notificationFrequency}
                             onValueChange={(value) => setNewMeeting({ ...newMeeting, notificationFrequency: value })}
-                            id="notificationFrequency"
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger id="notificationFrequency"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Bildirme</SelectItem>
                               <SelectItem value="on_day">Olay Günü</SelectItem>
@@ -489,9 +483,8 @@ export const CalendarPage = ({ calendarNotes, setCalendarNotes, toast }: any) =>
                           onValueChange={(value) =>
                             setNewMeeting({ ...newMeeting, notificationDailyFrequency: value as any })
                           }
-                          id="notificationDailyFrequency"
                         >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectTrigger id="notificationDailyFrequency"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="once">Günde 1 Kez (Sabah)</SelectItem>
                             <SelectItem value="twice">Günde 2 Kez (Sabah, Akşam)</SelectItem>

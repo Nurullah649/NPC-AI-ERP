@@ -95,8 +95,8 @@ export const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBat
     const cleanup = window.electronAPI.onProductFound(({ product, context }) => {
       if (context?.batch_search_term) {
         setBatchState((prev: any) => {
-          const newResults = new Map(prev.batchResults)
-          const term = context.batch_search_term
+          const newResults = new Map<string, ProductResult[]>(prev.batchResults)
+          const term = String(context.batch_search_term)
           const existing = newResults.get(term) || []
           const isProductAlreadyInList = existing.some((p: any) => p.product_number === product.product_number)
           if (!isProductAlreadyInList) {
@@ -209,10 +209,11 @@ export const BatchSearchPage = ({ onAssignProducts, settings, batchState, setBat
     })
   }
 
-  const resultsArray = useMemo(() => Array.from(batchResults.keys()), [batchResults])
+  const resultsArray = useMemo<string[]>(() => Array.from((batchResults as Map<string, ProductResult[]>).keys()), [batchResults])
 
   const currentResultsForSelectedTerm = useMemo(() => {
-    const results = batchResults.get(selectedTerm) || []
+    if (!selectedTerm) return []
+    const results = (batchResults as Map<string, ProductResult[]>).get(selectedTerm) || []
     const lowerCaseFilter = debouncedFilterTerm.toLowerCase().trim()
     if (!lowerCaseFilter) {
       return results

@@ -24,6 +24,7 @@ import {
   AlertDescription,
 } from "../ui"
 import { AppSettings } from "../../types"
+import { useAppContext } from "../../context/AppContext"
 
 const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = false, children, onManualUpdateCheck }: any) => {
   const [settings, setSettings] = useState(initialSettings)
@@ -209,17 +210,36 @@ const SettingsForm = ({ initialSettings, onSave, isSaving, isInitialSetup = fals
   )
 }
 
-export const SettingsPage = ({ authError, settings, onSaveSettings, toast, updateStatus, updateInfo, appVersion, onManualUpdateCheck }: any) => {
+export const SettingsPage = ({
+  authError,
+  settings: settingsProp,
+  onSaveSettings,
+  toast: toastProp,
+  updateStatus,
+  updateInfo = {},
+  appVersion,
+  onManualUpdateCheck,
+}: any) => {
+  const appContext = useAppContext()
+  const settings = settingsProp ?? appContext.settings
+  const toast = toastProp ?? appContext.toast
+  const saveSettingsToState = onSaveSettings ?? appContext.setSettings
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = async (newSettings: AppSettings) => {
     setIsSaving(true)
+    if (!window.electronAPI) {
+      toast("error", "Electron API bulunamadı, ayarlar kaydedilemedi.")
+      setIsSaving(false)
+      return
+    }
+
     const cleanup = window.electronAPI.onSettingsSaved((result) => {
-      if (result.status === "success") {
+      if (result?.status === "success") {
         toast("success", "Ayarlar başarıyla kaydedildi.")
-        onSaveSettings(newSettings)
+        saveSettingsToState(newSettings)
       } else {
-        toast("error", `Ayarlar kaydedilemedi: ${result.message}`)
+        toast("error", `Ayarlar kaydedilemedi: ${result?.message || "Bilinmeyen hata"}`)
       }
       setIsSaving(false)
       cleanup()
@@ -242,7 +262,7 @@ export const SettingsPage = ({ authError, settings, onSaveSettings, toast, updat
 
     let statusText = "Güncellemeler kontrol ediliyor..."
     let statusColor = "text-muted-foreground"
-    let actionButton = null
+    let actionButton: React.ReactNode = null
 
     switch (updateStatus) {
       case "up_to_date":
@@ -300,7 +320,13 @@ export const SettingsPage = ({ authError, settings, onSaveSettings, toast, updat
         </Alert>
       )}
       {settings ? (
-        <SettingsForm initialSettings={settings} onSave={handleSave} isSaving={isSaving} onManualUpdateCheck={onManualUpdateCheck}>
+        <SettingsForm
+          initialSettings={settings}
+          onSave={handleSave}
+          isSaving={isSaving}
+          isInitialSetup={appContext.appStatus === "setup_required"}
+          onManualUpdateCheck={onManualUpdateCheck}
+        >
           {!isSaving && <UpdateStatusComponent />}
         </SettingsForm>
       ) : (

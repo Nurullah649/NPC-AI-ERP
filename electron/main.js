@@ -4,17 +4,35 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, Tray, Menu } = requir
 const { autoUpdater } = require("electron-updater")
 const path = require("path")
 const fs = require("fs")
-const { spawn, exec, execSync } = require("child_process")
+const { spawn, exec, execSync, execFileSync } = require("child_process")
 const { StringDecoder } = require('string_decoder');
 
 let win
 let tray
 let pythonProcess = null
 let handshakeComplete = false // Arayüzün hazır olup olmadığını takip eder
+let pendingRendererMessages = []
+let pendingPythonCommands = []
 let shutdownInProgress = false
 let killTimer = null
 
 const isDev = !app.isPackaged
+const isLikelyWine = !!process.env.WINEPREFIX || !!process.env.WINELOADERNOEXEC
+
+// Cache klasörünü yazılabilir kullanıcı alanına sabitle (Windows access denied/0x5 için).
+const forcedUserDataDir = path.join(app.getPath("appData"), "NPC-AI-ERP")
+const forcedCacheDir = path.join(forcedUserDataDir, "Cache")
+fs.mkdirSync(forcedCacheDir, { recursive: true })
+app.setPath("userData", forcedUserDataDir)
+app.commandLine.appendSwitch("disk-cache-dir", forcedCacheDir)
+
+if (isLikelyWine) {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch("disable-gpu")
+  app.commandLine.appendSwitch("disable-gpu-compositing")
+  app.commandLine.appendSwitch("in-process-gpu")
+  app.commandLine.appendSwitch("no-sandbox")
+}
 
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'assets', 'icon.png')
@@ -46,6 +64,44 @@ function executeFinalShutdown() {
   app.quit()
 }
 
+function sendToRenderer(channel, payload) {
+  if (!win || win.isDestroyed()) {
+    return
+  }
+
+  if (!handshakeComplete) {
+    pendingRendererMessages.push({ channel, payload })
+    console.log(`Arayüz hazır değil, mesaj bekletiliyor: ${channel}`)
+    return
+  }
+
+  win.webContents.send(channel, payload)
+}
+
+function flushPendingRendererMessages() {
+  if (!win || win.isDestroyed() || !handshakeComplete || pendingRendererMessages.length === 0) {
+    return
+  }
+
+  const messages = pendingRendererMessages
+  pendingRendererMessages = []
+  for (const { channel, payload } of messages) {
+    win.webContents.send(channel, payload)
+  }
+}
+
+function flushPendingPythonCommands() {
+  if (!pythonProcess || !pythonProcess.stdin || pythonProcess.stdin.destroyed || pendingPythonCommands.length === 0) {
+    return
+  }
+
+  const commands = pendingPythonCommands
+  pendingPythonCommands = []
+  for (const command of commands) {
+    sendCommandToPython(command)
+  }
+}
+
 function startPythonService() {
   if (pythonProcess) {
     console.log("Python servisi zaten çalışıyor.")
@@ -54,11 +110,29 @@ function startPythonService() {
   const userDataPath = app.getPath('userData');
   let scriptPath
   if (isDev) {
+    const pythonCmd = resolvePythonCommand()
     scriptPath = path.join(__dirname, "..", "python_backend", "main.py")
-    pythonProcess = spawn("python", ["-u", scriptPath, userDataPath])
+    pythonProcess = spawn(pythonCmd, ["-u", scriptPath, userDataPath])
   } else {
-    scriptPath = path.join(process.resourcesPath, "bin", "desktop_app.exe")
-    pythonProcess = spawn(scriptPath, [userDataPath])
+    const bundledExePath = path.join(process.resourcesPath, "bin", "desktop_app.exe")
+    const bundledPyPath = path.join(process.resourcesPath, "python_backend", "main.py")
+    if (fs.existsSync(bundledExePath)) {
+      scriptPath = bundledExePath
+      pythonProcess = spawn(scriptPath, [userDataPath])
+    } else if (fs.existsSync(bundledPyPath)) {
+      scriptPath = bundledPyPath
+      const pythonCmd = resolvePythonCommand()
+      ensureBundledPythonDeps(pythonCmd)
+      pythonProcess = spawn(pythonCmd, ["-u", scriptPath, userDataPath])
+      console.warn(`[PACKAGED FALLBACK] desktop_app.exe bulunamadı, script modunda başlatılıyor: ${bundledPyPath}`)
+    } else {
+      const errorMessage = "Python backend dosyası bulunamadı (desktop_app.exe / python_backend/main.py)."
+      console.error(errorMessage)
+      if (win && !win.isDestroyed()) {
+        sendToRenderer("python-crashed", errorMessage)
+      }
+      return
+    }
   }
   console.log(`Python arka plan servisi başlatılıyor: ${scriptPath}`)
   console.log(`Güvenli veri kayıt yolu: ${userDataPath}`);
@@ -66,7 +140,7 @@ function startPythonService() {
   pythonProcess.on("error", (err) => {
     console.error("Python servisi başlatılamadı:", err)
     if (win && !win.isDestroyed()) {
-      win.webContents.send("python-crashed", `Python başlatılamadı: ${err.message}`)
+      sendToRenderer("python-crashed", `Python başlatılamadı: ${err.message}`)
     }
   })
   console.log(`Python arka plan servisi başlatıldı. PID: ${pythonProcess.pid}`)
@@ -134,9 +208,9 @@ function startPythonService() {
               }
             } else if (win && !win.isDestroyed() && channel) {
               if (type === "product_found" && context) {
-                win.webContents.send(channel, { product: data.product, context: context })
+                sendToRenderer(channel, { product: data.product, context: context })
               } else {
-                win.webContents.send(channel, data)
+                sendToRenderer(channel, data)
               }
             }
           }
@@ -151,11 +225,110 @@ function startPythonService() {
     console.error(`Python servisi ${code} koduyla sonlandı.`)
     if (win && !win.isDestroyed() && code !== 0 && !shutdownInProgress) {
       if (win.webContents) {
-        win.webContents.send("python-crashed")
+        sendToRenderer("python-crashed")
       }
     }
     pythonProcess = null
   })
+  flushPendingPythonCommands()
+}
+
+function resolvePythonCommand() {
+  if (process.env.NPC_AI_PYTHON) {
+    return process.env.NPC_AI_PYTHON
+  }
+
+  const condaEnvName = process.env.NPC_AI_CONDA_ENV || "npcai"
+  try {
+    const output = execFileSync(
+      "conda",
+      ["run", "-n", condaEnvName, "python", "-c", "import sys; print(sys.executable)"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 15000 },
+    )
+    const candidate = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).pop()
+    if (candidate && fs.existsSync(candidate)) {
+      console.log(`Python yorumlayıcısı conda ortamından seçildi (${condaEnvName}): ${candidate}`)
+      return candidate
+    }
+  } catch (err) {
+    console.warn(`Conda ortamı '${condaEnvName}' kullanılamadı, sistem Python'a geçiliyor: ${err.message}`)
+  }
+
+  return process.platform === "win32" ? "python" : "python3"
+}
+
+function ensureBundledPythonDeps(pythonCmd) {
+  const runtimeDeps = [
+    { module: "openpyxl", package: "openpyxl==3.1.5" },
+    { module: "docx", package: "python-docx==1.2.0" },
+    { module: "chardet", package: "chardet==5.2.0" },
+    { module: "dotenv", package: "python-dotenv>=1.0.0" },
+    { module: "thefuzz", package: "thefuzz==0.22.1" },
+    { module: "googletrans", package: "googletrans==4.0.2" },
+    { module: "langdetect", package: "langdetect==1.0.9" },
+    { module: "requests", package: "requests>=2.31.0" },
+    { module: "bs4", package: "beautifulsoup4==4.13.5" },
+    { module: "lxml", package: "lxml==6.0.1" },
+    { module: "PIL", package: "Pillow>=10.3.0,<13" },
+    { module: "openai", package: "openai==1.106.1" },
+    { module: "playwright", package: "playwright==1.58.0" },
+    { module: "sqlalchemy", package: "SQLAlchemy==2.0.43" },
+  ]
+
+  const missingDeps = getMissingPythonDeps(pythonCmd, runtimeDeps)
+  if (missingDeps.length === 0) {
+    return
+  }
+
+  try {
+    const runtimeRequirementsPath = path.join(process.resourcesPath, "python_backend", "runtime-requirements.txt")
+    const pipArgs = ["-m", "pip", "install", "--disable-pip-version-check"]
+    if (shouldUseUserPipInstall(pythonCmd)) {
+      pipArgs.push("--user")
+    }
+
+    if (fs.existsSync(runtimeRequirementsPath)) {
+      console.log(`Eksik Python bağımlılıkları kuruluyor (${missingDeps.map((dep) => dep.module).join(", ")}): ${runtimeRequirementsPath}`)
+      execFileSync(pythonCmd, [...pipArgs, "-r", runtimeRequirementsPath], { stdio: "inherit" })
+    } else {
+      const packages = missingDeps.map((dep) => dep.package)
+      console.log(`Eksik Python bağımlılıkları kuruluyor: ${packages.join(", ")}`)
+      execFileSync(pythonCmd, [...pipArgs, ...packages], { stdio: "inherit" })
+    }
+
+    const stillMissing = getMissingPythonDeps(pythonCmd, runtimeDeps)
+    if (stillMissing.length > 0) {
+      console.error(`Python bağımlılık kurulumu tamamlanamadı. Eksikler: ${stillMissing.map((dep) => dep.module).join(", ")}`)
+    } else {
+      console.log("Python runtime bağımlılıkları hazır.")
+    }
+  } catch (err) {
+    console.error("Python bağımlılık kurulumu başarısız:", err.message)
+  }
+}
+
+function getMissingPythonDeps(pythonCmd, deps) {
+  const modules = deps.map((dep) => dep.module)
+  const checkScript = [
+    "import importlib.util, json",
+    `modules = ${JSON.stringify(modules)}`,
+    "missing = [module for module in modules if importlib.util.find_spec(module) is None]",
+    "print(json.dumps(missing))",
+  ].join("\n")
+
+  try {
+    const output = execFileSync(pythonCmd, ["-c", checkScript], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+    const missingModules = JSON.parse(output.trim() || "[]")
+    return deps.filter((dep) => missingModules.includes(dep.module))
+  } catch (err) {
+    console.error(`Python import kontrolü çalıştırılamadı (${pythonCmd}):`, err.message)
+    return deps
+  }
+}
+
+function shouldUseUserPipInstall(pythonCmd) {
+  const normalized = pythonCmd.replace(/\\/g, "/").toLowerCase()
+  return !normalized.includes("/envs/")
 }
 
 const loadDevUrlWithRetry = () => {
@@ -166,6 +339,9 @@ const loadDevUrlWithRetry = () => {
 }
 
 function createWindow() {
+  handshakeComplete = false
+  pendingRendererMessages = []
+
   win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -176,6 +352,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       enableRemoteModule: false,
+      sandbox: false,
     },
   })
   win.once("ready-to-show", () => {
@@ -228,11 +405,11 @@ app.whenReady().then(() => {
   })
 })
 
-autoUpdater.on('update-available', (info) => { if (win) win.webContents.send('update-available', info); });
-autoUpdater.on('update-not-available', (info) => { if (win) win.webContents.send('update-not-available', info); });
-autoUpdater.on('download-progress', (progressObj) => { if (win) win.webContents.send('update-download-progress', progressObj); });
-autoUpdater.on('update-downloaded', (info) => { if (win) win.webContents.send('update-downloaded', info); });
-autoUpdater.on('error', (err) => { if (win) win.webContents.send('update-error', err); });
+autoUpdater.on('update-available', (info) => sendToRenderer('update-available', info));
+autoUpdater.on('update-not-available', (info) => sendToRenderer('update-not-available', info));
+autoUpdater.on('download-progress', (progressObj) => sendToRenderer('update-download-progress', progressObj));
+autoUpdater.on('update-downloaded', (info) => sendToRenderer('update-downloaded', info));
+autoUpdater.on('error', (err) => sendToRenderer('update-error', err));
 ipcMain.on('restart-app-and-update', () => { autoUpdater.quitAndInstall(); });
 
 app.on("before-quit", (event) => {
@@ -255,6 +432,11 @@ function sendCommandToPython(command) {
     const commandString = JSON.stringify(command)
     pythonProcess.stdin.write(`${commandString}\n`)
   } else {
+    if (command?.action !== "shutdown") {
+      pendingPythonCommands.push(command)
+      console.log(`Python servisi hazır değil, komut bekletiliyor: ${command?.action || "unknown"}`)
+      return
+    }
     console.error("Python servisi hazır değil veya zaten kapatılmış.")
   }
 }
@@ -338,4 +520,5 @@ ipcMain.on('generate-pdf', async (event, { customerName, products }) => {
 ipcMain.on("renderer-ready", () => {
   console.log("Arayüz 'renderer-ready' sinyalini gönderdi.");
   handshakeComplete = true;
+  flushPendingRendererMessages()
 });

@@ -11,7 +11,7 @@ export function cn(...inputs: any[]) {
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, any>(({ className, variant, size, asChild = false, ...props }, ref) => {
-  const Comp = asChild ? "div" : "button"
+  const Comp: any = asChild ? "div" : "button"
   const variants: { [key: string]: string } = {
     default: "bg-primary text-primary-foreground hover:bg-primary/90",
     destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",

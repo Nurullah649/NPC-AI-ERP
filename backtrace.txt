@@ -1,0 +1,92 @@
+0x00000001421d5a80 EntryPoint+0xfd1c6850 in npc-ai erp: int	$3
+Modules:
+Module	Address					Debug info	Name (38 modules)
+PE	        7b000000-        7b3fd000	Deferred        kernelbase
+PE	        7b600000-        7b969000	Deferred        kernel32
+PE	        7bc00000-        7bf3c000	Deferred        ntdll
+PE	       140000000-       14cbf7000	Export          npc-ai erp
+PE	       1c8b40000-       1c8bb7000	Deferred        msacm32
+PE	       1c8db0000-       1c9097000	Deferred        msvcrt
+PE	       1d97a0000-       1d97ae000	Deferred        api-ms-win-core-fibers-l1-1-1
+PE	       1dd3f0000-       1dd758000	Deferred        crypt32
+PE	       1fdfd0000-       1fe094000	Deferred        wintrust
+PE	       21a7e0000-       21a9ce000	Deferred        setupapi
+PE	       231ae0000-       231d60000	Deferred        rpcrt4
+PE	       23d820000-       23dfc2000	Deferred        user32
+PE	       241b90000-       241bb9000	Deferred        zlib1
+PE	       26b4c0000-       26bbb9000	Deferred        gdi32
+PE	       2739c0000-       273ec9000	Deferred        oleaut32
+PE	       2d4d40000-       2d4d96000	Deferred        bcrypt
+PE	       2e8f10000-       2e948f000	Deferred        ole32
+PE	       2f1fa0000-       2f1fbe000	Deferred        version
+PE	       30c980000-       30c98f000	Deferred        api-ms-win-core-synch-l1-2-0
+PE	       327020000-       3271a4000	Deferred        combase
+PE	       32a700000-       32a7bc000	Deferred        sechost
+PE	       330260000-       330387000	Deferred        advapi32
+PE	       346ba0000-       346bea000	Deferred        jsproxy
+PE	       358120000-       35825c000	Deferred        winhttp
+PE	       388e20000-       388e4b000	Deferred        userenv
+PE	       3aa4c0000-       3aa4db000	Deferred        dhcpcsvc
+PE	       3af670000-       3af9dd000	Deferred        ucrtbase
+PE	       3afd00000-       3afd62000	Deferred        imm32
+PE	       3b8f00000-       3b909f000	Deferred        winmm
+PE	       3be590000-       3be802000	Deferred        dbghelp
+PE	    75d8cdb10000-    75d8cdb13000	Deferred        kerberos
+PE	    75d8cde20000-    75d8cde23000	Deferred        dwrite
+PE	    75d8cdec0000-    75d8cdec4000	Deferred        dnsapi
+PE	    75d8cdef0000-    75d8cdef4000	Deferred        iphlpapi
+PE	    75d8cdf20000-    75d8cdf23000	Deferred        netapi32
+PE	    75d8cdf60000-    75d8cdf63000	Deferred        secur32
+PE	    75d8cdfd0000-    75d8cdfd6000	Deferred        ws2_32
+PE	    75d8ce120000-    75d8ce12b000	Deferred        winspool
+Threads:
+process  tid      prio (all id:s are in hex)
+00000038 services.exe
+	0000003c    0
+	00000040    0
+	0000004c    0
+	00000070    0
+	00000088    0
+	000000ac    0
+	000000d4    0
+00000044 winedevice.exe
+	00000048    0
+	00000054    0
+	00000058    0
+	0000005c    0
+00000060 plugplay.exe
+	00000064    0
+	00000074    0
+	00000078    0
+	0000007c    0
+	00000098    0
+00000068 explorer.exe
+	0000006c    0
+	000000c0    0
+	000000c4    0
+00000080 winedevice.exe
+	00000084    0
+	0000008c    0
+	00000090    0
+	00000094    0
+	000000a0    0
+000000a4 svchost.exe
+	000000a8    0
+	000000b0    0
+	000000b4    0
+000000cc rpcss.exe
+	000000d0    0
+	000000dc    0
+	000000e0    0
+	000000e4    0
+	000000e8    0
+	000000ec    0
+00000190 (D) C:\users\nurullah\Local Settings\Application Data\Programs\NPC-AI-ERP\NPC-AI ERP.exe
+	00000194    0 <==
+	000001a0    0
+System information:
+    Wine build: wine-6.0.3 (Ubuntu 6.0.3~repack-1)
+    Platform: x86_64
+    Version: Windows 7
+    Host system: Linux
+    Host version: 6.8.0-110-generic

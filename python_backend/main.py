@@ -23,10 +23,12 @@ from googletrans import Translator
 from langdetect import detect, LangDetectException
 
 try:
-    from services import sigma, netflex, tci, currency_converter, orkim, itk
+    from services import sigma_playwright as sigma, netflex, tci_playwright as tci, currency_converter, orkim, itk
+    from services.obscura_manager import ObscuraManager
 except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from python_backend.services import sigma, netflex, tci, currency_converter, orkim, itk
+    from python_backend.services import sigma_playwright as sigma, netflex, tci_playwright as tci, currency_converter, orkim, itk
+    from python_backend.services.obscura_manager import ObscuraManager
 
 def get_resource_path(relative_path: str) -> str:
     try:
@@ -558,19 +560,19 @@ class ComparisonEngine:
         self.cas_search_lock = threading.Lock()
 
     def initialize_drivers(self):
-        logging.info("Ağır servisler (Selenium sürücüleri) başlatılıyor...")
+        logging.info("Ağır servisler (Playwright+Obscura) başlatılıyor...")
         start_time = time.monotonic()
         try:
-            logging.info("initialize_drivers BAŞLADI (Sıralı)")
-            logging.info("Sigma sürücüleri başlatılıyor...")
+            logging.info("initialize_drivers BAŞLADI (Playwright+Obscura)")
+            logging.info("Sigma session'ları başlatılıyor...")
             self.sigma_api.start_drivers()
-            logging.info("Sigma sürücüleri tamamlandı.")
-            logging.info("TCI sürücüsü başlatılıyor...")
+            logging.info("Sigma session'ları tamamlandı.")
+            logging.info("TCI bağlantısı başlatılıyor...")
             self.tci_api.reinit_driver()
-            logging.info("TCI sürücüsü tamamlandı.")
-            logging.info(f"Tüm Selenium sürücüleri {time.monotonic() - start_time:.2f}s içinde başlatıldı (Sıralı).")
+            logging.info("TCI bağlantısı tamamlandı.")
+            logging.info(f"Tüm Playwright+Obscura bağlantıları {time.monotonic() - start_time:.2f}s içinde başlatıldı.")
         except Exception as e:
-            logging.critical(f"Selenium sürücüleri başlatılamadı: {e}", exc_info=True)
+            logging.critical(f"Playwright+Obscura bağlantıları kurulamadı: {e}", exc_info=True)
             raise e
 
     def _get_cas_from_sigma_for_merck_code(self, merck_code: str) -> str:
@@ -1038,9 +1040,30 @@ class ComparisonEngine:
 def main():
     logging.info("=" * 40 + "\nPython Arka Plan Servisi Başlatıldı\n" + "=" * 40)
     start_notification_scheduler()
+    obscura_binary_path = os.getenv("OBSCURA_BINARY_PATH")
+    if not obscura_binary_path:
+        bundled_win = get_resource_path("obscura.exe")
+        bundled_unix = get_resource_path("obscura")
+        if os.path.isfile(bundled_win):
+            obscura_binary_path = bundled_win
+        elif os.path.isfile(bundled_unix):
+            obscura_binary_path = bundled_unix
+        else:
+            obscura_binary_path = None
+    obscura_mgr = ObscuraManager(
+        binary_path=obscura_binary_path,
+        port=9222,
+        workers=4,
+        stealth=True
+    )
+    if not obscura_mgr.start():
+        logging.critical("Obscura CDP sunucusu başlatılamadı! Uygulama kapatılıyor.")
+        send_to_frontend("error", {"message": "Tarayıcı motoru başlatılamadı."})
+        return
+    cdp_endpoint = obscura_mgr.get_cdp_endpoint()
     services_initialized = threading.Event()
-    sigma_api = sigma.SigmaAldrichAPI()
-    tci_api = tci.TciScraper()
+    sigma_api = sigma.SigmaAldrichAPI(cdp_endpoint=cdp_endpoint)
+    tci_api = tci.TciScraper(cdp_endpoint=cdp_endpoint)
     currency_api = currency_converter.CurrencyConverter()
     itk_api = None
     orkim_api = None
@@ -1199,6 +1222,11 @@ def main():
                 try:
                     if orkim_api: orkim_api.close_driver()
                 except Exception as e: logging.error(f"Orkim oturumu kapatılırken hata: {e}"); driver_shutdown_errors = True
+                try:
+                    obscura_mgr.stop()
+                    logging.info("Obscura CDP sunucusu kapatıldı.")
+                except Exception as e:
+                    logging.error(f"Obscura kapatılırken hata: {e}")
                 if driver_shutdown_errors: logging.warning("Bazı sürücüler kapatılırken hata oluştu.")
                 else: logging.info("Tüm sürücüler ve oturumlar başarıyla kapatıldı.")
                 logging.info("Arka plan servisinden çıkılıyor.")

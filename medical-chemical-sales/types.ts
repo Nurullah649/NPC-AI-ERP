@@ -123,6 +123,7 @@ declare global {
       performSearch: (data: { searchTerm: string; searchLogic: string; enabledBrands: string[] }) => void;
       cancelSearch: () => void;
       exportToExcel: (data: any) => void;
+      generatePdf: (data: { customerName: string; products: AssignmentItem[] }) => void;
       loadSettings: () => void;
       saveSettings: (settings: any) => void;
       selectFile: () => Promise<string | null>;
@@ -130,11 +131,16 @@ declare global {
       cancelBatchSearch: () => void;
       cancelCurrentTermSearch: () => void;
       getParities: () => void;
+      checkNotificationsNow: () => void;
+      showNotification: (data: any) => void;
+      onPythonReady: (callback: (data?: any) => void) => () => void;
+      onPythonError: (callback: (error: string) => void) => () => void;
       onServicesReady: (callback: (isReady: boolean) => void) => () => void;
       onInitialSetupRequired: (callback: () => void) => () => void;
       onProductFound: (callback: (message: { product: any; context?: any }) => void) => () => void;
       onSearchComplete: (callback: (summary: any) => void) => () => void;
       onExportResult: (callback: (result: any) => void) => () => void;
+      onGeneratePdfResult: (callback: (result: any) => void) => () => void;
       onSearchError: (callback: (error: string) => void) => () => void;
       onSettingsLoaded: (callback: (settings: any) => void) => () => void;
       onSettingsSaved: (callback: (result: any) => void) => () => void;
@@ -148,6 +154,8 @@ declare global {
       saveCalendarNotes: (notes: CalendarNote[]) => void;
       loadCalendarNotes: () => void;
       onCalendarNotesLoaded: (callback: (notes: CalendarNote[]) => void) => () => void;
+      onCalendarNotesSaved: (callback: (result: any) => void) => () => void;
+      onShowNotification: (callback: (data: any) => void) => () => void;
       exportMeetings: (data: { notes: CalendarNote[]; startDate: string; endDate: string }) => void;
       onExportMeetingsResult: (callback: (result: any) => void) => () => void;
       onUpdateAvailable: (callback: (info: any) => void) => () => void;

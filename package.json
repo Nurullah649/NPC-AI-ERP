@@ -56,6 +56,14 @@
       {
         "from": "bin",
         "to": "bin"
+      },
+      {
+        "from": "obscura.exe",
+        "to": "obscura.exe"
+      },
+      {
+        "from": "python_backend",
+        "to": "python_backend"
       }
     ]
   }

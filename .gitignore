@@ -10,3 +10,5 @@
 /TalesJob_Veri
 .env
 /licence_key
+__pycache__/
+*.pyc

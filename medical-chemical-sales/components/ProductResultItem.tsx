@@ -187,8 +187,11 @@ const ProductResultItem = ({
     let unit = "Adet"
     if (p.sigma_variations) {
       const firstCountry = Object.keys(p.sigma_variations)[0]
-      if (firstCountry && p.sigma_variations[firstCountry as keyof typeof p.sigma_variations]?.length > 0) {
-        unit = p.sigma_variations[firstCountry as keyof typeof p.sigma_variations]?.[0].package_size || "Adet"
+      const firstCountryVariations = firstCountry
+        ? p.sigma_variations[firstCountry as keyof typeof p.sigma_variations]
+        : undefined
+      if (firstCountryVariations && firstCountryVariations.length > 0) {
+        unit = firstCountryVariations[0]?.package_size || "Adet"
       }
     } else if (p.tci_variations && p.tci_variations.length > 0) {
       unit = p.tci_variations[0].unit || "Adet"
